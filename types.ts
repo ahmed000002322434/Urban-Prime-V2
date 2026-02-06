@@ -287,6 +287,13 @@ export interface Item {
   careInstructions?: string[];
   certifications?: string[];
   affiliateEligibility?: AffiliateEligibility;
+  automation?: {
+    autoReprice?: boolean;
+    autoRestock?: boolean;
+    autoPromote?: boolean;
+    autoFulfill?: boolean;
+    minMarginPercent?: number;
+  };
   auctionDetails?: {
       startingBid: number;
       currentBid: number;

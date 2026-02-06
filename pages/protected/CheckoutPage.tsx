@@ -39,6 +39,9 @@ const CheckoutPage: React.FC = () => {
     
     // Form for new card
     const [newCard, setNewCard] = useState({ number: '', expiry: '', cvc: '', name: '' });
+    const [deliveryNote, setDeliveryNote] = useState('');
+    const [giftWrap, setGiftWrap] = useState(false);
+    const [contactless, setContactless] = useState(false);
 
     const getItemImage = (item: any) => {
         if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
@@ -241,6 +244,37 @@ const CheckoutPage: React.FC = () => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+
+                        {/* 2b. Delivery Preferences */}
+                        <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                            <h2 className="text-xl font-bold text-text-primary mb-4">Delivery Preferences</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg cursor-pointer">
+                                    <input type="checkbox" checked={giftWrap} onChange={e => setGiftWrap(e.target.checked)} />
+                                    <div>
+                                        <p className="font-semibold text-text-primary">Gift Wrap</p>
+                                        <p className="text-xs text-text-secondary">Premium wrap + note</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg cursor-pointer">
+                                    <input type="checkbox" checked={contactless} onChange={e => setContactless(e.target.checked)} />
+                                    <div>
+                                        <p className="font-semibold text-text-primary">Contactless Delivery</p>
+                                        <p className="text-xs text-text-secondary">Leave at door</p>
+                                    </div>
+                                </label>
+                            </div>
+                            <div className="mt-4">
+                                <label className="block text-sm font-bold text-text-secondary mb-2">Delivery Instructions</label>
+                                <textarea
+                                    value={deliveryNote}
+                                    onChange={e => setDeliveryNote(e.target.value)}
+                                    placeholder="Gate code, concierge, preferred time..."
+                                    className="w-full p-3 border border-border rounded-lg bg-surface-soft text-text-primary"
+                                    rows={3}
+                                />
                             </div>
                         </div>
 

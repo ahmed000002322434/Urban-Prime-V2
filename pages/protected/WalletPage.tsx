@@ -26,6 +26,7 @@ const WalletPage: React.FC = () => {
     const [payoutMethods, setPayoutMethods] = useState<PayoutMethod[]>([]);
     const [selectedMethodId, setSelectedMethodId] = useState('');
     const [isWithdrawing, setIsWithdrawing] = useState(false);
+    const [autoPayout, setAutoPayout] = useState(true);
 
     // Initial Data Fetch
     useEffect(() => {
@@ -176,12 +177,18 @@ const WalletPage: React.FC = () => {
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                  <h1 className="text-3xl font-bold font-display text-text-primary">My Wallet</h1>
-                 <button 
-                    onClick={() => setIsWithdrawModalOpen(true)}
-                    className="px-6 py-2.5 bg-primary text-white font-bold rounded-lg shadow-lg hover:shadow-primary/30 transition-all flex items-center gap-2 active:scale-95"
-                >
-                    <WithdrawIcon /> Withdraw Funds
-                </button>
+                 <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-text-secondary">
+                        <input type="checkbox" checked={autoPayout} onChange={e => setAutoPayout(e.target.checked)} />
+                        Auto Payouts
+                    </label>
+                    <button 
+                        onClick={() => setIsWithdrawModalOpen(true)}
+                        className="px-6 py-2.5 bg-primary text-white font-bold rounded-lg shadow-lg hover:shadow-primary/30 transition-all flex items-center gap-2 active:scale-95"
+                    >
+                        <WithdrawIcon /> Withdraw Funds
+                    </button>
+                 </div>
             </div>
 
             {/* Balance Cards */}

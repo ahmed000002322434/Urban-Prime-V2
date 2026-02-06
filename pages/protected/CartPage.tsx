@@ -89,7 +89,7 @@ const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () =
 };
 
 const CartPage: React.FC = () => {
-    const { cartGroups, cartCount, removeItemFromCart, saveForLater, updateItemQuantity, savedItems, moveToCart, removeSavedItem } = useCart();
+    const { cartGroups, cartCount, removeItemFromCart, saveForLater, updateItemQuantity, savedItems, moveToCart, removeSavedItem, clearCart } = useCart();
     const { currency } = useTranslation();
 
     if (cartCount === 0 && savedItems.length === 0) {
@@ -106,9 +106,15 @@ const CartPage: React.FC = () => {
     return (
         <div className="bg-background min-h-screen pb-20">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="mb-6 flex items-center gap-4">
-                     <BackButton to="/browse" alwaysShowText />
-                     <h1 className="text-3xl font-bold font-display text-text-primary">Shopping Cart <span className="text-lg font-normal text-text-secondary">({cartCount} items)</span></h1>
+                <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                     <div className="flex items-center gap-4">
+                        <BackButton to="/browse" alwaysShowText />
+                        <h1 className="text-3xl font-bold font-display text-text-primary">Shopping Cart <span className="text-lg font-normal text-text-secondary">({cartCount} items)</span></h1>
+                     </div>
+                     <div className="flex items-center gap-3">
+                        <Link to="/browse" className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-surface-soft">Continue Shopping</Link>
+                        <button onClick={clearCart} className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-surface-soft text-red-500">Clear Cart</button>
+                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">

@@ -122,6 +122,19 @@ const FinancesPage: React.FC = () => {
                 <StatCard title="Pending Payout" value={`${currency.symbol}${pendingPayout.toFixed(2)}`} />
             </div>
 
+            <div className="bg-surface p-6 rounded-xl shadow-soft border border-border flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h3 className="text-lg font-bold text-text-primary">Payout Schedule</h3>
+                    <p className="text-sm text-text-secondary">Next payout window: every Friday, 2–4 PM</p>
+                </div>
+                <button
+                    onClick={() => showNotification("Payout request created.")}
+                    className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg"
+                >
+                    Request Payout
+                </button>
+            </div>
+
             <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
                 <div className="flex justify-between items-center border-b border-border pb-4 mb-6">
                     <h2 className="text-xl font-bold font-display text-text-primary">Payout Methods</h2>

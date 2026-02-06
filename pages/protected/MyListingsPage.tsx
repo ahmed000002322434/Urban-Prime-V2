@@ -39,6 +39,7 @@ const MyListingsPage: React.FC = () => {
   const [quickViewItem, setQuickViewItem] = useState<Item | null>(null);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [itemToBoost, setItemToBoost] = useState<Item | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchItems = () => {
       if (user) {
@@ -94,6 +95,14 @@ const MyListingsPage: React.FC = () => {
     if (activeTab === 'all') return true;
     if (activeTab === 'published' && (!item.status || item.status === 'published')) return true;
     return item.status === activeTab;
+  }).filter(item => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(q) ||
+      (item.sku || '').toLowerCase().includes(q) ||
+      (item.brand || '').toLowerCase().includes(q)
+    );
   });
 
   const TabButton = ({ tab, label, count }: { tab: 'all' | 'published' | 'draft' | 'archived', label: string, count: number }) => (
@@ -120,6 +129,12 @@ const MyListingsPage: React.FC = () => {
            </div>
            
            <div className="flex items-center gap-3">
+                <input
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search listings..."
+                    className="hidden md:block px-4 py-2 rounded-lg border border-border bg-surface text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+                />
                 <div className="bg-surface-soft p-1 rounded-lg flex border border-border">
                     <button onClick={() => setViewMode('grid')} className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-black shadow-sm' : 'text-gray-500'}`}><GridIcon/></button>
                     <button onClick={() => setViewMode('table')} className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white dark:bg-black shadow-sm' : 'text-gray-500'}`}><ListIcon/></button>
@@ -155,7 +170,11 @@ const MyListingsPage: React.FC = () => {
                                    <button onClick={() => setItemToBoost(item)} title="Boost Listing" className="p-2 bg-purple-600 text-white rounded-full shadow-lg hover:scale-110 transition-transform"><RocketIcon /></button>
                                </div>
                                <div className="flex items-center justify-between bg-surface-soft p-2 rounded-lg mt-[-10px] z-20 relative">
+                                   <Link to={`/item/${item.id}`} className="text-xs font-semibold text-text-secondary hover:text-primary">View</Link>
+                                   <span className="text-gray-300">|</span>
                                    <Link to={`/profile/products/new?edit=${item.id}`} className="text-xs font-semibold text-text-secondary hover:text-primary">Edit</Link>
+                                   <span className="text-gray-300">|</span>
+                                   <button onClick={() => { navigate(`/profile/products/new?duplicate=${item.id}`); showNotification('Use this listing as a template.'); }} className="text-xs font-semibold text-text-secondary hover:text-primary">Duplicate</button>
                                    <span className="text-gray-300">|</span>
                                    <button onClick={() => handleArchive(item.id)} className="text-xs font-semibold text-text-secondary hover:text-red-500">Archive</button>
                                </div>

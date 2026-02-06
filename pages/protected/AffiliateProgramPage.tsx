@@ -212,6 +212,7 @@ const AffiliateProgramPage: React.FC = () => {
     const [newCoupon, setNewCoupon] = useState({ code: '', percentage: 10 });
     const [submission, setSubmission] = useState({ url: '', type: 'product' });
     const [isOnboarding, setIsOnboarding] = useState(false);
+    const [campaigns, setCampaigns] = useState<AffiliateCampaign[]>([]);
 
     const fetchData = useCallback(async () => {
         if (!user || !user.isAffiliate) {
@@ -242,6 +243,10 @@ const AffiliateProgramPage: React.FC = () => {
             setAssets(assetData);
             setLeaderboard(leaderboardData);
             setTrendingItems(trendingData);
+            setCampaigns([
+                { id: 'camp-1', title: 'Spring Drop', description: 'Highlight top verified listings', commissionRate: 0.12 },
+                { id: 'camp-2', title: 'Creator Week', description: 'Boost creator content + reels', commissionRate: 0.15 }
+            ]);
         } catch (error) {
             console.error(error);
             showNotification("Failed to load affiliate data.");
@@ -386,6 +391,36 @@ const AffiliateProgramPage: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <AffiliateChart earnings={earnings} />
                 <TierProgress affiliate={affiliate} />
+            </div>
+
+            <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-text-primary">Campaigns</h3>
+                    <button
+                        onClick={() => {
+                            const newCamp = { id: `camp-${Date.now()}`, title: 'New Campaign', description: 'Custom promotion', commissionRate: affiliate.commissionRate };
+                            setCampaigns(prev => [newCamp, ...prev]);
+                            showNotification('Campaign created.');
+                        }}
+                        className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg"
+                    >
+                        + New Campaign
+                    </button>
+                </div>
+                <div className="space-y-3">
+                    {campaigns.map(c => (
+                        <div key={c.id} className="p-4 border border-border rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                            <div>
+                                <p className="font-semibold text-text-primary">{c.title}</p>
+                                <p className="text-sm text-text-secondary">{c.description}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-1 rounded-full">{Math.round((c.commissionRate || 0) * 100)}% Comm</span>
+                                <button className="text-xs font-bold text-primary hover:underline">View Assets</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
             
             {trendingItems.length > 0 && (

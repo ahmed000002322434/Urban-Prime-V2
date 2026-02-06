@@ -76,6 +76,13 @@ type WizardFormData = Omit<Partial<Item>, 'shippingOptions'> & {
         originCountry?: string;
         compliance?: { certifications?: string[] };
     };
+    automation?: {
+        autoReprice?: boolean;
+        autoRestock?: boolean;
+        autoPromote?: boolean;
+        autoFulfill?: boolean;
+        minMarginPercent?: number;
+    };
 };
 
 const initialFormData: WizardFormData = {
@@ -137,6 +144,13 @@ const initialFormData: WizardFormData = {
         processingTimeDays: 0,
         originCountry: '',
         compliance: { certifications: [] }
+    },
+    automation: {
+        autoReprice: false,
+        autoRestock: false,
+        autoPromote: false,
+        autoFulfill: false,
+        minMarginPercent: 20
     }
 };
 
@@ -207,7 +221,8 @@ const ListItemPage: React.FC = () => {
           status,
           shippingDetails: finalShippingDetails,
           shippingWeightClass: formData.shippingWeightClass,
-          whoPaysShipping: formData.whoPaysShipping
+          whoPaysShipping: formData.whoPaysShipping,
+          automation: formData.automation
         };
 
         // Add Rental specific fields

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { itemService } from '../../services/itemService';
 import type { Item } from '../../types';
@@ -70,6 +70,7 @@ const ItemDetailPage: React.FC = () => {
     const [item, setItem] = useState<Item | null>(null);
     const [relatedItems, setRelatedItems] = useState<Item[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [activeImage, setActiveImage] = useState(0);
     const [is3dEnabled, setIs3dEnabled] = useState(false);
@@ -82,12 +83,21 @@ const ItemDetailPage: React.FC = () => {
     const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
     const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
 
+    const initialLoadRef = useRef(true);
+
     useEffect(() => {
         if (!id) return;
         let isActive = true;
-        setIsLoading(true);
+        const hasItem = !!item && item.id === id;
+        if (hasItem) {
+            setIsRefreshing(true);
+        } else {
+            setIsLoading(true);
+        }
         setLoadError(null);
-        window.scrollTo(0, 0);
+        if (initialLoadRef.current) {
+            window.scrollTo(0, 0);
+        }
 
         const normalizeItem = (raw: Item): Item => ({
             ...raw,
@@ -109,8 +119,11 @@ const ItemDetailPage: React.FC = () => {
             if (!isActive) return;
             if (fetchedItem) {
                 const normalized = normalizeItem(fetchedItem);
+                const isSameItem = item && item.id === normalized.id;
                 setItem(normalized);
-                setActiveImage(0);
+                if (!isSameItem) {
+                    setActiveImage(0);
+                }
                 setIs3dEnabled(!!normalized.enable3dPreview);
                 if (normalized.listingType === 'both') {
                     setPurchaseMode(normalized.salePrice ? 'sale' : 'rent');
@@ -125,15 +138,19 @@ const ItemDetailPage: React.FC = () => {
                     setRelatedItems(res.items.filter((i: Item) => i.id !== normalized.id));
                 });
             } else {
-                setItem(null);
+                if (!item) setItem(null);
                 setLoadError('This item could not be loaded. You may be offline or the listing no longer exists.');
             }
             setIsLoading(false);
+            setIsRefreshing(false);
+            initialLoadRef.current = false;
         }).catch((error) => {
             if (!isActive) return;
             console.error(error);
             setLoadError('We hit a loading issue. Please try again.');
             setIsLoading(false);
+            setIsRefreshing(false);
+            initialLoadRef.current = false;
         });
 
         return () => {
@@ -266,6 +283,11 @@ const ItemDetailPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-background text-text-primary">
+            {isRefreshing && (
+                <div className="fixed top-0 left-0 right-0 z-[60] h-1 bg-black/10">
+                    <div className="h-full w-1/2 bg-primary animate-pulse" />
+                </div>
+            )}
             <div className="relative border-b border-border overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-surface-soft via-background to-background" />
                 <div className="absolute -top-24 right-[-10%] w-[35rem] h-[35rem] bg-primary/10 rounded-full blur-[120px]" />

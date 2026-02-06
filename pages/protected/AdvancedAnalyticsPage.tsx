@@ -5,9 +5,11 @@ import { listerService } from '../../services/itemService';
 import type { SellerPerformanceStats } from '../../types';
 import Spinner from '../../components/Spinner';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
+import { useNotification } from '../../context/NotificationContext';
 
 const AdvancedAnalyticsPage: React.FC = () => {
     const { user } = useAuth();
+    const { showNotification } = useNotification();
     const [stats, setStats] = useState<SellerPerformanceStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -38,7 +40,15 @@ const AdvancedAnalyticsPage: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-fade-in-up">
-            <h1 className="text-3xl font-bold font-display text-text-primary">Advanced Analytics</h1>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h1 className="text-3xl font-bold font-display text-text-primary">Advanced Analytics</h1>
+                <button
+                    onClick={() => showNotification('Export queued. Your report will download shortly.')}
+                    className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg"
+                >
+                    Export CSV
+                </button>
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Traffic Chart */}
