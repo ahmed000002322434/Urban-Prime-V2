@@ -1,0 +1,56 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { useScrollReveal } from '../../hooks/useScrollReveal';
+
+const ShowcaseCard: React.FC<{ title: string; imageUrl: string; link: string; delay?: number }> = ({ title, imageUrl, link, delay = 0 }) => {
+  const cardRef = useScrollReveal<HTMLDivElement>();
+  return (
+    <div ref={cardRef} className="group animate-reveal" style={{ transitionDelay: `${delay}ms` }}>
+      <Link to={link}>
+        <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+          <img src={imageUrl} alt={title} className="w-full h-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-105" />
+        </div>
+        <h3 className="mt-4 text-lg font-semibold text-gray-800">{title}</h3>
+      </Link>
+    </div>
+  );
+};
+
+const LaptopsPage: React.FC = () => {
+  const heroRef = useScrollReveal<HTMLDivElement>();
+  const categoriesRef = useScrollReveal<HTMLDivElement>();
+  const ctaRef = useScrollReveal<HTMLDivElement>();
+
+  const categories = [
+      { title: 'MacBooks', imageUrl: 'https://picsum.photos/seed/lap-mac/800/450', link: '/browse?category=laptops-computers' },
+      { title: 'Windows Laptops', imageUrl: 'https://picsum.photos/seed/lap-win/800/450', link: '/browse?category=laptops-computers' },
+      { title: 'Gaming Laptops', imageUrl: 'https://picsum.photos/seed/lap-gaming/800/450', link: '/browse?category=laptops-computers' },
+      { title: 'Desktop PCs', imageUrl: 'https://picsum.photos/seed/lap-desktop/800/450', link: '/browse?category=laptops-computers' },
+  ];
+  
+  return (
+    <div className="bg-gray-50/50 animate-fade-in-up">
+      <section ref={heroRef} className="animate-reveal container mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 text-center">
+        <h1 className="text-5xl md:text-7xl font-extrabold font-display text-gray-900">Laptops & Computers</h1>
+        <p className="mt-6 text-lg text-gray-600 max-w-2xl mx-auto">Power your productivity and creativity with our range of high-performance laptops and desktops.</p>
+      </section>
+
+      <section ref={categoriesRef} className="animate-reveal container mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <h2 className="text-4xl font-bold font-display text-center mb-12">Find Your Perfect Machine</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          {categories.map((cat, index) => <ShowcaseCard key={cat.title} {...cat} delay={index * 100} />)}
+        </div>
+      </section>
+
+      <section ref={ctaRef} className="animate-reveal container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+        <div className="bg-white p-12 rounded-lg shadow-lg">
+          <h2 className="text-3xl font-display font-bold mb-4">Unleash Your Potential</h2>
+          <p className="text-gray-600 mb-8 max-w-xl mx-auto">Whether for work, school, or play, find the right computer to meet your needs.</p>
+          <Link to="/browse?category=laptops-computers" className="inline-block bg-black text-white font-bold py-3 px-10 rounded-full hover:bg-gray-800 transition-colors text-lg">Shop All Computers</Link>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default LaptopsPage;

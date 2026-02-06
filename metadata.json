@@ -1,0 +1,9 @@
+{
+  "name": "URBAN PRIME v1.0",
+  "description": "Urban Prime is a futuristic global marketplace for shopping, selling, and renting, featuring a modern, elegant, and animated user experience.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
