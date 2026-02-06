@@ -27,9 +27,10 @@ const CategoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" he
 // --- Sub-components (moved outside main component to fix React error) ---
 const SupplierProductCard: React.FC<{ product: SupplierProduct; onImport: (product: SupplierProduct) => void; }> = ({ product, onImport }) => {
     const { currency } = useTranslation();
+    const imageUrl = product.imageUrls?.[0] || `https://picsum.photos/seed/${product.id}/400/300`;
     return (
         <div className="bg-surface rounded-lg shadow-soft border border-border overflow-hidden flex flex-col">
-            <img src={product.imageUrls[0]} alt={product.title} className="w-full h-40 object-cover" />
+            <img src={imageUrl} alt={product.title} className="w-full h-40 object-cover" />
             <div className="p-4 flex flex-col flex-grow">
                 <h3 className="font-bold text-sm truncate flex-grow text-text-primary">{product.title}</h3>
                 <p className="text-xs text-text-secondary mt-1">{product.supplierName}</p>
@@ -82,6 +83,11 @@ const CreatorHubPage: React.FC = () => {
     const [isLoadingMyProducts, setIsLoadingMyProducts] = useState(false);
     const [trends, setTrends] = useState<TrendAnalysis | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const mockOrders = [
+        { id: 'ds-1', item: 'Wireless Earbuds', status: 'processing', profit: 18.5, eta: '3-5 days' },
+        { id: 'ds-2', item: 'Minimalist Lamp', status: 'shipped', profit: 24.2, eta: '2-4 days' },
+        { id: 'ds-3', item: 'Travel Organizer', status: 'delivered', profit: 12.0, eta: 'Delivered' }
+    ];
 
     const fetchMyProducts = useCallback(async () => {
         if (user) {
@@ -141,25 +147,64 @@ const CreatorHubPage: React.FC = () => {
                     <div className="space-y-4">
                         {myProducts.length > 0 ? myProducts.map(item => (
                              <div key={item.id} className="p-3 bg-surface rounded-md border border-border flex items-center gap-4">
-                                 <img src={item.imageUrls[0]} alt={item.title} className="w-16 h-16 rounded object-cover" />
+                                 <img src={item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/200/200`} alt={item.title} className="w-16 h-16 rounded object-cover" />
                                  <div className="flex-1">
                                     <Link to={`/item/${item.id}`} className="font-bold hover:underline text-text-primary">{item.title}</Link>
                                     <p className="text-xs text-text-secondary">From: {item.supplierInfo?.name}</p>
                                  </div>
                                  <div className="text-right">
                                      <p className="text-sm text-text-secondary">Your Price</p>
-                                     <p className="font-bold text-lg text-text-primary">{currency.symbol}{item.salePrice?.toFixed(2)}</p>
+                                     <p className="font-bold text-lg text-text-primary">{currency.symbol}{(item.salePrice || 0).toFixed(2)}</p>
                                  </div>
                                   <div className="text-right">
                                      <p className="text-sm text-text-secondary">Profit</p>
-                                     <p className="font-bold text-lg text-green-600">{currency.symbol}{(item.salePrice! - item.wholesalePrice! - (item.supplierInfo?.shippingCost || 0)).toFixed(2)}</p>
+                                     <p className="font-bold text-lg text-green-600">{currency.symbol}{((item.salePrice || 0) - (item.wholesalePrice || 0) - (item.supplierInfo?.shippingCost || 0)).toFixed(2)}</p>
                                  </div>
                              </div>
                         )) : <p className="text-center text-text-secondary py-10">You haven't imported any products yet.</p>}
                     </div>
                 );
             case 'orders':
-                return <p className="text-center text-text-secondary py-10">Order management view is coming soon.</p>;
+                return (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Orders in Progress</p>
+                                <p className="text-2xl font-bold text-text-primary">{mockOrders.filter(o => o.status !== 'delivered').length}</p>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Avg Profit / Order</p>
+                                <p className="text-2xl font-bold text-text-primary">{currency.symbol}{(mockOrders.reduce((sum, o) => sum + o.profit, 0) / mockOrders.length).toFixed(2)}</p>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Supplier SLA</p>
+                                <p className="text-2xl font-bold text-text-primary">98%</p>
+                            </div>
+                        </div>
+                        <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                            <div className="px-4 py-3 bg-surface-soft border-b border-border text-xs font-bold text-text-secondary uppercase tracking-wider">Live Dropship Orders</div>
+                            <div className="divide-y divide-border">
+                                {mockOrders.map(order => (
+                                    <div key={order.id} className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                                        <div>
+                                            <p className="font-bold text-text-primary">{order.item}</p>
+                                            <p className="text-xs text-text-secondary">ETA: {order.eta}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                order.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                                                order.status === 'shipped' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-amber-100 text-amber-700'
+                                            }`}>{order.status}</span>
+                                            <span className="text-sm font-semibold text-text-primary">{currency.symbol}{order.profit.toFixed(2)} profit</span>
+                                            <button className="text-xs font-bold text-primary hover:underline">Track</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
             case 'trends':
                 return (
                     <div className="bg-surface p-6 rounded-lg shadow-soft border border-border">
@@ -234,6 +279,20 @@ const CreatorHubPage: React.FC = () => {
                     <h1 className="text-3xl font-bold font-display text-text-primary">Creator Hub</h1>
                     <p className="text-text-secondary">Your dashboard for managing your dropshipping business.</p>
                 </header>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-surface p-4 rounded-lg border border-border">
+                        <p className="text-xs text-text-secondary uppercase tracking-wider">Imported Products</p>
+                        <p className="text-2xl font-bold text-text-primary">{myProducts.length}</p>
+                    </div>
+                    <div className="bg-surface p-4 rounded-lg border border-border">
+                        <p className="text-xs text-text-secondary uppercase tracking-wider">Active Suppliers</p>
+                        <p className="text-2xl font-bold text-text-primary">{new Set(myProducts.map(p => p.supplierInfo?.name).filter(Boolean)).size || 0}</p>
+                    </div>
+                    <div className="bg-surface p-4 rounded-lg border border-border">
+                        <p className="text-xs text-text-secondary uppercase tracking-wider">Auto-fulfill</p>
+                        <p className="text-2xl font-bold text-text-primary">Enabled</p>
+                    </div>
+                </div>
                 <div className="flex gap-2 p-2 bg-surface rounded-lg shadow-sm border border-border mb-6">
                     <TabButton tab="find" activeTab={activeTab} onClick={setActiveTab}><SearchIcon /> Find Products</TabButton>
                     <TabButton tab="trends" activeTab={activeTab} onClick={setActiveTab}><TrendsIcon /> Trends</TabButton>

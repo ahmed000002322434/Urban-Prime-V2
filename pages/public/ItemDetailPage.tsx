@@ -70,10 +70,12 @@ const ItemDetailPage: React.FC = () => {
     const [item, setItem] = useState<Item | null>(null);
     const [relatedItems, setRelatedItems] = useState<Item[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [activeImage, setActiveImage] = useState(0);
     const [is3dEnabled, setIs3dEnabled] = useState(false);
     const [purchaseMode, setPurchaseMode] = useState<'sale' | 'rent'>('sale');
     const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'seller' | 'reviews'>('details');
+    const [reloadKey, setReloadKey] = useState(0);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -82,31 +84,62 @@ const ItemDetailPage: React.FC = () => {
 
     useEffect(() => {
         if (!id) return;
+        let isActive = true;
         setIsLoading(true);
+        setLoadError(null);
         window.scrollTo(0, 0);
 
+        const normalizeItem = (raw: Item): Item => ({
+            ...raw,
+            images: raw.images || [],
+            imageUrls: raw.imageUrls || [],
+            reviews: raw.reviews || [],
+            avgRating: raw.avgRating || 0,
+            owner: raw.owner || { id: 'seller', name: 'Verified Seller', avatar: '' },
+            features: raw.features || [],
+            specifications: raw.specifications || [],
+            materials: raw.materials || [],
+            careInstructions: raw.careInstructions || [],
+            packageContents: raw.packageContents || [],
+            certifications: raw.certifications || [],
+            shippingEstimates: raw.shippingEstimates || []
+        });
+
         itemService.getItemById(id).then(fetchedItem => {
+            if (!isActive) return;
             if (fetchedItem) {
-                setItem(fetchedItem);
+                const normalized = normalizeItem(fetchedItem);
+                setItem(normalized);
                 setActiveImage(0);
-                setIs3dEnabled(!!fetchedItem.enable3dPreview);
-                if (fetchedItem.listingType === 'both') {
-                    setPurchaseMode(fetchedItem.salePrice ? 'sale' : 'rent');
-                } else if (fetchedItem.listingType === 'rent') {
+                setIs3dEnabled(!!normalized.enable3dPreview);
+                if (normalized.listingType === 'both') {
+                    setPurchaseMode(normalized.salePrice ? 'sale' : 'rent');
+                } else if (normalized.listingType === 'rent') {
                     setPurchaseMode('rent');
                 } else {
                     setPurchaseMode('sale');
                 }
-                addToHistory(fetchedItem);
-                itemService.getItems({ category: fetchedItem.category }, { page: 1, limit: 4 }).then(res => {
-                    setRelatedItems(res.items.filter((i: Item) => i.id !== fetchedItem.id));
+                addToHistory(normalized);
+                itemService.getItems({ category: normalized.category }, { page: 1, limit: 4 }).then(res => {
+                    if (!isActive) return;
+                    setRelatedItems(res.items.filter((i: Item) => i.id !== normalized.id));
                 });
             } else {
-                navigate('/404');
+                setItem(null);
+                setLoadError('This item could not be loaded. You may be offline or the listing no longer exists.');
             }
             setIsLoading(false);
+        }).catch((error) => {
+            if (!isActive) return;
+            console.error(error);
+            setLoadError('We hit a loading issue. Please try again.');
+            setIsLoading(false);
         });
-    }, [id, navigate, addToHistory]);
+
+        return () => {
+            isActive = false;
+        };
+    }, [id, addToHistory, reloadKey]);
 
     useEffect(() => {
         setIsAvailable(null);
@@ -119,7 +152,30 @@ const ItemDetailPage: React.FC = () => {
     }, [item]);
 
     if (isLoading) return <div className="h-screen flex justify-center items-center"><Spinner size="lg" /></div>;
-    if (!item) return null;
+    if (!item) {
+        return (
+            <div className="min-h-screen bg-background text-text-primary flex items-center justify-center px-6">
+                <div className="max-w-lg w-full rounded-3xl border border-border bg-surface p-8 text-center space-y-4">
+                    <h2 className="text-2xl font-bold font-display">Unable to load this item</h2>
+                    <p className="text-sm text-text-secondary">{loadError || 'Something went wrong.'}</p>
+                    <div className="flex items-center justify-center gap-3">
+                        <button
+                            onClick={() => setReloadKey(k => k + 1)}
+                            className="px-4 py-2 rounded-full bg-black text-white text-sm font-semibold"
+                        >
+                            Retry
+                        </button>
+                        <button
+                            onClick={() => navigate('/browse')}
+                            className="px-4 py-2 rounded-full border border-border text-sm font-semibold"
+                        >
+                            Back to Browse
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const displayPrice = item.salePrice || item.rentalPrice || item.price || 0;
     const isRentalOnly = item.listingType === 'rent';
@@ -206,6 +262,7 @@ const ItemDetailPage: React.FC = () => {
     const shippingEstimate = item.shippingEstimates?.[0] || item.supplierInfo?.shippingProfile?.fastestEstimate;
     const returnPolicy = item.returnPolicy || item.supplierInfo?.returnPolicy;
     const warranty = item.warranty;
+    const ownerAvatar = item.owner?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(item.owner?.name || 'Seller')}`;
 
     return (
         <div className="min-h-screen bg-background text-text-primary">
@@ -624,7 +681,7 @@ const ItemDetailPage: React.FC = () => {
                             <div className="rounded-2xl border border-border bg-surface p-6">
                                 <SectionTitle title="Seller and Trust" />
                                 <div className="flex items-center gap-4">
-                                    <img src={item.owner.avatar} alt={item.owner.name} className="w-12 h-12 rounded-full object-cover" />
+                                    <img src={ownerAvatar} alt={item.owner.name} className="w-12 h-12 rounded-full object-cover" />
                                     <div>
                                         <p className="font-bold text-text-primary">{item.owner.businessName || item.owner.name}</p>
                                         <Link to={`/user/${item.owner.id}`} className="text-xs text-primary font-semibold">View profile</Link>

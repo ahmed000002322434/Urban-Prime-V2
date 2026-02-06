@@ -132,7 +132,7 @@ const SearchResultsWidget: React.FC<{ itemIds: string[] }> = ({ itemIds }) => {
                  {items.map(item => (
                      <Link to={`/item/${item.id}`} key={item.id} className="min-w-[160px] w-[160px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all snap-center block">
                          <div className="aspect-square bg-gray-100 dark:bg-black/20">
-                             <img src={item.imageUrls[0]} alt={item.title} className="w-full h-full object-cover" />
+                             <img src={item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/300/300`} alt={item.title} className="w-full h-full object-cover" />
                          </div>
                          <div className="p-3">
                              <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{item.title}</p>
@@ -530,9 +530,9 @@ const UrbanGeniePage: React.FC = () => {
 
                 {/* Header */}
                 <div className="absolute top-0 left-0 right-0 z-10 flex justify-center pt-6 pointer-events-none">
-                    <div className="flex items-center gap-3 pointer-events-auto bg-white/40 dark:bg-white/5 backdrop-blur-3xl border border-white/40 dark:border-white/10 px-6 py-2.5 rounded-full shadow-sm">
+                    <div className="flex items-center gap-3 pointer-events-auto bg-white/60 dark:bg-white/5 backdrop-blur-3xl border border-white/40 dark:border-white/10 px-7 py-3 rounded-full shadow-lg">
                         <span className="text-amber-400 drop-shadow-md animate-pulse"><SparklesIcon /></span>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white font-serif-display tracking-widest uppercase">Genie OS</span>
+                        <span className="text-sm font-black text-gray-900 dark:text-white font-serif-display tracking-[0.35em] uppercase">Urban Genie Studio</span>
                         {!user && <span className="ml-2 text-[10px] bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300">Guest Mode</span>}
                     </div>
                 </div>
@@ -540,8 +540,9 @@ const UrbanGeniePage: React.FC = () => {
                 {/* Messages */}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-20 pt-28 pb-40 space-y-6 scroll-smooth">
                     {messages.length === 0 && (
-                        <div className="h-full flex flex-col items-center justify-center opacity-50">
-                            <p>Start a new conversation</p>
+                        <div className="h-full flex flex-col items-center justify-center text-center gap-3 opacity-70">
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Meet your private marketplace concierge</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">Ask for listings, pricing advice, dropshipping insights, or instant navigation across the platform.</p>
                         </div>
                     )}
                     
@@ -612,8 +613,9 @@ const UrbanGeniePage: React.FC = () => {
                      {messages.length < 3 && (
                         <div className="flex justify-center gap-3 mb-4 overflow-x-auto no-scrollbar">
                             {quickActions.map((qa, i) => (
-                                <button key={i} onClick={qa.action} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-white/10 border border-gray-200 dark:border-white/10 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/20 transition-colors shadow-sm whitespace-nowrap">
-                                    {qa.icon} {qa.label}
+                                <button key={i} onClick={qa.action} className="flex items-center gap-3 px-5 py-3 bg-white/90 dark:bg-white/10 border border-gray-200 dark:border-white/10 rounded-2xl text-xs font-bold text-gray-700 dark:text-gray-300 hover:shadow-lg transition-all shadow-sm whitespace-nowrap">
+                                    <span className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center">{qa.icon}</span>
+                                    <span>{qa.label}</span>
                                 </button>
                             ))}
                         </div>
@@ -639,7 +641,7 @@ const UrbanGeniePage: React.FC = () => {
                             rows={1}
                         />
                         
-                         <button onClick={() => {}} className="p-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><MicIcon/></button>
+                         <button onClick={() => showNotification('Voice input is coming soon.')} className="p-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><MicIcon/></button>
 
                         <button 
                             onClick={handleSendMessage} 

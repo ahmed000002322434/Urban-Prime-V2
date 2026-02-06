@@ -131,6 +131,7 @@ const LoginPage: React.FC = () => {
         }
     }
 
+
     return (
         <div className="auth-body relative overflow-hidden flex flex-col justify-center items-center h-screen bg-transparent">
             

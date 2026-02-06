@@ -22,6 +22,9 @@ const AdvancedAnalyticsPage: React.FC = () => {
     if (isLoading) return <div className="flex justify-center items-center h-screen"><Spinner size="lg" /></div>;
     if (!stats) return <div className="text-center py-20">No data available.</div>;
 
+    const earningsSeries = Array.isArray(stats.earnings) ? stats.earnings : [];
+    const categorySales = Array.isArray(stats.categorySales) ? stats.categorySales : [];
+
     // Dummy data for extended analytics since we only aggregated basic stats in service
     const viewsData = [
         { day: 'Mon', views: 120, clicks: 45 },
@@ -61,7 +64,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                     <h3 className="text-lg font-bold text-text-primary mb-6">Revenue Trend (6 Months)</h3>
                     <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={stats.earnings}>
+                            <LineChart data={earningsSeries}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.3} />
                                 <XAxis dataKey="date" axisLine={false} tickLine={false} />
                                 <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
@@ -90,7 +93,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
                     </div>
                     <div className="p-4 bg-surface-soft rounded-lg">
                         <p className="text-sm text-text-secondary">Total Products Sold</p>
-                        <p className="text-2xl font-bold text-text-primary">{stats.categorySales.reduce((a, b) => a + b.value, 0)}</p>
+                        <p className="text-2xl font-bold text-text-primary">{categorySales.reduce((a, b) => a + b.value, 0)}</p>
                     </div>
                 </div>
             </div>

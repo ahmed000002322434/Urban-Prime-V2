@@ -40,6 +40,12 @@ const CheckoutPage: React.FC = () => {
     // Form for new card
     const [newCard, setNewCard] = useState({ number: '', expiry: '', cvc: '', name: '' });
 
+    const getItemImage = (item: any) => {
+        if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
+        if (item.images && item.images.length > 0) return item.images[0];
+        return `https://picsum.photos/seed/${item.id}/200/200`;
+    };
+
     const getGroupEstimate = (groupId: string) => {
         const group = cartGroups.find(g => g.id === groupId);
         if (!group) return '3-5 business days';
@@ -76,6 +82,12 @@ const CheckoutPage: React.FC = () => {
              navigate('/auth', { state: { from: '/checkout' } });
         }
     }, [user, cartGroups, navigate]);
+
+    useEffect(() => {
+        if (cartItems.length === 0) {
+            navigate('/cart');
+        }
+    }, [cartItems.length, navigate]);
 
     // Calculate total shipping
     const shippingTotal = useMemo(() => {
@@ -194,7 +206,7 @@ const CheckoutPage: React.FC = () => {
                                         <div className="flex flex-col sm:flex-row gap-4 mb-4">
                                             {group.items.map(item => (
                                                 <div key={item.id} className="flex items-center gap-3">
-                                                     <img src={item.imageUrls[0]} alt={item.title} className="w-12 h-12 rounded-md object-cover border border-border" />
+                                                     <img src={getItemImage(item)} alt={item.title} className="w-12 h-12 rounded-md object-cover border border-border" />
                                                      <div className="text-xs">
                                                          <p className="font-semibold text-text-primary line-clamp-1">{item.title}</p>
                                                          <p className="text-text-secondary">Qty: {item.quantity}</p>

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { itemService } from '../services/itemService';
 import type { Item } from '../types';
 
@@ -10,7 +10,7 @@ export const useBrowsingHistory = () => {
     const [historyItems, setHistoryItems] = useState<Item[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const addToHistory = (item: Item) => {
+    const addToHistory = useCallback((item: Item) => {
         try {
             const currentHistory = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
             // Remove duplicate if exists, then add to front
@@ -19,7 +19,7 @@ export const useBrowsingHistory = () => {
         } catch (e) {
             console.error("Failed to save history", e);
         }
-    };
+    }, []);
 
     const fetchHistory = async () => {
         setIsLoading(true);

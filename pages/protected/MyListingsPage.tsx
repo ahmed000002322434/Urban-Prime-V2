@@ -22,6 +22,12 @@ const RocketIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" heig
 const GridIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
 
+const getItemImage = (item: Item) => {
+  if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
+  if (item.images && item.images.length > 0) return item.images[0];
+  return `https://picsum.photos/seed/${item.id}/200/200`;
+};
+
 const MyListingsPage: React.FC = () => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
@@ -174,7 +180,7 @@ const MyListingsPage: React.FC = () => {
                                     <tr key={item.id} className="border-b border-border hover:bg-surface-soft/50 group">
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-3">
-                                                <img src={item.imageUrls[0]} alt="" className="w-10 h-10 rounded object-cover border border-border" />
+                                                <img src={getItemImage(item)} alt="" className="w-10 h-10 rounded object-cover border border-border" />
                                                 <Link to={`/item/${item.id}`} className="font-semibold text-text-primary hover:underline truncate max-w-[200px]">{item.title}</Link>
                                             </div>
                                         </td>

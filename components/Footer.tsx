@@ -12,7 +12,15 @@ const TwitterIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-curre
 const FacebookIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path></svg>;
 const InstagramIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.585-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.585-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.585.069-4.85c.149-3.225 1.664 4.771 4.919 4.919 1.266-.058 1.644.07 4.85.07zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948s.014 3.667.072 4.947c.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072s3.667-.014 4.947-.072c4.358-.2 6.78-2.618 6.98-6.98.059-1.281.073-1.689.073-4.948s-.014-3.667-.072-4.947c-.2-4.358-2.618-6.78-6.98-6.98C15.667 0 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.88 1.44 1.44 0 000-2.88z"></path></svg>;
 
-const PaletteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10c2.13 0 4.09-.67 5.65-1.82.4-.33.6-.82.49-1.32-.12-.55-.63-1-1.2-1.1-1.22-.2-2.38-.61-3.4-1.21a.99.99 0 0 1-.5-1.42c.76-1.1 1.2-2.38 1.2-3.75 0-2.32-1.2-4.37-3-5.5z"/><path d="M17.84 12.16a6 6 0 0 1-1.36 2.37.99.99 0 0 1-1.42.5 10.02 10.02 0 0 0-1.21 3.4c-.1.57.38 1.08 1.1 1.2.48.08 1 .3 1.5.73 1.65-1.56 2.47-3.52 2.47-5.65 0-1.37-.44-2.65-1.2-3.75Z"/></svg>;
+const PaletteIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9"></circle>
+    <circle cx="8.5" cy="10" r="1.2"></circle>
+    <circle cx="12" cy="7.5" r="1.2"></circle>
+    <circle cx="15.5" cy="10.5" r="1.2"></circle>
+    <circle cx="14.5" cy="15.5" r="1.2"></circle>
+  </svg>
+);
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>;
 const ChevronUpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
 const SystemThemeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 21V3M16 21V3"/></svg>;
@@ -165,8 +173,8 @@ const Footer: React.FC = () => {
                 </div>
                 <div className="flex-1 flex justify-center sm:justify-end">
                     <div className="flex space-x-4 text-footer-text-secondary">
-                        <a href="#" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Twitter"><TwitterIcon/></a>
-                        <a href="#" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Facebook"><FacebookIcon/></a>
+                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Twitter"><TwitterIcon/></a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Facebook"><FacebookIcon/></a>
                         <a href="https://www.instagram.com/ahmad_offcl/" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Instagram"><InstagramIcon/></a>
                     </div>
                 </div>

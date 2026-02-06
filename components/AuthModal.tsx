@@ -127,6 +127,14 @@ const AuthModal: React.FC = () => {
         }
     }
 
+    const handleFacebookSignIn = () => {
+        setError('Facebook sign-in is coming soon.');
+    };
+
+    const handleLinkedinSignIn = () => {
+        setError('LinkedIn sign-in is coming soon.');
+    };
+
     return (
         <div className="auth-body">
             <BackButton className="absolute top-8 left-8 z-[101]" />
@@ -136,9 +144,9 @@ const AuthModal: React.FC = () => {
                     <form onSubmit={handleRegisterSubmit} className="auth-form">
                         <h1 className="auth-h1">Create Account</h1>
                         <div className="social-container">
-                            <a href="#" onClick={(e) => { e.preventDefault(); handleGoogleSignIn(); }}><GoogleIcon /></a>
-                            <a href="#" onClick={(e) => e.preventDefault()}><FacebookIcon /></a>
-                            <a href="#" onClick={(e) => e.preventDefault()}><LinkedinIcon /></a>
+                            <button type="button" onClick={handleGoogleSignIn}><GoogleIcon /></button>
+                            <button type="button" onClick={handleFacebookSignIn}><FacebookIcon /></button>
+                            <button type="button" onClick={handleLinkedinSignIn}><LinkedinIcon /></button>
                         </div>
                         <span className="text-gray-500 dark:text-gray-400">or use your email for registration</span>
 
@@ -177,9 +185,9 @@ const AuthModal: React.FC = () => {
                     <form onSubmit={handleLoginSubmit} className="auth-form">
                         <h1 className="auth-h1">Sign in</h1>
                         <div className="social-container">
-                           <a href="#" onClick={(e) => { e.preventDefault(); handleGoogleSignIn(); }}><GoogleIcon /></a>
-                           <a href="#" onClick={(e) => e.preventDefault()}><FacebookIcon /></a>
-                           <a href="#" onClick={(e) => e.preventDefault()}><LinkedinIcon /></a>
+                           <button type="button" onClick={handleGoogleSignIn}><GoogleIcon /></button>
+                           <button type="button" onClick={handleFacebookSignIn}><FacebookIcon /></button>
+                           <button type="button" onClick={handleLinkedinSignIn}><LinkedinIcon /></button>
                         </div>
                         <span className="text-gray-500 dark:text-gray-400">or use your account</span>
                         <div className={`auth-input-group ${loginEmail ? 'is-filled' : ''}`}>

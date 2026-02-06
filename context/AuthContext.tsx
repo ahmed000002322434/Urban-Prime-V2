@@ -14,7 +14,7 @@ interface AuthContextType {
   showOnboarding: boolean;
   onboardingPreset: OnboardingData['purpose'] | null;
   login: (email: string, pass: string) => Promise<User>;
-  register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<void>;
+  register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<User | void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => void;
   switchUser: (targetUserId: string) => Promise<void>;
@@ -87,7 +87,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         }
                     }
                 } else {
-                    if(!user?.isAdmin) {
+                    const mockUser = authService.getMockUser?.() || null;
+                    if (mockUser) {
+                        setUser(mockUser);
+                    } else if(!user?.isAdmin) {
                         setUser(null);
                     }
                     setIsNewUser(false);
@@ -117,8 +120,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     const login = useCallback(async (email: string, pass: string) => {
         const loggedInUser = await authService.login(email, pass);
-        if (loggedInUser.isAdmin) {
-            // This is our mocked admin user, set it directly in the context state.
+        if (loggedInUser.isAdmin || loggedInUser.id.startsWith('mock-')) {
             setUser(loggedInUser);
         }
         // For regular users, onAuthStateChanged will handle setting the user state.
@@ -126,7 +128,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     const register = useCallback(async (name: string, email: string, pass: string, phone: string, city: string) => {
-        await authService.register(name, email, pass, phone, city);
+        try {
+            const created = await authService.register(name, email, pass, phone, city);
+            if (created && created.id.startsWith('mock-')) {
+                setUser(created);
+            }
+            return created;
+        } catch (error) {
+            const mock = authService.createMockUser({ name, email, phone, city });
+            authService.saveMockUser(mock);
+            setUser(mock);
+            return mock;
+        }
     }, []);
 
     const signInWithGoogle = useCallback(async () => {
@@ -141,6 +154,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // For regular Firebase users.
             authService.logout();
         }
+        try { localStorage.removeItem('urbanprime_mock_user'); } catch {}
         navigate('/');
     }, [user, navigate]);
 

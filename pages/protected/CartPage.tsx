@@ -19,6 +19,12 @@ const getEstimateLabel = (item: CartItem) => {
     return `${estimate.minDays}-${estimate.maxDays} business days`;
 };
 
+const getItemImage = (item: CartItem) => {
+    if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
+    if (item.images && item.images.length > 0) return item.images[0];
+    return `https://picsum.photos/seed/${item.id}/300/300`;
+};
+
 const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () => void, onUpdateQty: (q: number) => void }> = ({ item, onRemove, onSave, onUpdateQty }) => {
     const { currency } = useTranslation();
     const itemPrice = item.salePrice || item.rentalPrice || 0;
@@ -29,7 +35,7 @@ const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () =
     return (
         <div className="flex flex-col sm:flex-row items-start gap-4 p-4 hover:bg-surface-soft/30 transition-colors">
             <Link to={`/item/${item.id}`} className="shrink-0">
-                <img src={item.imageUrls[0]} alt={item.title} className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-lg border border-border" />
+                <img src={getItemImage(item)} alt={item.title} className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-lg border border-border" />
             </Link>
             <div className="flex-grow min-w-0">
                 <div className="flex justify-between items-start">
@@ -147,7 +153,7 @@ const CartPage: React.FC = () => {
                                         return (
                                             <div key={item.id} className="flex flex-col sm:flex-row items-center gap-4 p-4 opacity-90 hover:opacity-100 transition-opacity">
                                                 <Link to={`/item/${item.id}`} className="shrink-0">
-                                                    <img src={item.imageUrls[0]} alt={item.title} className="w-20 h-20 object-cover rounded-md border border-border grayscale hover:grayscale-0 transition-all" />
+                                                    <img src={getItemImage(item)} alt={item.title} className="w-20 h-20 object-cover rounded-md border border-border grayscale hover:grayscale-0 transition-all" />
                                                 </Link>
                                                 <div className="flex-grow text-center sm:text-left">
                                                     <Link to={`/item/${item.id}`} className="font-bold text-text-primary hover:text-primary line-clamp-1">{item.title}</Link>

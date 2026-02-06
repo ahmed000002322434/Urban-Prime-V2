@@ -15,6 +15,7 @@ import { useBrowsingHistory } from '../../hooks/useBrowsingHistory'; // NEW
 const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>;
 const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
 const ShuffleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
+const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 
 
 const FilterDisclosure: React.FC<{ title: string, children: React.ReactNode, defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
@@ -274,6 +275,51 @@ const BrowsePage: React.FC = () => {
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
                 
                 <RecentlyViewedBar />
+
+                <div className="mb-8 bg-surface rounded-2xl border border-border p-5 shadow-soft">
+                    <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+                        <div className="flex-1 relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary">
+                                <SearchIcon />
+                            </span>
+                            <input
+                                value={filters.query}
+                                onChange={e => setFilters(p => ({ ...p, query: e.target.value, page: 1 }))}
+                                placeholder="Search items, brands, categories, creators..."
+                                className="w-full pl-12 pr-10 py-3 rounded-xl border border-border bg-surface-soft text-text-primary font-medium focus:ring-2 focus:ring-primary outline-none"
+                            />
+                            {filters.query && (
+                                <button
+                                    onClick={() => setFilters(p => ({ ...p, query: '', page: 1 }))}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                                >
+                                    <CloseIcon />
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button onClick={handleShuffle} className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary hover:bg-surface-soft flex items-center gap-2">
+                                <ShuffleIcon /> Shuffle
+                            </button>
+                            <button onClick={() => setShowFilters(true)} className="px-4 py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90">
+                                Advanced Filters
+                            </button>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        {allBrands.slice(0, 6).map(brand => (
+                            <button
+                                key={brand}
+                                onClick={() => setFilters(p => ({ ...p, query: brand, page: 1 }))}
+                                className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary"
+                            >
+                                {brand}
+                            </button>
+                        ))}
+                        <button onClick={() => setFilters(p => ({ ...p, query: 'limited', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Limited</button>
+                        <button onClick={() => setFilters(p => ({ ...p, query: 'verified', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Verified</button>
+                    </div>
+                </div>
 
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
                     {/* Mobile Filter Toggle */}

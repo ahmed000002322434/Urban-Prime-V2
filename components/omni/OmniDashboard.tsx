@@ -10,13 +10,22 @@ import { visionService, VisualAuditResult } from '../../services/visionService';
 import { useOmniTelemetry } from '../../hooks/useOmniTelemetry';
 import { useOmni } from '../../context/OmniContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import { useCart } from '../../hooks/useCart';
+import { useNotification } from '../../context/NotificationContext';
+import { useTheme } from '../../hooks/useTheme';
+import { itemService } from '../../services/itemService';
 import Spinner from '../Spinner';
 import CameraCapture from './CameraCapture';
 
 const XIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
 
 const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
+  const { user, openOnboarding } = useAuth();
+  const navigate = useNavigate();
+  const { addItemToCart, applyCoupon } = useCart();
+  const { showNotification } = useNotification();
+  const { setTheme } = useTheme();
   const { isThinking, setIsThinking, isExecuting, setIsExecuting, uploadProgress, setUploadProgress, setAuthError } = useOmni();
   const { dataPoints } = useOmniTelemetry();
   const [liveLogs, setLiveLogs] = useState<OmniLogEntry[]>([]);
@@ -24,6 +33,8 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
   const [showCamera, setShowCamera] = useState(false);
   const [visualAudit, setVisualAudit] = useState<VisualAuditResult | null>(null);
   const [currentPlan, setCurrentPlan] = useState<OmniAction[]>([]);
+  const [actionTrail, setActionTrail] = useState<{ id: string; label: string; status: 'queued' | 'running' | 'done' | 'error' }[]>([]);
+  const [activeActionLabel, setActiveActionLabel] = useState('');
   
   useEffect(() => {
     const q = query(collection(db, 'live_logs'), orderBy('timestamp', 'desc'), limit(12));
@@ -97,16 +108,78 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
     }
   };
 
-  const executePlan = async ( ) => {
+  const performLocalAction = async (action: OmniAction) => {
+    const payload = action.payload || {};
+    switch (action.type) {
+      case 'navigate':
+        if (payload.path) navigate(payload.path);
+        return;
+      case 'add_to_cart': {
+        if (payload.itemId) {
+          const item = await itemService.getItemById(payload.itemId);
+          if (item) addItemToCart(item, payload.quantity || 1);
+        }
+        return;
+      }
+      case 'apply_coupon':
+        if (payload.code) applyCoupon(payload.code);
+        return;
+      case 'open_onboarding':
+        openOnboarding(payload.purpose, payload.redirectPath);
+        return;
+      case 'toggle_theme':
+        if (payload.theme) setTheme(payload.theme);
+        return;
+      case 'create_coupon':
+        navigate('/profile/coupons');
+        return;
+      case 'set_promotion':
+      case 'adjust_pricing':
+      case 'schedule_campaign':
+        navigate('/profile/promotions');
+        return;
+      case 'export_report':
+        navigate('/profile/analytics/advanced');
+        return;
+      case 'audit_product':
+        navigate('/audit');
+        return;
+      case 'notify_users':
+        showNotification(payload.message || 'Omni broadcast delivered.');
+        return;
+      case 'list_product':
+        localStorage.setItem('omni_draft_listing', JSON.stringify(payload));
+        navigate('/profile/products/new');
+        return;
+      default:
+        return;
+    }
+  };
+
+  const executePlan = async () => {
     setIsExecuting(true);
     try {
       const guestId = localStorage.getItem('omni_guest_id') || `guest-${Date.now()}`;
       if (!localStorage.getItem('omni_guest_id')) localStorage.setItem('omni_guest_id', guestId);
       const userId = user?.id || guestId;
+      setActionTrail(currentPlan.map((p, idx) => ({ id: `${idx}`, label: p.description || p.type, status: 'queued' })));
+      for (let i = 0; i < currentPlan.length; i += 1) {
+        const action = currentPlan[i];
+        setActiveActionLabel(action.description || action.type);
+        setActionTrail(prev => prev.map((a, idx) => idx === i ? { ...a, status: 'running' } : a));
+        await OmniBridge.pushOmniLog(`Executing: ${action.type}`, 'process');
+        try {
+          await performLocalAction(action);
+          setActionTrail(prev => prev.map((a, idx) => idx === i ? { ...a, status: 'done' } : a));
+        } catch {
+          setActionTrail(prev => prev.map((a, idx) => idx === i ? { ...a, status: 'error' } : a));
+        }
+      }
       await OmniBridge.executeBatch(userId, currentPlan);
       setCurrentPlan([]);
       setVisualAudit(null);
       setInput('');
+      setActiveActionLabel('');
     } catch (err) {
       if (err instanceof Error && err.message === 'UNAUTHORIZED') setAuthError(true);
     } finally {
@@ -152,6 +225,12 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
                 <CameraCapture onCapture={handleCapture} onCancel={() => setShowCamera(false)} />
               ) : (
                 <>
+                  {activeActionLabel && (
+                    <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-widest">
+                      Executing: {activeActionLabel}
+                    </div>
+                  )}
+
                   {/* Telemetry */}
                   <div className="h-24 opacity-50">
                     <ResponsiveContainer width="100%" height="100%">
@@ -183,6 +262,25 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
                       </div>
                     ))}
                   </div>
+
+                  {actionTrail.length > 0 && (
+                    <div className="mt-4 bg-white/70 dark:bg-white/5 border border-white/20 dark:border-white/10 rounded-2xl p-4">
+                      <p className="text-[10px] uppercase tracking-widest text-text-secondary mb-3">Omni Activity</p>
+                      <div className="space-y-2 text-xs">
+                        {actionTrail.map(step => (
+                          <div key={step.id} className="flex items-center justify-between">
+                            <span className="text-text-primary font-semibold">{step.label}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              step.status === 'done' ? 'bg-green-500/10 text-green-600' :
+                              step.status === 'running' ? 'bg-blue-500/10 text-blue-600' :
+                              step.status === 'error' ? 'bg-red-500/10 text-red-600' :
+                              'bg-gray-500/10 text-gray-500'
+                            }`}>{step.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>

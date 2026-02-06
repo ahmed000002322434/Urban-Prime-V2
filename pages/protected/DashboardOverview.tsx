@@ -130,6 +130,17 @@ const DashboardOverview: React.FC = () => {
                  <StatCard title="Conversion Rate" value={`${stats?.conversionRate.toFixed(1)}%`} icon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>} link="/profile/analytics/advanced" />
             </motion.div>
 
+            {/* Quick Actions */}
+            <motion.div variants={itemVariants} className="bg-surface/80 backdrop-blur-xl p-5 rounded-2xl shadow-soft border border-border/50">
+                <h3 className="font-bold text-sm text-text-secondary uppercase tracking-widest mb-4">Quick Actions</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <button onClick={() => navigate('/profile/products/new')} className="py-3 rounded-xl bg-black text-white font-bold text-sm hover:opacity-90">List New Item</button>
+                    <button onClick={() => navigate('/profile/sales')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">View Orders</button>
+                    <button onClick={() => navigate('/dropshipping')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">Creator Hub</button>
+                    <button onClick={() => navigate('/profile/promotions')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">Run Promotion</button>
+                </div>
+            </motion.div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Column: Charts */}
                 <div className="lg:col-span-2 space-y-8">
