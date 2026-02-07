@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { itemService, reelService } from '../../services/itemService';
 import { useNotification } from '../../context/NotificationContext';
@@ -135,7 +135,7 @@ const CreateLiveStreamPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="p-4 bg-yellow-50 border border-yellow-100 rounded-lg text-sm text-yellow-800">
-                    You don't have any items to sell. <a href="/profile/products/new" className="underline font-bold">List an item first</a>.
+                    You don't have any items to sell. <Link to="/profile/products/new" className="underline font-bold">List an item first</Link>.
                   </div>
                 )}
               </div>

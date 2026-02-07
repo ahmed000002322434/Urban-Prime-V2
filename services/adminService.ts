@@ -3,6 +3,7 @@ import { collection, getDocs, addDoc, updateDoc, doc, getDoc, setDoc, deleteDoc,
 import type { SupportQuery, User, Notification, SiteSettings, AIFeature, Item, Booking, PayoutRequest } from '../types';
 import { db } from '../firebase';
 import { itemService, userService } from './itemService';
+import supabaseMirror from './supabaseMirror';
 
 const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
     const data = docSnap.data();
@@ -17,8 +18,16 @@ const sanitizeHTML = (str: string): string => {
 
 export const adminService = {
   async getSupportQueries(): Promise<SupportQuery[]> {
+    if (supabaseMirror.enabled) {
+      const mirrored = await supabaseMirror.list<SupportQuery>('supportQueries', { limit: 500 });
+      if (mirrored.length > 0) return mirrored;
+    }
     const snapshot = await getDocs(collection(db, 'supportQueries'));
-    return snapshot.docs.map(doc => fromFirestore<SupportQuery>(doc));
+    const queries = snapshot.docs.map(doc => fromFirestore<SupportQuery>(doc));
+    if (supabaseMirror.enabled) {
+      await Promise.all(queries.map(q => supabaseMirror.upsert('supportQueries', q.id, q)));
+    }
+    return queries;
   },
 
   async createSupportQuery(name: string, email: string, subject: string, message: string, user: User | null): Promise<SupportQuery> {
@@ -33,6 +42,7 @@ export const adminService = {
       status: 'open',
     };
     const docRef = await addDoc(collection(db, 'supportQueries'), newQueryData);
+    await supabaseMirror.upsert('supportQueries', docRef.id, { id: docRef.id, ...newQueryData });
     return { id: docRef.id, ...newQueryData } as SupportQuery;
   },
 
@@ -44,6 +54,7 @@ export const adminService = {
         status: 'closed',
     };
     await updateDoc(queryRef, updates);
+    await supabaseMirror.mergeUpdate<SupportQuery>('supportQueries', queryId, updates as Partial<SupportQuery>);
 
     const updatedQuerySnap = await getDoc(queryRef);
     const query = fromFirestore<SupportQuery>(updatedQuerySnap);
@@ -56,15 +67,22 @@ export const adminService = {
         isRead: false,
         createdAt: new Date().toISOString(),
       };
-      await addDoc(collection(db, 'notifications'), newNotification);
+      const notifRef = await addDoc(collection(db, 'notifications'), newNotification);
+      await supabaseMirror.upsert('notifications', notifRef.id, { id: notifRef.id, ...newNotification });
     }
     return query;
   },
 
   async getSiteSettings(): Promise<SiteSettings> {
+    if (supabaseMirror.enabled) {
+      const mirrored = await supabaseMirror.get<SiteSettings>('siteSettings', 'site');
+      if (mirrored) return mirrored;
+    }
     const docRef = doc(db, 'settings', 'site');
     const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() as SiteSettings : { siteBanner: { message: '', isActive: false } };
+    if (docSnap.exists()) return docSnap.data() as SiteSettings;
+    const mirrored = await supabaseMirror.get<SiteSettings>('siteSettings', 'site');
+    return mirrored || { siteBanner: { message: '', isActive: false } };
   },
 
   async updateSiteSettings(updates: Partial<SiteSettings>): Promise<SiteSettings> {
@@ -77,6 +95,7 @@ export const adminService = {
         }
     };
     await setDoc(settingsRef, sanitizedUpdates, { merge: true });
+    await supabaseMirror.upsert('siteSettings', 'site', sanitizedUpdates as SiteSettings);
     const docSnap = await getDoc(settingsRef);
     return docSnap.data() as SiteSettings;
   },
@@ -96,6 +115,29 @@ export const adminService = {
   },
 
   async getSiteStats() {
+    if (supabaseMirror.enabled) {
+        const [users, items, bookings, payouts] = await Promise.all([
+            supabaseMirror.list<User>('users', { limit: 2000 }),
+            supabaseMirror.list<Item>('items', { limit: 2000 }),
+            supabaseMirror.list<Booking>('bookings', { limit: 2000 }),
+            supabaseMirror.list<PayoutRequest>('payout_requests', { limit: 2000 })
+        ]);
+        const totalRevenue = bookings
+          .filter(b => b.type === 'sale' && b.status === 'completed')
+          .reduce((sum, b) => sum + b.totalPrice, 0);
+        const totalPendingPayouts = payouts
+          .filter(p => p.status === 'pending')
+          .reduce((sum, p) => sum + p.amount, 0);
+        return {
+            users: users.length,
+            items: items.length,
+            bookings: bookings.length,
+            totalRevenue,
+            totalPendingPayouts,
+            unverifiedItems: items.filter(i => !i.isVerified).length,
+            unverifiedUsers: users.filter(u => u.verificationLevel !== 'level2').length,
+        };
+    }
     const [usersSnap, itemsSnap, bookingsSnap, payoutSnap] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'items')),
@@ -125,8 +167,15 @@ export const adminService = {
   // --- Payout Management ---
   
   async getPayoutRequests(): Promise<(PayoutRequest & { userName: string })[]> {
-      const snapshot = await getDocs(collection(db, 'payout_requests'));
-      const requests = snapshot.docs.map(doc => fromFirestore<PayoutRequest>(doc));
+      let requests = supabaseMirror.enabled
+          ? await supabaseMirror.list<PayoutRequest>('payout_requests', { limit: 500 })
+          : [];
+      if (requests.length === 0) {
+        requests = (await getDocs(collection(db, 'payout_requests'))).docs.map(doc => fromFirestore<PayoutRequest>(doc));
+        if (supabaseMirror.enabled) {
+          await Promise.all(requests.map(req => supabaseMirror.upsert('payout_requests', req.id, req)));
+        }
+      }
       
       // Enrich with user names
       const enrichedRequests = await Promise.all(requests.map(async (req) => {
@@ -156,7 +205,16 @@ export const adminService = {
           });
           
           // Log the refund transaction
-          await addDoc(collection(db, 'walletTransactions'), {
+          const txRef = await addDoc(collection(db, 'walletTransactions'), {
+              userId: payoutData.userId,
+              amount: payoutData.amount,
+              type: 'credit',
+              description: `Refund: Payout Rejected. ${adminNote || ''}`,
+              date: new Date().toISOString(),
+              status: 'completed'
+          });
+          await supabaseMirror.upsert('walletTransactions', txRef.id, {
+              id: txRef.id,
               userId: payoutData.userId,
               amount: payoutData.amount,
               type: 'credit',
@@ -182,17 +240,51 @@ export const adminService = {
           isRead: false,
           createdAt: new Date().toISOString()
       };
-      await addDoc(collection(db, 'notifications'), notification);
+      const notifRef = await addDoc(collection(db, 'notifications'), notification);
+      await supabaseMirror.upsert('notifications', notifRef.id, { id: notifRef.id, ...notification });
+      await supabaseMirror.mergeUpdate<PayoutRequest>('payout_requests', requestId, { status } as Partial<PayoutRequest>);
+      const userMirror = await supabaseMirror.get<User>('users', payoutData.userId);
+      if (userMirror) {
+        if (status === 'rejected') {
+          const processing = (userMirror as any).processingBalance || 0;
+          const wallet = (userMirror as any).walletBalance || 0;
+          await supabaseMirror.upsert('users', payoutData.userId, {
+            ...userMirror,
+            processingBalance: processing - payoutData.amount,
+            walletBalance: wallet + payoutData.amount
+          });
+        } else if (status === 'completed') {
+          const processing = (userMirror as any).processingBalance || 0;
+          await supabaseMirror.upsert('users', payoutData.userId, {
+            ...userMirror,
+            processingBalance: processing - payoutData.amount
+          });
+        }
+      }
   },
 
   getAllUsers: () => userService.getAllSellers(),
   getAllItems: () => itemService.getItems({}, { page: 1, limit: 1000 }).then(res => res.items),
   async getAllBookings(): Promise<Booking[]> {
+    if (supabaseMirror.enabled) {
+      const mirrored = await supabaseMirror.list<Booking>('bookings', { limit: 2000 });
+      if (mirrored.length > 0) return mirrored;
+    }
     const snapshot = await getDocs(collection(db, 'bookings'));
-    return snapshot.docs.map(doc => fromFirestore<Booking>(doc));
+    const bookings = snapshot.docs.map(doc => fromFirestore<Booking>(doc));
+    if (supabaseMirror.enabled) {
+      await Promise.all(bookings.map(b => supabaseMirror.upsert('bookings', b.id, b)));
+    }
+    return bookings;
   },
   updateUser: (userId: string, updates: Partial<User>) => userService.updateUserProfile(userId, updates),
   updateItem: (itemId: string, updates: Partial<Item>) => itemService.updateItem(itemId, updates),
-  deleteUser: async (userId: string) => { await deleteDoc(doc(db, 'users', userId)); },
-  deleteItem: async (itemId: string) => { await deleteDoc(doc(db, 'items', itemId)); }
+  deleteUser: async (userId: string) => {
+    await deleteDoc(doc(db, 'users', userId));
+    await supabaseMirror.remove('users', userId);
+  },
+  deleteItem: async (itemId: string) => {
+    await deleteDoc(doc(db, 'items', itemId));
+    await supabaseMirror.remove('items', itemId);
+  }
 };

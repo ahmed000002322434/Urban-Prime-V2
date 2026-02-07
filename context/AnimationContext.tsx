@@ -1,5 +1,5 @@
-import React, { createContext, useState, useCallback, useMemo } from 'react';
-import { useAuth } from '../hooks/useAuth';
+import React, { createContext, useState, useCallback, useMemo, useContext } from 'react';
+import { AuthContext } from './AuthContext';
 
 interface AnimationParams {
     startX: number;
@@ -18,7 +18,7 @@ interface AnimationContextType {
 export const AnimationContext = createContext<AnimationContextType | undefined>(undefined);
 
 export const AnimationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { openAuthModal } = useAuth();
+    const authContext = useContext(AuthContext);
     const [isAuthTransitioning, setIsAuthTransitioning] = useState(false);
     const [authAnimationParams, setAuthAnimationParams] = useState<AnimationParams | null>(null);
 
@@ -53,14 +53,19 @@ export const AnimationProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsAuthTransitioning(true);
 
         setTimeout(() => {
-            openAuthModal('login');
-        }, 100); 
+            if (authContext?.openAuthModal) {
+                authContext.openAuthModal('login');
+            } else {
+                // Fallback if AuthProvider isn't mounted for any reason.
+                window.location.hash = '#/auth';
+            }
+        }, 100);
 
         setTimeout(() => {
             setIsAuthTransitioning(false);
             setAuthAnimationParams(null);
         }, 500);
-    }, [openAuthModal]);
+    }, [authContext]);
 
     const value = useMemo(() => ({
         isAuthTransitioning,

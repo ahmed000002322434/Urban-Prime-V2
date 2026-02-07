@@ -13,6 +13,7 @@ import BackgroundRemovalModal from '../../components/BackgroundRemovalModal';
 import BackButton from '../../components/BackButton';
 import { calculatePayout, formatCurrency } from '../../utils/financeUtils';
 import { useUserData } from '../../hooks/useUserData';
+import Spinner from '../../components/Spinner';
 
 // --- Icons ---
 const UploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>;
@@ -181,34 +182,48 @@ const ListItemPage: React.FC = () => {
     const [isAIPostModalOpen, setIsAIPostModalOpen] = useState(false);
     const [isBgModalOpen, setIsBgModalOpen] = useState(false);
     const [imageToEdit, setImageToEdit] = useState<{ url: string; index: number } | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Derived state for earnings
     const currentPrice = formData.listingType === 'rent' ? formData.rentalRates.daily : formData.salePrice;
     const { fee, payout } = calculatePayout(currentPrice || 0);
+    const withTimeout = <T,>(promise: Promise<T>, ms = 15000) =>
+        Promise.race([
+            promise,
+            new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out. Check your connection.')), ms))
+        ]);
 
     const handlePublish = async (status: 'published' | 'draft') => {
-        if (!user) return;
-        const { shippingOptions, startingBid, buyNowPrice, reservePrice, auctionEndTime, rentalRates, ...restOfFormData } = formData;
-        
-        // Validation check
-        if (!formData.title || !formData.category) {
-             showNotification("Please fill in required fields (Title, Category).");
-             return;
+        if (isSubmitting) return;
+        if (!user) {
+            showNotification("Please sign in to save or publish your listing.");
+            navigate('/login');
+            return;
         }
+        const { shippingOptions, startingBid, buyNowPrice, reservePrice, auctionEndTime, rentalRates, ...restOfFormData } = formData;
+        const isDraft = status === 'draft';
+        
+        if (!isDraft) {
+            // Validation check
+            if (!formData.title || !formData.category) {
+                 showNotification("Please fill in required fields (Title, Category).");
+                 return;
+            }
 
-        if (formData.listingType === 'auction') {
-            if (!startingBid || !auctionEndTime) {
-                showNotification("Please provide a starting bid and end time for the auction.");
+            if (formData.listingType === 'auction') {
+                if (!startingBid || !auctionEndTime) {
+                    showNotification("Please provide a starting bid and end time for the auction.");
+                    return;
+                }
+            } else if (formData.listingType === 'rent') {
+                 if (!rentalRates.daily && !rentalRates.hourly && !rentalRates.weekly) {
+                     showNotification("Please set at least one rental rate (Hourly, Daily, or Weekly).");
+                     return;
+                 }
+            } else if (!formData.salePrice) {
+                showNotification("Please set a sale price.");
                 return;
             }
-        } else if (formData.listingType === 'rent') {
-             if (!rentalRates.daily && !rentalRates.hourly && !rentalRates.weekly) {
-                 showNotification("Please set at least one rental rate (Hourly, Daily, or Weekly).");
-                 return;
-             }
-        } else if (!formData.salePrice) {
-            showNotification("Please set a sale price.");
-            return;
         }
 
         // Construct Shipping Details based on simplified options
@@ -217,7 +232,8 @@ const ListItemPage: React.FC = () => {
         };
 
         const finalData: Partial<Item> = { 
-          ...restOfFormData, 
+          ...restOfFormData,
+          ...(isDraft && !formData.title ? { title: 'Untitled Draft' } : {}),
           status,
           shippingDetails: finalShippingDetails,
           shippingWeightClass: formData.shippingWeightClass,
@@ -247,11 +263,16 @@ const ListItemPage: React.FC = () => {
         }
 
         try {
-            const newItem = await itemService.addItem(finalData, user);
+            setIsSubmitting(true);
+            const newItem = await withTimeout(itemService.addItem(finalData, user));
             showNotification(status === 'published' ? "Your product is listed!" : "Saved to drafts!");
             navigate(status === 'published' ? `/item/${newItem.id}` : '/profile/products');
         } catch (e) {
-            showNotification("Failed to save product.");
+            console.error('Failed to save product:', e);
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            showNotification(`Failed to save product. ${message}`);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -450,12 +471,27 @@ const ListItemPage: React.FC = () => {
                          </div>
                      </div>
                      <div className="flex items-center gap-3">
-                        <button onClick={() => setIsAIPostModalOpen(true)} className="px-5 py-2.5 text-sm bg-purple-50 text-purple-700 font-bold rounded-lg flex items-center gap-2 hover:bg-purple-100 border border-purple-200 transition-colors shadow-sm">
+                        <button type="button" onClick={() => setIsAIPostModalOpen(true)} className="px-5 py-2.5 text-sm bg-purple-50 text-purple-700 font-bold rounded-lg flex items-center gap-2 hover:bg-purple-100 border border-purple-200 transition-colors shadow-sm">
                             <SparklesIcon /> Generate with AI
                         </button>
                         <div className="h-6 w-px bg-gray-300 dark:bg-gray-700"></div>
-                        <button onClick={() => handlePublish('draft')} className="px-5 py-2.5 text-sm bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-300 font-bold rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm">Save Draft</button>
-                        <button onClick={() => handlePublish('published')} className="px-6 py-2.5 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-lg shadow-black/20">Publish Now</button>
+                        <button
+                            type="button"
+                            onClick={() => handlePublish('draft')}
+                            disabled={isSubmitting}
+                            className="px-5 py-2.5 text-sm bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-300 font-bold rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {isSubmitting ? 'Saving...' : 'Save Draft'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePublish('published')}
+                            disabled={isSubmitting}
+                            className="px-6 py-2.5 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-lg shadow-black/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isSubmitting ? <Spinner size="sm" className="w-4 h-4" /> : null}
+                            {isSubmitting ? 'Publishing...' : 'Publish Now'}
+                        </button>
                     </div>
                 </div>
                 

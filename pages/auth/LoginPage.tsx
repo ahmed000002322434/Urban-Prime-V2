@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Spinner from '../../components/Spinner';
@@ -62,7 +62,7 @@ const getAuthErrorMessage = (error: unknown, mode: 'login' | 'register' | 'googl
 const LoginPage: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { login, register, signInWithGoogle } = useAuth();
+    const { login, register, signInWithGoogle, isAuthenticated } = useAuth();
     const { resolvedTheme } = useTheme();
 
     const [isSignUpActive, setIsSignUpActive] = useState(location.pathname === '/register');
@@ -87,6 +87,13 @@ const LoginPage: React.FC = () => {
     const [signUpNameKey, setSignUpNameKey] = useState(0);
     
     const from = location.state?.from?.pathname || "/";
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            setLoading(false);
+            navigate(from, { replace: true });
+        }
+    }, [isAuthenticated, navigate, from]);
 
     const handleLoginEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newEmail = e.target.value;
@@ -151,6 +158,11 @@ const LoginPage: React.FC = () => {
             await signInWithGoogle();
             navigate(from, { replace: true });
         } catch (err) {
+             const code = (err as { code?: string })?.code;
+             if (code === 'auth/redirect') {
+                 // Redirect flow in progress; no error to show here.
+                 return;
+             }
              setError(getAuthErrorMessage(err, 'google'));
         } finally {
             setLoading(false);

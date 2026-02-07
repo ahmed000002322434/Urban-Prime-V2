@@ -47,22 +47,7 @@ const AdminSettingsPage: React.FC = () => {
     };
 
     const handleSeedData = async () => {
-        if (!user) {
-            showNotification("You must be logged in to seed data.");
-            return;
-        }
-        if (!window.confirm("This will add 20 dummy products to the database. Continue?")) return;
-        
-        setIsSeeding(true);
-        try {
-            await itemService.seedDatabase(user);
-            showNotification("20 Dummy products added successfully!");
-        } catch (error) {
-            console.error(error);
-            showNotification("Failed to seed data.");
-        } finally {
-            setIsSeeding(false);
-        }
+        showNotification("Seeding has been disabled. Please add items through the normal marketplace listing process.");
     };
 
     if (isLoading) {

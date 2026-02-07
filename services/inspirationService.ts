@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { InspirationContent } from '../types';
 import { db } from '../firebase';
 import { collection, getDocs } from "firebase/firestore";
+import supabaseMirror from './supabaseMirror';
 
 // Re-creating the instance is required for the Veo API key selection flow.
 const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -22,8 +23,16 @@ const pollingMessages = [
 
 export const inspirationService = {
   getInspirationContent: async (): Promise<InspirationContent[]> => {
+    if (supabaseMirror.enabled) {
+      const mirrored = await supabaseMirror.list<InspirationContent>('inspirationContent', { limit: 200 });
+      if (mirrored.length > 0) return mirrored;
+    }
     const snapshot = await getDocs(collection(db, 'inspirationContent'));
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as InspirationContent[];
+    const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as InspirationContent[];
+    if (supabaseMirror.enabled) {
+      await Promise.all(items.map(item => supabaseMirror.upsert('inspirationContent', item.id, item)));
+    }
+    return items;
   },
 
   generateImage: async (

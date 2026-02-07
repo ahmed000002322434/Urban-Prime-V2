@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, useSpring, useInView } from 'framer-motion';
 import BackButton from '../../components/BackButton';
 import { useAuth } from '../../hooks/useAuth';
+import IconBadge from '../../components/IconBadge';
 
 // --- Custom Animated Logo ---
 const InfinityLoopLogo = () => {
@@ -91,12 +92,12 @@ const DeepDiveSection: React.FC<{
     );
 };
 
-const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
+const GridFeature: React.FC<{ title: string; desc: string; icon: React.ReactNode }> = ({ title, desc, icon }) => (
     <motion.div 
         whileHover={{ y: -5 }}
         className="p-6 bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300"
     >
-        <div className="text-4xl mb-4">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 border-emerald-200/50 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200" />
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{desc}</p>
     </motion.div>

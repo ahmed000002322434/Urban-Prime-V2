@@ -40,6 +40,7 @@ const ReturnPolicyPage = lazy(() => import('./pages/public/ReturnPolicyPage'));
 const PressPage = lazy(() => import('./pages/public/PressPage'));
 const CareersPage = lazy(() => import('./pages/public/CareersPage'));
 const TrustAndSafetyPage = lazy(() => import('./pages/public/TrustAndSafetyPage'));
+const SupportCenterPage = lazy(() => import('./pages/public/SupportCenterPage'));
 const PurchaseProtectionPage = lazy(() => import('./pages/public/PurchaseProtectionPage'));
 const ChatPage = lazy(() => import('./pages/public/ChatPage'));
 const CommunityPage = lazy(() => import('./pages/public/CommunityPage'));
@@ -66,6 +67,7 @@ const PrimePassPage = lazy(() => import('./pages/public/PrimePassPage'));
 const GemstoneShowcasePage = lazy(() => import('./pages/public/GemstoneShowcasePage'));
 const AuditPage = lazy(() => import('./pages/public/AuditPage'));
 const DropshippingPage = lazy(() => import('./pages/public/DropshippingPage'));
+const SupabaseTodosPage = lazy(() => import('./pages/public/SupabaseTodosPage'));
 const LanguageSelectionPage = lazy(() => import('./pages/public/LanguageSelectionPage'));
 const ComparePage = lazy(() => import('./pages/public/ComparePage'));
 const NewArrivalsPage = lazy(() => import('./pages/public/NewArrivalsPage'));
@@ -224,6 +226,7 @@ const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
 const AdminCustomerQueriesPage = lazy(() => import('./pages/admin/AdminCustomerQueriesPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 
+
 // Auth Pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage'));
@@ -271,8 +274,14 @@ const AppContent: React.FC = () => {
             </Route>
           </Route>
 
-          {/* Main Layout Routes */}
-          <Route path="/" element={<Layout />}>
+          {/* Main Layout Routes - Wraps all site pages */}
+          <Route element={<Layout />}>
+            {/* Dynamic Routes - Must be before catch-all */}
+            <Route path="item/:id" element={<ItemDetailPage />} />
+            <Route path="service/:id" element={<ServiceDetailPage />} />
+            <Route path="user/:id" element={<PublicProfilePage />} />
+            <Route path="wishlist/:id" element={<PublicWishlistPage />} />
+            <Route path="collections/:userId" element={<UserCollectionsPage />} />
             <Route index element={<HomePage />} />
             
             {/* Public Pages */}
@@ -285,8 +294,10 @@ const AppContent: React.FC = () => {
             <Route path="press" element={<PressPage />} />
             <Route path="careers" element={<CareersPage />} />
             <Route path="safety-center" element={<TrustAndSafetyPage />} />
+            <Route path="support-center" element={<SupportCenterPage />} />
             <Route path="purchase-protection" element={<PurchaseProtectionPage />} />
             <Route path="chat-with-us" element={<ChatPage />} />
+            <Route path="chat" element={<ChatPage />} />
             <Route path="community" element={<CommunityPage />} />
             <Route path="events" element={<EventsPage />} />
             <Route path="guides" element={<GuidesPage />} />
@@ -299,11 +310,6 @@ const AppContent: React.FC = () => {
             <Route path="sellers" element={<SellerDirectoryPage />} />
             <Route path="browse" element={<BrowsePage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
-            <Route path="item/:id" element={<ItemDetailPage />} />
-            <Route path="service/:id" element={<ServiceDetailPage />} />
-            <Route path="user/:id" element={<PublicProfilePage />} />
-            <Route path="wishlist/:id" element={<PublicWishlistPage />} />
-            <Route path="collections/:userId" element={<UserCollectionsPage />} />
             <Route path="reels" element={<ReelsPage />} />
             <Route path="live" element={<LiveShoppingPage />} />
             <Route path="pixe" element={<PixePage />} />
@@ -314,6 +320,7 @@ const AppContent: React.FC = () => {
             <Route path="luxury" element={<GemstoneShowcasePage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="dropshipping" element={<DropshippingPage />} />
+            <Route path="supabase-todos" element={<SupabaseTodosPage />} />
             <Route path="languages" element={<LanguageSelectionPage />} />
             <Route path="compare" element={<ComparePage />} />
             <Route path="new-arrivals" element={<NewArrivalsPage />} />
@@ -462,43 +469,43 @@ const AppContent: React.FC = () => {
                 </Route>
             </Route>
 
-            <Route path="/cart" element={<ProtectedRoute />}>
+            <Route path="cart" element={<ProtectedRoute />}>
                 <Route index element={<CartPage />} />
             </Route>
             
-            <Route path="/checkout" element={<ProtectedRoute />}>
+            <Route path="checkout" element={<ProtectedRoute />}>
                  <Route index element={<CheckoutPage />} />
             </Route>
 
-            <Route path="/order-confirmation" element={<ProtectedRoute />}>
+            <Route path="order-confirmation" element={<ProtectedRoute />}>
                 <Route index element={<OrderConfirmationPage />} />
             </Route>
 
-            <Route path="/pixe-studio" element={<ProtectedRoute />}>
+            <Route path="pixe-studio" element={<ProtectedRoute />}>
                 <Route index element={<PixeStudio />} />
             </Route>
             
-            <Route path="/create-store" element={<ProtectedRoute />}>
+            <Route path="create-store" element={<ProtectedRoute />}>
                 <Route index element={<CreateStorePage />} />
             </Route>
 
-            <Route path="/store/edit" element={<ProtectedRoute />}>
+            <Route path="store/edit" element={<ProtectedRoute />}>
                  <Route index element={<StoreEditorPage />} />
             </Route>
 
-             <Route path="/upload-game" element={<ProtectedRoute />}>
+             <Route path="upload-game" element={<ProtectedRoute />}>
                 <Route index element={<UploadGamePage />} />
             </Route>
             
-            <Route path="/payment-options" element={<ProtectedRoute />}>
+            <Route path="payment-options" element={<ProtectedRoute />}>
                 <Route index element={<PaymentOptionsPage />} />
             </Route>
             
-            <Route path="/packages" element={<ProtectedRoute />}>
+            <Route path="packages" element={<ProtectedRoute />}>
                  <Route index element={<PackagesPage />} />
             </Route>
 
-             <Route path="/help" element={<ProtectedRoute />}>
+             <Route path="help" element={<ProtectedRoute />}>
                 <Route index element={<HelpPage />} />
             </Route>
 

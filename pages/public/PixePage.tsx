@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useSpring } from 'framer-motion';
 import BackButton from '../../components/BackButton';
+import IconBadge from '../../components/IconBadge';
 
 // --- Icons ---
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><polyline points="20 6 9 17 4 12"></polyline></svg>;
@@ -220,9 +221,9 @@ const PricingCard: React.FC<{ tier: string; rate: string; color: string; feature
     );
 };
 
-const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
+const GridFeature: React.FC<{ title: string; desc: string; icon: React.ReactNode }> = ({ title, desc, icon }) => (
     <div className="p-6 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl hover:shadow-xl transition-all duration-300">
-        <div className="text-4xl mb-4">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 border-primary/10 bg-primary/10 text-primary" />
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{desc}</p>
     </div>

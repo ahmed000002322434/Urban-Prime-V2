@@ -3,6 +3,7 @@ import { collection, query, where, getDocs, addDoc, getDoc, doc, setDoc, updateD
 import type { Store, User } from '../types';
 import { db } from '../firebase';
 import { generateStorefront } from './geminiService';
+import supabaseMirror from './supabaseMirror';
 
 const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
     const data = docSnap.data();
@@ -12,15 +13,25 @@ const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
 
 export const storefrontService = {
   async saveStorefront(userId: string, storefrontData: Store): Promise<Store> {
+    if (supabaseMirror.enabled) {
+        const existing = await supabaseMirror.list<Store>('storefronts', { filters: { ownerId: userId }, limit: 1 });
+        if (existing[0]) {
+            await setDoc(doc(db, "storefronts", existing[0].id), storefrontData);
+            await supabaseMirror.upsert('storefronts', existing[0].id, { ...storefrontData, id: existing[0].id });
+            return { ...storefrontData, id: existing[0].id };
+        }
+    }
     const q = query(collection(db, "storefronts"), where("ownerId", "==", userId));
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
         const storeDoc = querySnapshot.docs[0];
         await setDoc(doc(db, "storefronts", storeDoc.id), storefrontData);
+        await supabaseMirror.upsert('storefronts', storeDoc.id, { ...storefrontData, id: storeDoc.id });
         return { ...storefrontData, id: storeDoc.id };
     } else {
         const docRef = await addDoc(collection(db, "storefronts"), storefrontData);
+        await supabaseMirror.upsert('storefronts', docRef.id, { ...storefrontData, id: docRef.id });
         return { ...storefrontData, id: docRef.id };
     }
   },
@@ -56,31 +67,59 @@ export const storefrontService = {
           createdAt: new Date().toISOString(),
       };
       const docRef = await addDoc(collection(db, "storefronts"), newStoreData);
-      return { ...newStoreData, id: docRef.id };
+      const created = { ...newStoreData, id: docRef.id };
+      await supabaseMirror.upsert('storefronts', docRef.id, created);
+      return created;
   },
 
   async getStorefrontByUserId(userId: string): Promise<Store | null> {
+    if (supabaseMirror.enabled) {
+        const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { ownerId: userId }, limit: 1 });
+        if (mirrored[0]) return mirrored[0];
+    }
     const q = query(collection(db, "storefronts"), where("ownerId", "==", userId));
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
-    return fromFirestore<Store>(snapshot.docs[0]);
+    const store = fromFirestore<Store>(snapshot.docs[0]);
+    if (supabaseMirror.enabled) {
+        await supabaseMirror.upsert('storefronts', store.id, store);
+    }
+    return store;
   },
   
   async getStorefrontById(storeId: string): Promise<Store | null> {
+    if (supabaseMirror.enabled) {
+        const mirrored = await supabaseMirror.get<Store>('storefronts', storeId);
+        if (mirrored) return { id: storeId, ...mirrored } as Store;
+    }
     const docRef = doc(db, "storefronts", storeId);
     const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? fromFirestore<Store>(docSnap) : null;
+    if (!docSnap.exists()) return null;
+    const store = fromFirestore<Store>(docSnap);
+    if (supabaseMirror.enabled) {
+        await supabaseMirror.upsert('storefronts', storeId, store);
+    }
+    return store;
   },
 
   async getAllStorefronts(): Promise<(Store & { owner: User })[]> {
-    const storesSnapshot = await getDocs(collection(db, "storefronts"));
-    const stores = storesSnapshot.docs.map(doc => fromFirestore<Store>(doc));
+    let stores = supabaseMirror.enabled
+        ? await supabaseMirror.list<Store>('storefronts', { limit: 500 })
+        : [];
+    if (stores.length === 0) {
+        stores = (await getDocs(collection(db, "storefronts"))).docs.map(doc => fromFirestore<Store>(doc));
+        if (supabaseMirror.enabled) {
+            await Promise.all(stores.map(store => supabaseMirror.upsert('storefronts', store.id, store)));
+        }
+    }
     
     // In a real app, you might want to fetch owner data more efficiently
     const enrichedStores = await Promise.all(stores.map(async store => {
-        const userDocRef = doc(db, "users", store.ownerId);
-        const ownerSnap = await getDoc(userDocRef);
-        const owner = ownerSnap.exists() ? fromFirestore<User>(ownerSnap) : null;
+        let owner = await supabaseMirror.get<User>('users', store.ownerId);
+        if (!owner) {
+            const ownerSnap = await getDoc(doc(db, "users", store.ownerId));
+            owner = ownerSnap.exists() ? fromFirestore<User>(ownerSnap) : null;
+        }
         return { ...store, owner: owner! };
     }));
     
@@ -88,13 +127,25 @@ export const storefrontService = {
   },
 
   async getStorefrontBySlug(slug: string): Promise<Store | null> {
+    if (supabaseMirror.enabled) {
+        const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { slug }, limit: 1 });
+        if (mirrored[0]) return mirrored[0];
+    }
     const q = query(collection(db, "storefronts"), where("slug", "==", slug));
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
-    return fromFirestore<Store>(snapshot.docs[0]);
+    const store = fromFirestore<Store>(snapshot.docs[0]);
+    if (supabaseMirror.enabled) {
+        await supabaseMirror.upsert('storefronts', store.id, store);
+    }
+    return store;
   },
 
   async checkStoreSlugAvailability(slug: string): Promise<boolean> {
+      if (supabaseMirror.enabled) {
+        const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { slug }, limit: 1 });
+        if (mirrored.length > 0) return false;
+      }
       const q = query(collection(db, "storefronts"), where("slug", "==", slug));
       const snapshot = await getDocs(q);
       return snapshot.empty;
@@ -103,5 +154,6 @@ export const storefrontService = {
   async updateStoreBranding(storeId: string, data: Partial<Store>): Promise<void> {
       const storeRef = doc(db, "storefronts", storeId);
       await updateDoc(storeRef, data);
+      await supabaseMirror.mergeUpdate<Store>('storefronts', storeId, data);
   }
 };

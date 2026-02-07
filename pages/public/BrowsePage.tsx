@@ -226,6 +226,8 @@ const BrowsePage: React.FC = () => {
         return chips;
     }, [filters, categoryLabel]);
 
+    const activeFilterCount = activeFilterChips.length;
+
     const fetchAllBrands = async () => {
         const { items: allItems } = await itemService.getItems({}, { page: 1, limit: 1000 });
         const uniqueBrands = [...new Set(allItems.map(item => item.brand).filter(Boolean) as string[])];
@@ -337,6 +339,20 @@ const BrowsePage: React.FC = () => {
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
                 
                 <RecentlyViewedBar />
+                <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                        { title: 'Verified Sellers', desc: 'Shop trusted storefronts with quality checks.', tag: 'Trust' },
+                        { title: 'Free Shipping', desc: 'Discover items with seller-paid delivery.', tag: 'Delivery' },
+                        { title: 'Dropship Ready', desc: 'Source items with built-in fulfillment.', tag: 'Fulfillment' },
+                        { title: 'Auctions & Deals', desc: 'Bid on rare pieces and limited drops.', tag: 'Hype' }
+                    ].map(card => (
+                        <div key={card.title} className="rounded-2xl border border-border bg-surface p-4 shadow-soft">
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">{card.tag}</p>
+                            <h3 className="mt-2 font-bold text-text-primary">{card.title}</h3>
+                            <p className="mt-2 text-sm text-text-secondary">{card.desc}</p>
+                        </div>
+                    ))}
+                </div>
 
                 <div className="mb-8 bg-surface rounded-2xl border border-border p-5 shadow-soft">
                     <div className="flex flex-col lg:flex-row gap-4 items-stretch">
@@ -363,8 +379,13 @@ const BrowsePage: React.FC = () => {
                             <button onClick={handleShuffle} className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary hover:bg-surface-soft flex items-center gap-2">
                                 <ShuffleIcon /> Shuffle
                             </button>
-                            <button onClick={() => setShowFilters(true)} className="px-4 py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90">
+                            <button onClick={() => setShowFilters(true)} className="px-4 py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 flex items-center gap-2">
                                 Advanced Filters
+                                {activeFilterCount > 0 && (
+                                    <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">
+                                        {activeFilterCount}
+                                    </span>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -405,6 +426,11 @@ const BrowsePage: React.FC = () => {
                     <div className="lg:hidden w-full flex gap-2">
                          <button onClick={() => setIsSidebarOpen(true)} className="flex-1 flex items-center justify-center gap-2 p-3 font-semibold text-text-primary bg-surface border border-border rounded-lg shadow-sm">
                             <FilterIcon/> Filters
+                            {activeFilterCount > 0 && (
+                                <span className="text-[10px] font-bold bg-text-primary/10 text-text-primary px-2 py-0.5 rounded-full">
+                                    {activeFilterCount}
+                                </span>
+                            )}
                         </button>
                         <select 
                             value={filters.sortBy}
@@ -416,6 +442,9 @@ const BrowsePage: React.FC = () => {
                             <option value="price_desc">Price: High to Low</option>
                             <option value="popularity">Popularity</option>
                         </select>
+                    </div>
+                    <div className="lg:hidden text-xs text-text-secondary px-1 -mt-1">
+                        {isLoading && items.length === 0 ? 'Loading results…' : `${totalItems} results`}
                     </div>
 
                     {/* Sidebar */}
@@ -443,7 +472,7 @@ const BrowsePage: React.FC = () => {
 
                     <main className="flex-1 min-w-0">
                          {/* Desktop Toolbar */}
-                         <div className="hidden lg:flex bg-surface rounded-xl shadow-soft border border-border p-3 mb-6 justify-between items-center">
+                         <div className="hidden lg:flex bg-surface rounded-xl shadow-soft border border-border p-3 mb-6 justify-between items-center sticky top-24 z-20">
                              <div className="flex items-center gap-4 px-2">
                                 <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 font-bold text-text-primary hover:text-primary transition-colors text-sm">
                                     <FilterIcon/> {showFilters ? 'Hide Filters' : 'Show Filters'}
@@ -482,7 +511,7 @@ const BrowsePage: React.FC = () => {
                                 {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
                             </div>
                         ) : items.length > 0 ? (
-                            <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
+                            <div className={`grid gap-6 animate-fade-in-up ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
                                 {items.map(item => <ItemCard key={item.id} item={item} onQuickView={setQuickViewItem} viewMode={viewMode} />)}
                             </div>
                         ) : (

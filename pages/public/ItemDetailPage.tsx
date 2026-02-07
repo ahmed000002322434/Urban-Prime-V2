@@ -1,227 +1,418 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import { itemService } from '../../services/itemService';
-import type { Item } from '../../types';
-import ItemCard from '../../components/ItemCard';
+import type { Item, User } from '../../types';
+import { useAuth } from '../../hooks/useAuth';
+import { useCart } from '../../hooks/useCart';
+import { useTranslation } from '../../hooks/useTranslation';
+import { useNotification } from '../../context/NotificationContext';
 import Spinner from '../../components/Spinner';
 import StarRating from '../../components/StarRating';
+import WishlistButton from '../../components/WishlistButton';
+import ItemCard from '../../components/ItemCard';
 import ReviewCard from '../../components/ReviewCard';
-import ReviewSystem from '../../components/ReviewSystem';
-import ThreeDPreview from '../../components/ThreeDPreview';
-import { useBrowsingHistory } from '../../hooks/useBrowsingHistory';
+import VerifiedBadge from '../../components/VerifiedBadge';
+import ReviewForm from '../../components/ReviewForm';
+import QuestionCard from '../../components/QuestionCard';
 import Calendar from '../../components/Calendar';
-import { useCart } from '../../hooks/useCart';
-import { useNotification } from '../../context/NotificationContext';
-import { useAuth } from '../../hooks/useAuth';
 
-const formatMoney = (value: number) => `$${value.toFixed(2)}`;
+// --- ICONS ---
+const CartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>;
+const PackageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>;
+const ArrowLeftIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>;
+const ArrowRightIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>;
+const CalendarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>;
+const GavelIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.111 48.111 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z" /></svg>;
+const MailIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>;
+const PhoneIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>;
+const MessageCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>;
+const CopyIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>;
+const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+const LightningIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-yellow-400"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>;
 
-const getVideoEmbedUrl = (url?: string) => {
-    if (!url) return null;
-    const youtubeMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
-    if (youtubeMatch) {
-        return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
-    }
-    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-    if (vimeoMatch) {
-        return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-    }
-    return null;
+// --- ANIMATION VARIANTS ---
+const sectionVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 50, damping: 20, duration: 0.8 },
+  },
 };
 
-const formatTimeLeft = (ms: number) => {
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-};
-
-const StatPill: React.FC<{ label: string; value?: string; highlight?: boolean }> = ({ label, value, highlight }) => (
-    <div className={`px-3 py-2 rounded-full border text-[10px] uppercase tracking-[0.25em] font-semibold ${highlight ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-soft border-border text-text-secondary'}`}>
-        <span className="mr-2">{label}</span>
-        {value && <span className="text-text-primary font-bold tracking-normal">{value}</span>}
-    </div>
-);
-
-const InfoRow: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
-    <div className="flex items-start justify-between gap-6 border-b border-border/60 pb-3 text-sm">
-        <span className="text-text-secondary">{label}</span>
-        <span className="text-text-primary font-medium text-right">{value || '-'}</span>
-    </div>
-);
-
-const SectionTitle: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => (
-    <div className="mb-6">
-        <h2 className="text-2xl md:text-3xl font-bold font-display text-text-primary">{title}</h2>
-        {subtitle && <p className="text-sm text-text-secondary mt-2 max-w-2xl">{subtitle}</p>}
-    </div>
-);
-
-const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-    <button
-        onClick={onClick}
-        className={`px-4 py-2 rounded-full text-xs uppercase tracking-[0.25em] border transition ${active ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary hover:border-primary/60 hover:text-primary'}`}
+const Section: React.FC<{ children: React.ReactNode, className?: string }> = ({ children, className }) => (
+    <motion.section 
+        className={className}
+        variants={sectionVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.1 }}
     >
         {children}
-    </button>
+    </motion.section>
 );
+
+const AuctionTimer: React.FC<{ endTime: string }> = ({ endTime }) => {
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+    
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const now = new Date().getTime();
+            const end = new Date(endTime).getTime();
+            const distance = end - now;
+            
+            if (distance < 0) {
+                clearInterval(interval);
+                return;
+            }
+            
+            setTimeLeft({
+                days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+                hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+                seconds: Math.floor((distance % (1000 * 60)) / 1000)
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [endTime]);
+    
+    return (
+        <div className="flex gap-2 text-center text-xs font-bold font-mono text-red-600 bg-red-50 px-3 py-1 rounded-lg border border-red-100">
+            <div className="flex flex-col"><span className="text-sm">{timeLeft.days}</span><span>D</span></div>:
+            <div className="flex flex-col"><span className="text-sm">{timeLeft.hours}</span><span>H</span></div>:
+            <div className="flex flex-col"><span className="text-sm">{timeLeft.minutes}</span><span>M</span></div>:
+            <div className="flex flex-col"><span className="text-sm">{timeLeft.seconds}</span><span>S</span></div>
+        </div>
+    );
+};
+
+// --- MODAL COMPONENT ---
+type SellerProfile = User & { rating?: number };
+
+const ContactSellerModal: React.FC<{ seller: SellerProfile; onClose: () => void; onMessage: () => void }> = ({ seller, onClose, onMessage }) => {
+    const { showNotification } = useNotification();
+    const rating = typeof seller.rating === 'number' ? seller.rating : 0;
+    const displayEmail = seller.email || 'Not provided';
+    const displayPhone = seller.phone || 'Not provided';
+
+    const copyToClipboard = (text: string, label: string) => {
+        navigator.clipboard.writeText(text);
+        showNotification(`${label} copied to clipboard!`);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-fade-in-up" onClick={onClose}>
+            <div className="bg-white dark:bg-dark-surface w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-dark-background">
+                    <h3 className="font-bold text-lg dark:text-white font-display">Contact Seller</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-white"><XIcon /></button>
+                </div>
+                <div className="p-6 flex flex-col gap-6">
+                    <div className="flex items-center gap-4">
+                        <img src={seller.avatar} alt={seller.name} className="w-16 h-16 rounded-full border-2 border-primary object-cover" />
+                        <div>
+                            <h4 className="font-bold text-xl dark:text-white font-display">{seller.name}</h4>
+                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                <StarRating rating={rating} size="sm" /> 
+                                <span>• {rating.toFixed(1)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-dark-background rounded-lg border dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-100 text-blue-600 rounded-full"><MailIcon /></div>
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Email</p>
+                                    <p className="text-sm font-medium dark:text-white">{displayEmail}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => copyToClipboard(displayEmail, 'Email')} className="text-gray-400 hover:text-primary"><CopyIcon/></button>
+                        </div>
+                        
+                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-dark-background rounded-lg border dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-green-100 text-green-600 rounded-full"><PhoneIcon /></div>
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Phone</p>
+                                    <p className="text-sm font-medium dark:text-white">{displayPhone}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => copyToClipboard(displayPhone, 'Phone')} className="text-gray-400 hover:text-primary"><CopyIcon/></button>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={onMessage}
+                        className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-lg hover:opacity-90 flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                        <MessageCircleIcon /> Send Message
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- IMAGE ZOOM MODAL ---
+const ImageZoomModal: React.FC<{ media: Array<{ type: 'image' | 'video'; url: string }>; currentIndex: number; isOpen: boolean; onClose: () => void; onPrev: () => void; onNext: () => void }> = ({ media, currentIndex, isOpen, onClose, onPrev, onNext }) => {
+    if (!isOpen || media.length === 0) return null;
+
+    return (
+        <div 
+            className="fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={onClose}
+        >
+            {/* Close Button */}
+            <button 
+                onClick={onClose}
+                className="absolute top-6 right-6 p-2 bg-white/20 hover:bg-white/30 text-white rounded-full transition-all z-10"
+                aria-label="Close zoom"
+            >
+                <XIcon />
+            </button>
+
+            {/* Main Content */}
+            <div 
+                className="relative w-full h-full flex items-center justify-center"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Image/Video Display */}
+                {media[currentIndex].type === 'image' ? (
+                    <motion.img 
+                        key={currentIndex}
+                        src={media[currentIndex].url} 
+                        alt="Zoomed view"
+                        className="max-w-4xl max-h-[85vh] w-full h-auto object-contain rounded-lg"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.3 }}
+                    />
+                ) : (
+                    <motion.video 
+                        key={currentIndex}
+                        src={media[currentIndex].url} 
+                        autoPlay loop muted playsInline
+                        className="max-w-4xl max-h-[85vh] w-full h-auto object-contain rounded-lg"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.3 }}
+                    />
+                )}
+
+                {/* Navigation */}
+                {media.length > 1 && (
+                    <>
+                        <button 
+                            onClick={onPrev}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all z-10"
+                            aria-label="Previous image"
+                        >
+                            <ArrowLeftIcon />
+                        </button>
+                        <button 
+                            onClick={onNext}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/40 text-white rounded-full transition-all z-10"
+                            aria-label="Next image"
+                        >
+                            <ArrowRightIcon />
+                        </button>
+
+                        {/* Counter Badge */}
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full text-sm font-semibold backdrop-blur-sm border border-white/20">
+                            {currentIndex + 1} / {media.length}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 
 const ItemDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
+    const { user, openAuthModal } = useAuth();
     const navigate = useNavigate();
-    const { addToHistory } = useBrowsingHistory();
     const { addItemToCart } = useCart();
+    const { currency } = useTranslation();
     const { showNotification } = useNotification();
-    const { user } = useAuth();
-
+    
     const [item, setItem] = useState<Item | null>(null);
     const [relatedItems, setRelatedItems] = useState<Item[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isRefreshing, setIsRefreshing] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [activeImage, setActiveImage] = useState(0);
-    const [is3dEnabled, setIs3dEnabled] = useState(false);
-    const [purchaseMode, setPurchaseMode] = useState<'sale' | 'rent'>('sale');
-    const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'seller' | 'reviews'>('details');
-    const [reloadKey, setReloadKey] = useState(0);
+    const [quantity, setQuantity] = useState(1);
+    
+    // Variant State
+    const [selectedColor, setSelectedColor] = useState<string | null>(null);
+    const [selectedSize, setSelectedSize] = useState<string | null>(null);
+    
+    // Rental State
+    const [rentalStartDate, setRentalStartDate] = useState('');
+    const [rentalEndDate, setRentalEndDate] = useState('');
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    
+    // Auction State
     const [bidAmount, setBidAmount] = useState<number | ''>('');
     const [isPlacingBid, setIsPlacingBid] = useState(false);
 
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
-    const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
+    // Contact Modal State
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
-    const initialLoadRef = useRef(true);
-    const fetchKeyRef = useRef<string | null>(null);
+    // Zoom Modal State
+    const [isZoomOpen, setIsZoomOpen] = useState(false);
 
-    const isAuction = item?.listingType === 'auction';
-    const auctionDetails = item?.auctionDetails;
-    const currentBid = auctionDetails?.currentBid || auctionDetails?.startingBid || item?.salePrice || 0;
-    const minIncrement = Math.max(1, Math.round(currentBid * 0.05));
-    const minBid = currentBid + minIncrement;
+    // Scroll Animations
+    const { scrollY } = useScroll();
+    const headerOpacity = useTransform(scrollY, [0, 400], [0, 1]);
+    const headerTranslateY = useTransform(scrollY, [0, 400], [-100, 0]);
 
-    useEffect(() => {
-        if (!id) return;
-        const fetchKey = `${id}-${reloadKey}`;
-        if (fetchKeyRef.current === fetchKey) return;
-        fetchKeyRef.current = fetchKey;
-        let isActive = true;
-        const hasItem = !!item && item.id === id;
-        if (hasItem) {
-            setIsRefreshing(true);
-        } else {
-            setIsLoading(true);
+    // Gallery State
+    const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+    const media = useMemo(() => {
+        if (!item) return [];
+        const baseImages = (item.imageUrls?.length ? item.imageUrls : item.images || []).filter(Boolean);
+        const normalized = baseImages.length > 0 ? baseImages : [`https://picsum.photos/seed/${item.id}/1200/1200`];
+        const images = normalized.map(url => ({ type: 'image' as const, url }));
+        if (item.videoUrl) {
+            return [{ type: 'video' as const, url: item.videoUrl }, ...images];
         }
-        setLoadError(null);
-        if (initialLoadRef.current) {
-            window.scrollTo(0, 0);
-        }
-
-        const normalizeItem = (raw: Item): Item => ({
-            ...raw,
-            images: raw.images || [],
-            imageUrls: raw.imageUrls || [],
-            reviews: raw.reviews || [],
-            avgRating: raw.avgRating || 0,
-            owner: raw.owner || { id: 'seller', name: 'Verified Seller', avatar: '' },
-            features: raw.features || [],
-            specifications: raw.specifications || [],
-            materials: raw.materials || [],
-            careInstructions: raw.careInstructions || [],
-            packageContents: raw.packageContents || [],
-            certifications: raw.certifications || [],
-            shippingEstimates: raw.shippingEstimates || []
-        });
-
-        itemService.getItemById(id).then(fetchedItem => {
-            if (!isActive) return;
-            if (fetchedItem) {
-                const normalized = normalizeItem(fetchedItem);
-                const isSameItem = item && item.id === normalized.id;
-                setItem(normalized);
-                if (!isSameItem) {
-                    setActiveImage(0);
-                }
-                setIs3dEnabled(!!normalized.enable3dPreview);
-                if (normalized.listingType === 'both') {
-                    setPurchaseMode(normalized.salePrice ? 'sale' : 'rent');
-                } else if (normalized.listingType === 'rent') {
-                    setPurchaseMode('rent');
-                } else {
-                    setPurchaseMode('sale');
-                }
-                addToHistory(normalized);
-                itemService.getItems({ category: normalized.category }, { page: 1, limit: 4 }).then(res => {
-                    if (!isActive) return;
-                    setRelatedItems(res.items.filter((i: Item) => i.id !== normalized.id));
-                });
-            } else {
-                if (!item) setItem(null);
-                setLoadError('This item could not be loaded. You may be offline or the listing no longer exists.');
-            }
-            setIsLoading(false);
-            setIsRefreshing(false);
-            initialLoadRef.current = false;
-        }).catch((error) => {
-            if (!isActive) return;
-            console.error(error);
-            setLoadError('We hit a loading issue. Please try again.');
-            setIsLoading(false);
-            setIsRefreshing(false);
-            initialLoadRef.current = false;
-        });
-
-        return () => {
-            isActive = false;
-        };
-    }, [id, addToHistory, reloadKey]);
-
-    useEffect(() => {
-        setIsAvailable(null);
-    }, [startDate, endDate]);
-
-    useEffect(() => {
-        if (isAuction) {
-            setBidAmount(current => (typeof current === 'number' && current === minBid ? current : minBid));
-        }
-    }, [isAuction, minBid]);
-
-    const galleryImages = useMemo(() => {
-        if (!item) return [] as string[];
-        const images = (item.imageUrls?.length ? item.imageUrls : item.images || []).filter(Boolean);
-        return images.length > 0 ? images : [`https://picsum.photos/seed/${item.id}/1200/1200`];
+        return images;
     }, [item]);
 
     useEffect(() => {
-        if (galleryImages.length > 0 && activeImage >= galleryImages.length) {
-            setActiveImage(0);
+        if (media.length > 0 && currentMediaIndex >= media.length) {
+            setCurrentMediaIndex(0);
         }
-    }, [galleryImages.length, activeImage]);
+    }, [media.length, currentMediaIndex]);
 
-    if (isLoading && !item) return <div className="h-screen flex justify-center items-center"><Spinner size="lg" /></div>;
+    useEffect(() => {
+        const fetchItem = async () => {
+            if (!id) return;
+            setIsLoading(true);
+            setLoadError(null);
+            try {
+                const fetchedItem = await itemService.getItemById(id);
+                if (fetchedItem) {
+                    setItem(fetchedItem);
+                    setCurrentMediaIndex(0);
+                    const variants = (fetchedItem as any).variants;
+                    setSelectedColor(variants?.color?.[0]?.name || null);
+                    setSelectedSize(variants?.size?.[0]?.name || null);
+                    // Fetch more related items to simulate "Endless" exploring
+                    const { items: related } = await itemService.getItems({ category: fetchedItem.category }, { page: 1, limit: 12 });
+                    setRelatedItems(related.filter(i => i.id !== fetchedItem.id));
+                } else {
+                    setItem(null);
+                    setLoadError('This item could not be found.');
+                }
+            } catch (error) {
+                console.error(error);
+                setLoadError('We could not load this item. Please try again.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchItem();
+    }, [id, navigate]);
+
+    const handleNextMedia = () => {
+        if (media.length === 0) return;
+        setCurrentMediaIndex((prev) => (prev + 1) % media.length);
+    };
+    const handlePrevMedia = () => {
+        if (media.length === 0) return;
+        setCurrentMediaIndex((prev) => (prev - 1 + media.length) % media.length);
+    };
+
+    const handleAddToCart = () => {
+        if (item) {
+            addItemToCart(item, quantity);
+            showNotification(`${item.title} added to cart!`);
+        }
+    };
+
+    const handleBuyNow = () => {
+        if (item) {
+            addItemToCart(item, quantity);
+            navigate('/cart');
+        }
+    };
+    
+    const handleRentNow = () => {
+        if(!user) { openAuthModal('login'); return; }
+        if (!rentalStartDate || !rentalEndDate) {
+            showNotification("Please select rental dates.");
+            setIsCalendarOpen(true);
+            return;
+        }
+        navigate('/checkout', { state: { item, startDate: rentalStartDate, endDate: rentalEndDate, type: 'rent' } });
+    };
+
+    const handlePlaceBid = async () => {
+         if(!user) { openAuthModal('login'); return; }
+         if (!item?.auctionDetails) return;
+         
+         const current = item.auctionDetails.currentBid ?? item.auctionDetails.startingBid ?? item.salePrice ?? 0;
+         const bid = Number(bidAmount);
+         
+         if (bid <= current) {
+             showNotification(`Bid must be higher than ${currency.symbol}${current}`);
+             return;
+         }
+         
+         setIsPlacingBid(true);
+         try {
+             const updatedItem = await itemService.placeBid(item.id, bid, { id: user.id, name: user.name });
+             setItem(updatedItem);
+             showNotification("Bid placed successfully!");
+             setBidAmount('');
+         } catch (error) {
+             showNotification(error instanceof Error ? error.message : "Failed to place bid.");
+         } finally {
+             setIsPlacingBid(false);
+         }
+    };
+    
+    const handleActionWithUpdatedItem = (updatedItem: Item) => {
+        setItem(updatedItem);
+    };
+    
+    const handleSendMessage = () => {
+        if (!user) {
+            openAuthModal('login');
+            return;
+        }
+        if (item) {
+            navigate(`/profile/messages?sellerId=${item.owner.id}&itemId=${item.id}`);
+        }
+    };
+
+    if (isLoading && !item) return <div className="h-screen flex items-center justify-center"><Spinner size="lg" /></div>;
     if (!item) {
         return (
-            <div className="min-h-screen bg-background text-text-primary flex items-center justify-center px-6">
-                <div className="max-w-lg w-full rounded-3xl border border-border bg-surface p-8 text-center space-y-4">
-                    <h2 className="text-2xl font-bold font-display">Unable to load this item</h2>
-                    <p className="text-sm text-text-secondary">{loadError || 'Something went wrong.'}</p>
+            <div className="min-h-screen bg-background flex items-center justify-center px-6">
+                <div className="max-w-md w-full bg-surface rounded-3xl border border-border p-8 text-center space-y-4">
+                    <h2 className="text-2xl font-bold font-display text-text-primary">Item unavailable</h2>
+                    <p className="text-sm text-text-secondary">{loadError || 'This listing is not available right now.'}</p>
                     <div className="flex items-center justify-center gap-3">
-                        <button
-                            onClick={() => setReloadKey(k => k + 1)}
-                            className="px-4 py-2 rounded-full bg-black text-white text-sm font-semibold"
-                        >
-                            Retry
-                        </button>
                         <button
                             onClick={() => navigate('/browse')}
                             className="px-4 py-2 rounded-full border border-border text-sm font-semibold"
                         >
                             Back to Browse
+                        </button>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 rounded-full bg-black text-white text-sm font-semibold"
+                        >
+                            Retry
                         </button>
                     </div>
                 </div>
@@ -229,724 +420,543 @@ const ItemDetailPage: React.FC = () => {
         );
     }
 
-    let displayPrice = item.salePrice || item.rentalPrice || item.price || 0;
-    const isRentalOnly = item.listingType === 'rent';
-    const isBoth = item.listingType === 'both';
-    const isRentalMode = isRentalOnly || (isBoth && purchaseMode === 'rent');
-    const isOutOfStock = item.stock !== undefined && item.stock <= 0;
-
-    let totalRentalPrice = 0;
-    let rentalDays = 0;
-
-    if (isRentalMode && startDate && endDate && item.rentalRates?.daily) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        rentalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        totalRentalPrice = rentalDays * item.rentalRates.daily;
-    }
-
-    const buyNowPrice = isAuction ? item.buyNowPrice : (item.salePrice || 0);
-    const auctionEndsAt = auctionDetails?.endTime ? new Date(auctionDetails.endTime) : null;
-    const auctionTimeLeft = auctionEndsAt ? Math.max(0, auctionEndsAt.getTime() - Date.now()) : null;
-    if (isAuction) {
-        displayPrice = currentBid;
-    }
-
-    const handleCheckAvailability = async () => {
-        if (!startDate || !endDate) return;
-        setIsCheckingAvailability(true);
-        try {
-            const available = await itemService.checkAvailability(item.id, startDate, endDate);
-            setIsAvailable(available);
-            if (!available) showNotification('Dates are not available. Please choose another range.');
-        } catch (error) {
-            console.error('Availability check failed', error);
-        } finally {
-            setIsCheckingAvailability(false);
-        }
+    const mainPrice = Number(item.salePrice ?? item.rentalPrice ?? 0);
+    const stockStatus = item.stock > 10 ? { text: 'In Stock', color: 'text-green-600' } : item.stock > 0 ? { text: `Low Stock (${item.stock} left)`, color: 'text-orange-500' } : { text: 'Out of Stock', color: 'text-red-600' };
+    
+    const rentalDays = (rentalStartDate && rentalEndDate) 
+        ? Math.ceil((new Date(rentalEndDate).getTime() - new Date(rentalStartDate).getTime()) / (1000 * 60 * 60 * 24)) 
+        : 0;
+    const rentalTotal = rentalDays * (item.rentalPrice || 0);
+    const createdAt = (item as any).createdAt || new Date().toISOString();
+    const variants = (item as any).variants || {};
+    const packageContents = ((item as any).shippingPackageContents || item.packageContents || []) as string[];
+    const sellerProfile: SellerProfile = {
+        id: item.owner.id,
+        name: item.owner.businessName || item.owner.name,
+        email: (item as any).owner?.email || '',
+        avatar: item.owner.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(item.owner.name || 'Seller')}`,
+        following: [],
+        followers: [],
+        wishlist: [],
+        cart: [],
+        badges: [],
+        memberSince: (item as any).owner?.memberSince || createdAt,
+        phone: (item as any).owner?.phone || '',
+        about: (item as any).owner?.about,
+        verificationLevel: (item as any).owner?.verificationLevel,
+        rating: (item as any).owner?.rating ?? item.avgRating ?? 4.8
     };
-
-    const handleAddToCart = async () => {
-        if (isOutOfStock) {
-            showNotification('This item is currently unavailable.');
-            return;
-        }
-        if (isRentalMode) {
-            if (!startDate || !endDate) {
-                showNotification('Please select rental dates.');
-                return;
-            }
-            if (isAvailable !== true) {
-                setIsCheckingAvailability(true);
-                const available = await itemService.checkAvailability(item.id, startDate, endDate);
-                setIsCheckingAvailability(false);
-                setIsAvailable(available);
-                if (!available) {
-                    showNotification('Item is not available for these dates.');
-                    return;
-                }
-            }
-            addItemToCart(item, 1, undefined, { startDate, endDate });
-            navigate('/cart');
-        } else {
-            addItemToCart(item, 1);
-        }
-    };
-
-    const handleBuyNow = async () => {
-        if (isOutOfStock) {
-            showNotification('This item is currently unavailable.');
-            return;
-        }
-        if (isAuction) {
-            if (!buyNowPrice) {
-                showNotification('Buy Now is not available for this auction.');
-                return;
-            }
-            addItemToCart({ ...item, salePrice: buyNowPrice }, 1);
-            navigate('/checkout');
-            return;
-        }
-
-        if (isRentalMode) {
-            if (!startDate || !endDate) {
-                showNotification('Please select rental dates.');
-                return;
-            }
-            if (isAvailable !== true) {
-                setIsCheckingAvailability(true);
-                const available = await itemService.checkAvailability(item.id, startDate, endDate);
-                setIsCheckingAvailability(false);
-                setIsAvailable(available);
-                if (!available) {
-                    showNotification('Item is not available for these dates.');
-                    return;
-                }
-            }
-            addItemToCart(item, 1, undefined, { startDate, endDate });
-            navigate('/checkout');
-            return;
-        }
-
-        addItemToCart(item, 1);
-        navigate('/checkout');
-    };
-
-    const handlePlaceBid = async () => {
-        if (!user) {
-            showNotification('Please log in to place a bid.');
-            return;
-        }
-        if (auctionTimeLeft !== null && auctionTimeLeft <= 0) {
-            showNotification('This auction has ended.');
-            return;
-        }
-        const amount = typeof bidAmount === 'number' ? bidAmount : Number(bidAmount);
-        if (!amount || amount < minBid) {
-            showNotification(`Minimum bid is ${formatMoney(minBid)}.`);
-            return;
-        }
-        setIsPlacingBid(true);
-        try {
-            const updated = await itemService.placeBid(item.id, amount, { id: user.id, name: user.name });
-            setItem(updated);
-            showNotification('Bid placed successfully.');
-        } catch (error) {
-            showNotification(error instanceof Error ? error.message : 'Failed to place bid.');
-        } finally {
-            setIsPlacingBid(false);
-        }
-    };
-
-    const handleSubmitReview = async (rating: number, comment: string) => {
-        if (!user) {
-            showNotification('Please log in to leave a review.');
-            return;
-        }
-        try {
-            const updated = await itemService.addReview(
-                item.id,
-                { rating, comment },
-                { id: user.id, name: user.name, avatar: user.avatar }
-            );
-            setItem(updated);
-            showNotification('Review submitted. Thank you!');
-        } catch (error) {
-            console.error(error);
-            showNotification('Failed to submit review.');
-        }
-    };
-
-    const handleCopyLink = async () => {
-        try {
-            await navigator.clipboard.writeText(window.location.href);
-            showNotification('Link copied to clipboard.');
-        } catch {
-            showNotification('Failed to copy link.');
-        }
-    };
-
-    const videoEmbedUrl = getVideoEmbedUrl(item.videoUrl);
-    const shippingEstimate = item.shippingEstimates?.[0] || item.supplierInfo?.shippingProfile?.fastestEstimate;
-    const returnPolicy = item.returnPolicy || item.supplierInfo?.returnPolicy;
-    const warranty = item.warranty;
-    const ownerAvatar = item.owner?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(item.owner?.name || 'Seller')}`;
+    const sellerRating = sellerProfile.rating ?? item.avgRating ?? 0;
 
     return (
-        <div className="min-h-screen bg-background text-text-primary">
-            {isRefreshing && (
-                <div className="fixed top-0 left-0 right-0 z-[60] h-1 bg-black/10">
-                    <div className="h-full w-1/2 bg-primary animate-pulse" />
-                </div>
+        <div className="bg-surface font-sans min-h-screen pb-20">
+            {isContactModalOpen && (
+                <ContactSellerModal 
+                    seller={sellerProfile} 
+                    onClose={() => setIsContactModalOpen(false)} 
+                    onMessage={handleSendMessage}
+                />
             )}
-            <div className="relative border-b border-border overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-surface-soft via-background to-background" />
-                <div className="absolute -top-24 right-[-10%] w-[35rem] h-[35rem] bg-primary/10 rounded-full blur-[120px]" />
-                <div className="container mx-auto px-4 md:px-8 py-10 relative">
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-text-secondary">
-                        <Link to="/browse" className="hover:text-primary">Browse</Link>
-                        <span>/</span>
-                        <span>{item.category}</span>
-                        <span>/</span>
-                        <span className="text-text-primary">{item.title}</span>
-                    </div>
-                    <div className="mt-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-                        <div className="space-y-3">
-                            <h1 className="text-4xl md:text-5xl font-black font-display animate-fade-in-up">{item.title}</h1>
-                            <div className="flex flex-wrap items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <StarRating rating={item.avgRating || 0} size="sm" />
-                                    <span className="text-xs text-text-secondary">({item.reviews?.length || 0} reviews)</span>
-                                </div>
-                                {item.brand && <StatPill label="Brand" value={item.brand} />}
-                                {item.isVerified && <StatPill label="Verified" highlight />}
-                                {item.productType === 'dropship' && <StatPill label="Dropship" />}
-                                {item.listingType === 'rent' && <StatPill label="Rental" />}
-                                {item.listingType === 'auction' && <StatPill label="Auction" highlight />}
-                                {item.fulfillmentType && <StatPill label="Fulfillment" value={item.fulfillmentType.replace('_', ' ')} />}
+
+            {/* Image Zoom Modal */}
+            <ImageZoomModal 
+                media={media}
+                currentIndex={currentMediaIndex}
+                isOpen={isZoomOpen}
+                onClose={() => setIsZoomOpen(false)}
+                onPrev={handlePrevMedia}
+                onNext={handleNextMedia}
+            />
+
+            {/* 2. Unified Sticky Command Bar */}
+            <motion.div 
+                className="sticky top-[72px] z-30 bg-surface/95 backdrop-blur-xl border-b border-border/60 shadow-lg transition-all duration-300 lg:hidden"
+                style={{ opacity: headerOpacity, translateY: headerTranslateY }}
+            >
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        {/* Title & Info */}
+                        <div className="flex-1 min-w-0 hidden lg:block">
+                            <h1 className="text-xl font-bold font-display text-text-primary truncate">{item.title}</h1>
+                            <div className="flex items-center gap-2 text-xs text-text-secondary">
+                                <StarRating rating={item.avgRating} size="sm" /> 
+                                <span>({item.reviews.length} reviews)</span>
+                                {item.isVerified && <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 rounded font-bold">VERIFIED</span>}
                             </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                            <button onClick={handleCopyLink} className="px-4 py-2 rounded-full border border-border text-xs uppercase tracking-[0.2em] hover:border-primary hover:text-primary transition">
-                                Copy Link
-                            </button>
-                            <button onClick={() => navigate(-1)} className="px-4 py-2 rounded-full bg-surface-soft text-xs uppercase tracking-[0.2em] hover:bg-surface transition">
-                                Back
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <div className="container mx-auto px-4 md:px-8 py-12 space-y-16">
-                <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-12">
-                    <div className="space-y-5">
-                        <div className="rounded-3xl border border-border overflow-hidden bg-surface">
-                            <div className="aspect-square">
-                                {is3dEnabled ? (
-                                    <ThreeDPreview imageUrl={galleryImages[activeImage]} alt={item.title} is3dEnabled={true} />
-                                ) : (
-                                    <img src={galleryImages[activeImage]} alt={item.title} className="w-full h-full object-cover" />
+                        {/* Right: Actions (Desktop & Tablet) */}
+                        <div className="flex items-center justify-between lg:justify-end gap-4 flex-1">
+                             {/* Price Display */}
+                             <div className="text-left lg:text-right">
+                                <div className="flex items-baseline justify-start lg:justify-end gap-2">
+                                     <span className="text-2xl font-black text-text-primary tracking-tight font-display">{currency.symbol}{mainPrice.toFixed(2)}</span>
+                                     {item.compareAtPrice && <span className="text-sm text-text-secondary line-through">{currency.symbol}{item.compareAtPrice.toFixed(2)}</span>}
+                                </div>
+                                {item.listingType === 'rent' && <p className="text-xs text-text-secondary text-right">per day</p>}
+                             </div>
+
+                             {/* Action Buttons */}
+                             <div className="flex items-center gap-3">
+                                 {/* Rental Date Picker Trigger */}
+                                 {item.listingType === 'rent' && (
+                                     <button 
+                                        onClick={() => setIsCalendarOpen(!isCalendarOpen)} 
+                                        className="hidden md:flex items-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-text-primary rounded-xl font-bold text-sm transition-colors"
+                                    >
+                                        <CalendarIcon /> {rentalStartDate && rentalEndDate ? `${new Date(rentalStartDate).toLocaleDateString()}...` : "Dates"}
+                                    </button>
+                                 )}
+
+                                 {/* Buy Buttons */}
+                                 {(item.listingType === 'sale' || item.listingType === 'both') && (
+                                     <>
+                                        <button onClick={handleBuyNow} className="px-6 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg shadow-secondary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all text-sm uppercase tracking-wide">
+                                            Buy Now
+                                        </button>
+                                        <button onClick={handleAddToCart} className="px-4 py-3 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all text-sm flex items-center justify-center">
+                                            <CartIcon/>
+                                        </button>
+                                     </>
+                                 )}
+
+                                 {item.listingType === 'rent' && (
+                                     <button onClick={handleRentNow} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:-translate-y-0.5 transition-all text-sm uppercase tracking-wide">
+                                         Rent Now
+                                     </button>
+                                 )}
+                                 
+                                 <WishlistButton itemId={item.id} className="!relative !top-0 !right-0 !bg-transparent !text-text-secondary hover:!text-red-500 !p-2" />
+                             </div>
+                        </div>
+                     </div>
+                </div>
+                {/* Calendar Dropdown */}
+                {isCalendarOpen && (
+                     <div className="absolute top-full right-4 lg:right-8 z-40 bg-white dark:bg-dark-surface shadow-2xl rounded-xl border border-border p-1 animate-fade-in-up">
+                         <Calendar 
+                            startDate={rentalStartDate} 
+                            endDate={rentalEndDate} 
+                            setStartDate={setRentalStartDate} 
+                            setEndDate={setRentalEndDate} 
+                            onClose={() => setIsCalendarOpen(false)} 
+                            bookedDates={item.bookedDates}
+                        />
+                     </div>
+                )}
+            </motion.div>
+            
+            {/* Page Content Grid - Two Column Layout */}
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8">
+                    
+                    {/* Left Column: Image Showcase Panel (Desktop: 2 cols, Mobile: full width) */}
+                    <div className="lg:col-span-2 order-first">
+                        {/* Main Image Container with Click-to-Zoom */}
+                        <div className="bg-gradient-to-b from-gray-50 to-gray-100 dark:from-dark-surface dark:to-dark-surface/80 rounded-2xl overflow-hidden shadow-lg border border-border/40 mb-4 cursor-pointer hover:shadow-xl transition-all" onClick={() => setIsZoomOpen(true)}>
+                            <div className="aspect-square flex items-center justify-center relative group overflow-hidden bg-gray-100 dark:bg-gray-900">
+                                {/* Background Blur */}
+                                <div className="absolute inset-0 blur-2xl opacity-20">
+                                    <img src={media[currentMediaIndex].url} alt="bg-blur" className="w-full h-full object-cover" loading="lazy" />
+                                </div>
+                                
+                                {/* Main Image */}
+                                <AnimatePresence initial={false}>
+                                    <motion.div key={currentMediaIndex} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.4 }} className="absolute inset-0 flex items-center justify-center p-4">
+                                        {media[currentMediaIndex].type === 'image' ? (
+                                            <motion.img 
+                                                src={media[currentMediaIndex].url} 
+                                                alt={item.title} 
+                                                className="w-full h-full object-contain max-w-full max-h-full drop-shadow-xl" 
+                                                whileHover={{ scale: 1.03 }} 
+                                                transition={{ duration: 0.5, ease: 'easeOut' }}
+                                                loading="eager"
+                                            />
+                                        ) : (
+                                            <motion.video 
+                                                src={media[currentMediaIndex].url} 
+                                                autoPlay loop muted playsInline 
+                                                className="w-full h-full object-contain max-w-full max-h-full drop-shadow-xl rounded-lg" 
+                                                whileHover={{ scale: 1.03 }} 
+                                                transition={{ duration: 0.5, ease: 'easeOut' }}
+                                            />
+                                        )}
+                                    </motion.div>
+                                </AnimatePresence>
+                                
+                                {/* Media Counter + Click to Zoom Hint */}
+                                <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
+                                    <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg border border-white/20">
+                                        {currentMediaIndex + 1} / {media.length}
+                                    </div>
+                                    <div className="bg-black/40 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-[10px] font-semibold shadow-lg border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Click to zoom
+                                    </div>
+                                </div>
+                                
+                                {/* Navigation Buttons (Hidden on mobile, show on hover) */}
+                                {media.length > 1 && (
+                                    <>
+                                        <button onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }} className="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-black/70 hover:scale-110 shadow-lg border border-white/20"><ArrowLeftIcon/></button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleNextMedia(); }} className="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-black/70 hover:scale-110 shadow-lg border border-white/20"><ArrowRightIcon/></button>
+                                    </>
                                 )}
                             </div>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => item.enable3dPreview && setIs3dEnabled(prev => !prev)}
-                                    disabled={!item.enable3dPreview}
-                                    className={`px-4 py-2 rounded-full text-[10px] uppercase tracking-[0.3em] border ${is3dEnabled ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary'} ${!item.enable3dPreview ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >
-                                    {is3dEnabled ? '3D On' : '3D Off'}
-                                </button>
-                                {item.enable3dPreview && <span className="text-xs text-text-secondary">Drag to rotate</span>}
-                            </div>
-                            <span className="text-xs text-text-secondary">{activeImage + 1} / {galleryImages.length}</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-3">
-                            {galleryImages.map((img, idx) => (
-                                <button
-                                    key={`${img}-${idx}`}
-                                    onClick={() => setActiveImage(idx)}
-                                    className={`rounded-2xl overflow-hidden border transition ${activeImage === idx ? 'border-primary' : 'border-border hover:border-primary/60'}`}
-                                >
-                                    <img src={img} alt={`${item.title} ${idx + 1}`} className="w-full h-full object-cover aspect-square" />
-                                </button>
-                            ))}
-                        </div>
-                        {videoEmbedUrl && (
-                            <div className="rounded-3xl overflow-hidden border border-border bg-black">
-                                <iframe
-                                    title="Product video"
-                                    src={videoEmbedUrl}
-                                    className="w-full aspect-video"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                />
+
+                        {/* Thumbnail Gallery */}
+                        {media.length > 1 && (
+                            <div className="bg-white dark:bg-dark-surface rounded-xl p-4 border border-border/40 shadow-sm">
+                                <p className="text-xs font-semibold text-text-secondary mb-3 uppercase tracking-wider">Gallery ({media.length})</p>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {media.map((m, index) => (
+                                        <button 
+                                            key={index} 
+                                            onClick={() => setCurrentMediaIndex(index)} 
+                                            className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all duration-300 transform hover:scale-105 ${
+                                                currentMediaIndex === index 
+                                                    ? 'border-primary ring-2 ring-primary/30 shadow-lg scale-105' 
+                                                    : 'border-border/40 hover:border-primary/50 shadow-sm'
+                                            }`}
+                                        >
+                                            {m.type === 'image' ? (
+                                                <img 
+                                                    src={m.url} 
+                                                    alt={`thumbnail ${index}`} 
+                                                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-115"
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-white text-xs">
+                                                    <span>▶</span>
+                                                </div>
+                                            )}
+                                            {currentMediaIndex === index && (
+                                                <div className="absolute inset-0 ring-2 ring-primary pointer-events-none rounded-lg" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    <div>
-                        <div className="bg-surface rounded-3xl border border-border p-8 space-y-6 lg:sticky lg:top-24">
-                            <div className="rounded-2xl border border-border bg-surface-soft/70 p-4 text-xs text-text-secondary">
-                                <p className="font-bold text-text-primary mb-1">Buyer Protection Included</p>
-                                Secure payments, verified sellers, and support if your item arrives damaged or not as described.
+                    {/* Right Column: Product Details & Actions (Desktop: 3 cols) */}
+                    <div className="lg:col-span-3">
+                        {/* Product Title & Price (Desktop) */}
+                        <div className="hidden lg:block mb-8 pb-8 border-b border-border/40">
+                            <h1 className="text-3xl font-bold font-display text-text-primary mb-4">{item.title}</h1>
+                            <div className="flex items-center gap-3 mb-4">
+                                <StarRating rating={item.avgRating} /> 
+                                <span className="text-sm text-text-secondary font-medium">({item.reviews.length} reviews)</span>
+                                {item.isVerified && <span className="bg-blue-100 text-blue-800 text-xs px-2.5 py-1 rounded-full font-bold">VERIFIED</span>}
                             </div>
-                            <div>
-                                <div className="flex items-end gap-3">
-                                    <p className="text-3xl font-bold text-text-primary">
-                                        {formatMoney(displayPrice)}
-                                        {isRentalMode && item.rentalRates?.daily && <span className="text-sm text-text-secondary font-normal"> / day</span>}
-                                        {isAuction && <span className="text-sm text-text-secondary font-normal"> current bid</span>}
-                                    </p>
-                                    {item.compareAtPrice && item.compareAtPrice > displayPrice && (
-                                        <span className="text-sm text-text-secondary line-through">{formatMoney(item.compareAtPrice)}</span>
-                                    )}
+                            <div className="space-y-2">
+                                <div className="flex items-baseline gap-3">
+                                    <span className="text-4xl font-black text-text-primary font-display">{currency.symbol}{mainPrice.toFixed(2)}</span>
+                                    {item.compareAtPrice && <span className="text-lg text-text-secondary line-through">{currency.symbol}{item.compareAtPrice.toFixed(2)}</span>}
                                 </div>
-                                {item.securityDeposit && isRentalMode && (
-                                    <p className="text-xs text-text-secondary mt-2">Security Deposit: {formatMoney(item.securityDeposit)} (refundable)</p>
+                                {item.listingType === 'rent' && <p className="text-sm text-text-secondary font-medium">per day</p>}
+                                <div className={`text-sm font-semibold ${stockStatus.color}`}>{stockStatus.text}</div>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons & Rental Picker */}
+                        <div className="hidden lg:block bg-white dark:bg-dark-surface rounded-2xl p-6 border border-border/40 shadow-lg mb-8 space-y-4">
+                            {/* Rental Date Picker */}
+                            {item.listingType === 'rent' && (
+                                <button 
+                                    onClick={() => setIsCalendarOpen(!isCalendarOpen)} 
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-text-primary rounded-xl font-bold text-sm transition-colors relative"
+                                >
+                                    <CalendarIcon /> 
+                                    {rentalStartDate && rentalEndDate ? `${new Date(rentalStartDate).toLocaleDateString()} to ${new Date(rentalEndDate).toLocaleDateString()}` : "Select Rental Dates"}
+                                </button>
+                            )}
+                            
+                            {/* Primary Action Buttons */}
+                            <div className="grid grid-cols-2 gap-3">
+                                {(item.listingType === 'sale' || item.listingType === 'both') && (
+                                    <>
+                                        <button onClick={handleBuyNow} className="col-span-2 py-3 px-4 bg-secondary text-white font-bold rounded-xl shadow-lg shadow-secondary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                                            <LightningIcon /> Buy Now
+                                        </button>
+                                        <button onClick={handleAddToCart} className="py-3 px-4 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center">
+                                            <CartIcon /> Add
+                                        </button>
+                                    </>
                                 )}
-                                {item.stock <= 5 && item.stock > 0 && (
-                                    <p className="text-xs text-amber-500 mt-2 font-semibold">Low stock: {item.stock} left</p>
+                                
+                                {item.listingType === 'rent' && (
+                                    <button onClick={handleRentNow} className="col-span-2 py-3 px-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                                        <LightningIcon /> Rent Now
+                                    </button>
                                 )}
                             </div>
+                            
+                            {/* Secondary Actions */}
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                                <button onClick={() => setIsContactModalOpen(true)} className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+                                    <MessageCircleIcon /> Message
+                                </button>
+                                <WishlistButton itemId={item.id} className="!relative !top-0 !right-0 !w-full !h-auto !py-2.5 !px-3 !bg-gray-100 !text-text-secondary hover:!bg-red-50 hover:!text-red-500 !border-0 !rounded-lg" />
+                            </div>
+                        </div>
 
-                            {isBoth && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => setPurchaseMode('sale')}
-                                        className={`py-2 rounded-full text-xs uppercase tracking-[0.2em] border ${purchaseMode === 'sale' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary'}`}
-                                    >
-                                        Buy
+                        {/* Mobile Title Block - Shown at top on mobile */}
+                        <div className="lg:hidden mb-6 pb-6 border-b border-border/40">
+                            <h1 className="text-2xl font-bold font-display text-text-primary mb-3">{item.title}</h1>
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className="text-2xl font-black text-primary">{currency.symbol}{mainPrice.toFixed(2)}</span>
+                                {item.compareAtPrice && <span className="text-sm text-text-secondary line-through">{currency.symbol}{item.compareAtPrice.toFixed(2)}</span>}
+                                {stockStatus.text === 'In Stock' && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-2">In Stock</span>}
+                            </div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <StarRating rating={item.avgRating} size="sm" /> 
+                                <span className="text-xs text-text-secondary font-medium">({item.reviews.length})</span>
+                            </div>
+
+                            {/* Mobile Action Buttons */}
+                            <div className="space-y-3">
+                                {(item.listingType === 'sale' || item.listingType === 'both') && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={handleBuyNow} className="col-span-2 py-3 px-4 bg-secondary text-white font-bold rounded-xl shadow-lg shadow-secondary/20 hover:shadow-xl transition-all flex items-center justify-center gap-2">
+                                            <LightningIcon /> Buy Now
+                                        </button>
+                                        <button onClick={handleAddToCart} className="py-3 px-4 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center">
+                                            <CartIcon /> Add Cart
+                                        </button>
+                                        <button onClick={() => setIsContactModalOpen(true)} className="py-3 px-4 bg-gray-100 text-text-primary font-bold rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2 text-sm">
+                                            <MessageCircleIcon /> Message
+                                        </button>
+                                    </div>
+                                )}
+                                
+                                {item.listingType === 'rent' && (
+                                    <button onClick={handleRentNow} className="w-full py-3 px-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                        <LightningIcon /> Rent Now
                                     </button>
-                                    <button
-                                        onClick={() => setPurchaseMode('rent')}
-                                        className={`py-2 rounded-full text-xs uppercase tracking-[0.2em] border ${purchaseMode === 'rent' ? 'border-primary text-primary bg-primary/5' : 'border-border text-text-secondary'}`}
-                                    >
-                                        Rent
-                                    </button>
-                                </div>
-                            )}
-
-                            {isAuction ? (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="rounded-2xl border border-border bg-surface-soft p-4">
-                                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">Current Bid</p>
-                                            <p className="text-2xl font-bold text-text-primary mt-2">{formatMoney(currentBid)}</p>
-                                            <p className="text-xs text-text-secondary mt-1">{auctionDetails?.bidCount || 0} bids</p>
-                                        </div>
-                                        <div className="rounded-2xl border border-border bg-surface-soft p-4">
-                                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">Ends In</p>
-                                            <p className="text-2xl font-bold text-text-primary mt-2">
-                                                {auctionTimeLeft !== null ? (auctionTimeLeft <= 0 ? 'Ended' : formatTimeLeft(auctionTimeLeft)) : '—'}
-                                            </p>
-                                            <p className="text-xs text-text-secondary mt-1">
-                                                {auctionEndsAt ? auctionEndsAt.toLocaleString() : 'Schedule not set'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="rounded-2xl border border-border bg-surface-soft p-4 space-y-2">
-                                        <label className="text-xs uppercase tracking-[0.2em] text-text-secondary">Your Bid</label>
-                                        <input
-                                            type="number"
-                                            min={minBid}
-                                            value={bidAmount}
-                                            onChange={e => setBidAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                                            className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text-primary font-semibold"
-                                        />
-                                        <p className="text-xs text-text-secondary">Minimum bid {formatMoney(minBid)} · Increment {formatMoney(minIncrement)}</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={handlePlaceBid}
-                                            disabled={isPlacingBid || (auctionTimeLeft !== null && auctionTimeLeft <= 0)}
-                                            className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft disabled:opacity-50"
-                                        >
-                                            {isPlacingBid ? <Spinner size="sm" /> : 'Place Bid'}
-                                        </button>
-                                        <button
-                                            onClick={handleBuyNow}
-                                            disabled={!buyNowPrice}
-                                            className="py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40"
-                                        >
-                                            {buyNowPrice ? `Buy Now ${formatMoney(buyNowPrice)}` : 'Buy Now'}
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : isRentalMode ? (
-                                <div className="space-y-4">
-                                    <div className="bg-surface-soft rounded-2xl p-4 border border-border">
-                                        <h3 className="text-sm font-bold uppercase tracking-[0.2em] mb-3">Select Rental Dates</h3>
-                                        <Calendar
-                                            startDate={startDate}
-                                            endDate={endDate}
-                                            setStartDate={setStartDate}
-                                            setEndDate={setEndDate}
-                                            onClose={() => {}}
-                                            bookedDates={item.bookedDates}
-                                            mode="range"
-                                        />
-                                    </div>
-                                    {startDate && endDate && (
-                                        <div className="bg-surface-soft rounded-2xl p-4 border border-border space-y-2 text-sm">
-                                            <div className="flex justify-between">
-                                                <span>{formatMoney(item.rentalRates?.daily || 0)} x {rentalDays} days</span>
-                                                <span>{formatMoney(totalRentalPrice)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Service Fee</span>
-                                                <span>{formatMoney(totalRentalPrice * 0.1)}</span>
-                                            </div>
-                                            <div className="border-t border-border pt-2 flex justify-between font-bold">
-                                                <span>Total</span>
-                                                <span>{formatMoney(totalRentalPrice * 1.1)}</span>
-                                            </div>
-                                            {isAvailable === true && <p className="text-green-500 text-xs font-bold text-center">Available for these dates</p>}
-                                            {isAvailable === false && <p className="text-red-500 text-xs font-bold text-center">Not available for these dates</p>}
-                                        </div>
-                                    )}
-                                    {(!startDate || !endDate) && (
-                                        <div className="grid grid-cols-3 gap-3 text-center text-xs">
-                                            {item.rentalRates?.hourly && (
-                                                <div className="rounded-xl border border-border p-3 bg-surface-soft">
-                                                    <p className="text-text-secondary">Hourly</p>
-                                                    <p className="font-bold">{formatMoney(item.rentalRates.hourly)}</p>
-                                                </div>
-                                            )}
-                                            {item.rentalRates?.daily && (
-                                                <div className="rounded-xl border border-primary p-3 bg-primary/5 text-primary">
-                                                    <p>Daily</p>
-                                                    <p className="font-bold">{formatMoney(item.rentalRates.daily)}</p>
-                                                </div>
-                                            )}
-                                            {item.rentalRates?.weekly && (
-                                                <div className="rounded-xl border border-border p-3 bg-surface-soft">
-                                                    <p className="text-text-secondary">Weekly</p>
-                                                    <p className="font-bold">{formatMoney(item.rentalRates.weekly)}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={handleCheckAvailability}
-                                            disabled={!startDate || !endDate || isCheckingAvailability}
-                                            className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft disabled:opacity-50"
-                                        >
-                                            {isCheckingAvailability ? <Spinner size="sm" /> : 'Check Dates'}
-                                        </button>
-                                        <button
-                                            onClick={handleAddToCart}
-                                            disabled={!startDate || !endDate || isAvailable === false || isOutOfStock}
-                                            className="py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50"
-                                        >
-                                            {isOutOfStock ? 'Unavailable' : 'Rent Now'}
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={handleAddToCart}
-                                            disabled={isOutOfStock}
-                                            className="py-4 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft disabled:opacity-50"
-                                        >
-                                            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
-                                        </button>
-                                        <button
-                                            onClick={handleBuyNow}
-                                            disabled={isOutOfStock}
-                                            className="py-4 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50"
-                                        >
-                                            Buy Now
-                                        </button>
-                                    </div>
-                                    <div className="text-xs text-text-secondary text-center">
-                                        Secure checkout - Buyer protection - 24/7 support
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                                <StatPill label="Condition" value={item.condition || '-'} />
-                                <StatPill label="Stock" value={item.stock?.toString()} />
-                                <StatPill label="Shipping" value={item.whoPaysShipping === 'seller' ? 'Free' : 'Buyer'} />
-                                <StatPill label="Origin" value={item.originCountry || item.supplierInfo?.originCountry || '-'} />
+                                )}
                             </div>
                         </div>
                     </div>
+
                 </div>
 
-                <div className="rounded-3xl border border-border bg-surface p-6">
-                    <div className="flex flex-wrap gap-3">
-                        <TabButton active={activeTab === 'details'} onClick={() => setActiveTab('details')}>Details</TabButton>
-                        <TabButton active={activeTab === 'shipping'} onClick={() => setActiveTab('shipping')}>Shipping</TabButton>
-                        <TabButton active={activeTab === 'seller'} onClick={() => setActiveTab('seller')}>Seller</TabButton>
-                        <TabButton active={activeTab === 'reviews'} onClick={() => setActiveTab('reviews')}>Reviews</TabButton>
-                    </div>
-
-                    {activeTab === 'details' && (
-                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-10 animate-fade-in-up">
-                            <div className="space-y-10">
-                                <div>
-                                    <SectionTitle title="Product Story" subtitle="Every detail, every angle. Know exactly what you are getting." />
-                                    <p className="text-text-secondary leading-relaxed text-base">
-                                        {item.description}
-                                    </p>
-                                </div>
-
-                                {item.features && item.features.length > 0 && (
-                                    <div>
-                                        <SectionTitle title="Highlights" />
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {item.features.filter(Boolean).map((feature, idx) => (
-                                                <div key={`${feature}-${idx}`} className="p-4 rounded-2xl border border-border bg-surface">
-                                                    <p className="text-sm font-semibold text-text-primary">{feature}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {item.specifications && item.specifications.length > 0 && (
-                                    <div>
-                                        <SectionTitle title="Specifications" />
-                                        <div className="rounded-2xl border border-border bg-surface p-6 space-y-3">
-                                            {item.specifications.map((spec, idx) => (
-                                                <InfoRow key={`${spec.key}-${idx}`} label={spec.key} value={spec.value} />
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {(item.materials?.length || item.careInstructions?.length || item.packageContents?.length) && (
-                                    <div>
-                                        <SectionTitle title="Materials and Care" />
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            {item.materials && item.materials.length > 0 && (
-                                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                                    <p className="text-xs uppercase tracking-[0.2em] text-text-secondary mb-3">Materials</p>
-                                                    <ul className="space-y-2 text-sm text-text-primary">
-                                                        {item.materials.map((mat, idx) => (
-                                                            <li key={`${mat.name}-${idx}`}>{mat.name}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-                                            {item.careInstructions && item.careInstructions.length > 0 && (
-                                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                                    <p className="text-xs uppercase tracking-[0.2em] text-text-secondary mb-3">Care</p>
-                                                    <ul className="space-y-2 text-sm text-text-primary">
-                                                        {item.careInstructions.map((care, idx) => (
-                                                            <li key={`${care}-${idx}`}>{care}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-                                            {item.packageContents && item.packageContents.length > 0 && (
-                                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                                    <p className="text-xs uppercase tracking-[0.2em] text-text-secondary mb-3">In the Box</p>
-                                                    <ul className="space-y-2 text-sm text-text-primary">
-                                                        {item.packageContents.map((content, idx) => (
-                                                            <li key={`${content}-${idx}`}>{content}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="space-y-8">
-                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                    <SectionTitle title="Sizing & Build" />
-                                    <div className="space-y-3">
-                                        <InfoRow label="Weight" value={item.weightLbs ? `${item.weightLbs} lbs` : undefined} />
-                                        <InfoRow
-                                            label="Dimensions"
-                                            value={item.dimensionsIn ? `${item.dimensionsIn.l} x ${item.dimensionsIn.w} x ${item.dimensionsIn.h} in` : undefined}
-                                        />
-                                        <InfoRow label="Origin City" value={item.originCity} />
-                                        <InfoRow label="Origin Country" value={item.originCountry || item.supplierInfo?.originCountry} />
-                                    </div>
-                                </div>
-                                {item.certifications && item.certifications.length > 0 && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Certifications" />
-                                        <div className="flex flex-wrap gap-2">
-                                            {item.certifications.map((cert, idx) => (
-                                                <span key={`${cert}-${idx}`} className="px-3 py-1 rounded-full bg-surface-soft border border-border text-xs text-text-secondary">
-                                                    {cert}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                {item.affiliateEligibility?.enabled && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Affiliate Program" subtitle="Creators can earn commission for sales." />
-                                        <div className="space-y-3">
-                                            <InfoRow label="Commission" value={item.affiliateEligibility.commissionRate ? `${item.affiliateEligibility.commissionRate}%` : undefined} />
-                                            <InfoRow label="Cookie Window" value={item.affiliateEligibility.cookieWindowDays ? `${item.affiliateEligibility.cookieWindowDays} days` : undefined} />
-                                            <InfoRow label="Creators" value={item.affiliateEligibility.approvedCreatorsOnly ? 'Approved only' : 'Open to all'} />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'shipping' && (
-                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 animate-fade-in-up">
-                            <div className="space-y-8">
-                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                    <SectionTitle title="Shipping and Returns" subtitle="Clear delivery expectations with protection." />
-                                    <div className="space-y-3">
-                                        <InfoRow
-                                            label="Estimated Delivery"
-                                            value={shippingEstimate ? `${shippingEstimate.minDays}-${shippingEstimate.maxDays} days` : item.shippingDetails?.shippingOptions?.[0]?.description}
-                                        />
-                                        <InfoRow label="Shipping Cost" value={item.whoPaysShipping === 'seller' ? 'Free Shipping' : 'Calculated at checkout'} />
-                                        <InfoRow label="Return Window" value={returnPolicy ? `${returnPolicy.windowDays} days` : 'Check seller policy'} />
-                                        <InfoRow label="Warranty" value={warranty?.coverage} />
-                                    </div>
-                                </div>
-                                {item.shippingEstimates && item.shippingEstimates.length > 0 && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Delivery Options" />
-                                        <div className="space-y-4">
-                                            {item.shippingEstimates.map((estimate, idx) => (
-                                                <div key={`${estimate.minDays}-${estimate.maxDays}-${idx}`} className="flex items-center justify-between text-sm border-b border-border/60 pb-3">
-                                                    <div>
-                                                        <p className="font-semibold">{estimate.serviceLevel || estimate.carrier || 'Standard'}</p>
-                                                        <p className="text-text-secondary text-xs">{estimate.minDays}-{estimate.maxDays} days</p>
-                                                    </div>
-                                                    <span className="text-text-primary">{estimate.cost ? formatMoney(estimate.cost) : 'Included'}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="space-y-8">
-                                {returnPolicy && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Return Policy" />
-                                        <div className="space-y-3 text-sm">
-                                            <InfoRow label="Window" value={`${returnPolicy.windowDays} days`} />
-                                            <InfoRow label="Restocking Fee" value={returnPolicy.restockingFeePercent ? `${returnPolicy.restockingFeePercent}%` : 'None'} />
-                                            <InfoRow label="Return Shipping" value={returnPolicy.returnShippingPaidBy || 'Seller policy'} />
-                                            {returnPolicy.conditions && returnPolicy.conditions.length > 0 && (
-                                                <div className="pt-3 text-text-secondary">
-                                                    {returnPolicy.conditions.map((condition, idx) => (
-                                                        <div key={`${condition}-${idx}`} className="flex items-start gap-2">
-                                                            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-primary/70"></span>
-                                                            <span>{condition}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                {warranty && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Warranty Coverage" />
-                                        <div className="space-y-3">
-                                            <InfoRow label="Coverage" value={warranty.coverage} />
-                                            <InfoRow label="Duration" value={warranty.durationMonths ? `${warranty.durationMonths} months` : undefined} />
-                                            <InfoRow label="Provider" value={warranty.provider || 'Seller'} />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'seller' && (
-                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 animate-fade-in-up">
-                            <div className="rounded-2xl border border-border bg-surface p-6">
-                                <SectionTitle title="Seller and Trust" />
-                                <div className="flex items-center gap-4">
-                                    <img src={ownerAvatar} alt={item.owner.name} className="w-12 h-12 rounded-full object-cover" />
-                                    <div>
-                                        <p className="font-bold text-text-primary">{item.owner.businessName || item.owner.name}</p>
-                                        <Link to={`/user/${item.owner.id}`} className="text-xs text-primary font-semibold">View profile</Link>
-                                    </div>
-                                </div>
-                                <div className="mt-6 space-y-3">
-                                    <InfoRow label="Verified Seller" value={item.isVerified ? 'Yes' : 'No'} />
-                                    <InfoRow label="Average Rating" value={item.avgRating ? item.avgRating.toFixed(1) : '-'} />
-                                    <InfoRow label="Reviews" value={item.reviews?.length || 0} />
-                                    <InfoRow label="Fulfillment" value={item.fulfillmentType?.replace('_', ' ') || 'In-house'} />
-                                </div>
-                            </div>
-                            <div className="space-y-8">
-                                {item.productType === 'dropship' && (
-                                    <div className="rounded-2xl border border-border bg-surface p-6">
-                                        <SectionTitle title="Dropship Fulfillment" subtitle="Global supply chain details." />
-                                        <div className="space-y-3">
-                                            <InfoRow label="Supplier" value={item.supplierInfo?.name} />
-                                            <InfoRow label="Processing Time" value={item.supplierInfo?.processingTimeDays ? `${item.supplierInfo.processingTimeDays} days` : undefined} />
-                                            <InfoRow label="Origin" value={item.originCountry || item.supplierInfo?.originCountry} />
-                                            <InfoRow label="Compliance" value={item.supplierInfo?.compliance?.certifications?.join(', ')} />
-                                            <InfoRow label="Return Policy" value={item.supplierInfo?.returnPolicy?.windowDays ? `${item.supplierInfo.returnPolicy.windowDays} days` : undefined} />
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="rounded-2xl border border-border bg-surface p-6">
-                                    <SectionTitle title="Support" />
-                                    <div className="space-y-3 text-sm text-text-secondary">
-                                        <p>Message the seller any time for sizing help, custom requests, or shipping updates.</p>
-                                        <p>Urban Prime monitors response time and dispute resolution for premium service.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'reviews' && (
-                        <div className="mt-10 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 animate-fade-in-up">
-                            <div className="rounded-2xl border border-border bg-surface p-6">
-                                <SectionTitle title="Customer Reviews" subtitle="Real experiences from verified community members." />
-                                <div className="flex items-center gap-4">
-                                    <div className="text-4xl font-bold">{(item.avgRating || 0).toFixed(1)}</div>
-                                    <div>
-                                        <StarRating rating={item.avgRating || 0} size="md" />
-                                        <p className="text-xs text-text-secondary mt-1">{item.reviews?.length || 0} total reviews</p>
-                                    </div>
-                                </div>
-                                <div className="mt-6 space-y-3 max-h-80 overflow-y-auto pr-2">
-                                    {item.reviews && item.reviews.length > 0 ? (
-                                        item.reviews.slice(0, 8).map(review => (
-                                            <ReviewCard key={review.id} review={review} />
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-text-secondary">No reviews yet. Be the first to share your thoughts.</p>
-                                    )}
-                                </div>
-                            </div>
-                            <ReviewSystem onSubmit={handleSubmitReview} />
-                        </div>
-                    )}
-                </div>
-
-                {relatedItems.length > 0 && (
-                    <div className="mt-16">
-                        <SectionTitle title="Related Items" subtitle="More pieces curated just for you." />
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {relatedItems.map(related => (
-                                <ItemCard key={related.id} item={related} onQuickView={() => {}} />
-                            ))}
-                        </div>
+                {/* Calendar Dropdown (desktop only) */}
+                {isCalendarOpen && (
+                    <div className="fixed lg:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 bg-white dark:bg-dark-surface shadow-2xl rounded-xl border border-border p-4 animate-fade-in-up">
+                        <Calendar 
+                            startDate={rentalStartDate} 
+                            endDate={rentalEndDate} 
+                            setStartDate={setRentalStartDate} 
+                            setEndDate={setRentalEndDate} 
+                            onClose={() => setIsCalendarOpen(false)} 
+                            bookedDates={item.bookedDates}
+                        />
                     </div>
                 )}
-            </div>
+
+
+                {/* Description */}
+                <Section className="mb-12">
+                    <h2 className="text-2xl font-bold font-display mb-6 text-text-primary flex items-center gap-2"><LightningIcon/> Highlights</h2>
+                    <div className="prose prose-lg text-text-secondary leading-relaxed max-w-none font-medium">
+                        {item.description.split('\n').map((paragraph, idx) => (
+                            <p key={idx} className="mb-4">{paragraph}</p>
+                        ))}
+                    </div>
+                </Section>
+                
+                {/* Variants */}
+                {(variants?.color || variants?.size) && (
+                    <Section className="mb-12">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 bg-surface-soft rounded-2xl border border-border">
+                            {variants?.color && (
+                                <div>
+                                    <h3 className="font-bold mb-3 text-sm uppercase tracking-wider text-text-secondary">Color: <span className="text-text-primary">{selectedColor}</span></h3>
+                                    <div className="flex flex-wrap gap-3">
+                                        {variants.color.map((color: any) => (
+                                            <button key={color.name} onClick={() => setSelectedColor(color.name)} title={color.name} style={{ backgroundColor: color.hex }} className={`w-10 h-10 rounded-full shadow-sm ring-offset-2 ring-offset-surface transition-all ${selectedColor === color.name ? 'ring-2 ring-primary scale-110' : 'hover:scale-105'}`}></button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {variants?.size && (
+                                <div>
+                                    <h3 className="font-bold mb-3 text-sm uppercase tracking-wider text-text-secondary">Size: <span className="text-text-primary">{selectedSize}</span></h3>
+                                    <div className="flex flex-wrap gap-3">
+                                        {variants.size.map((size: any) => (
+                                            <button key={size.name} onClick={() => setSelectedSize(size.name)} className={`px-4 py-2 text-sm font-semibold border rounded-lg transition-all ${selectedSize === size.name ? 'border-primary bg-primary text-white shadow-md' : 'border-border bg-white hover:border-gray-400 text-text-primary'}`}>{size.name}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </Section>
+                )}
+
+                {/* Specifications */}
+                <Section className="mb-12">
+                    <h3 className="text-2xl font-bold font-display mb-6 text-text-primary">Specifications</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-12 bg-surface p-6 rounded-2xl border border-border/60 shadow-sm">
+                        {item.specifications?.map(spec => (
+                            <div key={spec.key} className="flex justify-between py-3 border-b border-border/40 last:border-0">
+                                <span className="text-text-secondary font-medium">{spec.key}</span>
+                                <span className="font-bold text-text-primary">{spec.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                {/* Package Contents */}
+                {packageContents.length > 0 && (
+                    <Section className="mb-12">
+                        <div className="bg-surface-soft p-8 rounded-2xl border border-border flex items-start gap-6">
+                            <div className="p-4 bg-white rounded-full shadow-sm text-primary"><PackageIcon /></div>
+                            <div>
+                                <h3 className="text-xl font-bold font-display mb-3 text-text-primary">What's in the Box?</h3>
+                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {packageContents.map((content, i) => (
+                                        <li key={i} className="flex items-center gap-2 text-text-secondary font-medium">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span> {content}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </Section>
+                )}
+                
+                {/* Media Gallery Grid */}
+                {media.length > 1 && (
+                    <Section className="mb-16">
+                        <h3 className="text-2xl font-bold font-display mb-8 text-text-primary flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V2.25a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 2.25v16.5a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                            Gallery
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4">
+                            {media.map((m, index) => (
+                                <button 
+                                    key={index} 
+                                    onClick={() => setCurrentMediaIndex(index)} 
+                                    className={`relative aspect-square rounded-lg md:rounded-xl overflow-hidden border-2 transition-all duration-300 group transform hover:scale-105 ${
+                                        currentMediaIndex === index 
+                                            ? 'border-primary ring-2 ring-primary/30 shadow-lg scale-105' 
+                                            : 'border-border/40 hover:border-primary/50 shadow-md'
+                                    }`}
+                                >
+                                    {m.type === 'image' ? ( 
+                                        <img 
+                                            src={m.url} 
+                                            alt={`thumbnail ${index}`} 
+                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-115"
+                                            loading="lazy"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 opacity-80"><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" /></svg>
+                                        </div>
+                                    )}
+                                    {m.type === 'video' && (
+                                        <div className="absolute inset-0 border-2 border-white/30 rounded-lg md:rounded-xl pointer-events-none" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </Section>
+                )}
+
+                {/* Reviews */}
+                <Section className="mb-12">
+                    <h2 className="text-2xl font-bold font-display mb-8 text-text-primary">Reviews & Ratings</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                        <div className="bg-surface-soft p-6 rounded-2xl text-center border border-border flex flex-col justify-center items-center shadow-inner">
+                            <p className="text-6xl font-black text-text-primary mb-2">{item.avgRating.toFixed(1)}</p>
+                            <StarRating rating={item.avgRating} className="justify-center mb-2" />
+                            <p className="text-sm font-semibold text-text-secondary">{item.reviews.length} Verified Reviews</p>
+                        </div>
+                        <div className="md:col-span-2 space-y-4">
+                            {item.reviews.length > 0 ? (item.reviews.slice(0, 3).map(review => <ReviewCard key={review.id} review={review} />)) : <p className="text-center text-text-secondary pt-8 italic">No reviews yet. Be the first!</p>}
+                        </div>
+                        </div>
+                        <ReviewForm itemId={item.id} onReviewSubmit={handleActionWithUpdatedItem} />
+                </Section>
+                
+                {/* Q&A */}
+                <Section className="mb-12">
+                    <h2 className="text-2xl font-bold font-display mb-6 text-text-primary">Questions & Answers</h2>
+                    <div className="space-y-4">
+                        {item.questions && item.questions.length > 0 ? (
+                            item.questions.map(q => <QuestionCard key={q.id} question={q} itemId={item.id} sellerName={item.owner.name} />)
+                        ) : <p className="text-left text-text-secondary italic">No questions have been asked yet.</p>}
+                    </div>
+                </Section>
+
+                {/* Seller Profile Card - Moved to Bottom */}
+                <Section className="mt-20 pt-16 border-t border-border/50">
+                     <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-3xl p-8 md:p-12 text-white shadow-2xl relative overflow-hidden transform transition-transform hover:scale-[1.01]">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                        
+                        <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
+                            <Link to={`/user/${item.owner.id}`} className="group relative flex-shrink-0">
+                                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-1 bg-gradient-to-br from-primary to-secondary shadow-lg">
+                                    <img src={item.owner.avatar} alt={item.owner.name} className="w-full h-full rounded-full object-cover border-4 border-gray-900" />
+                                </div>
+                                {sellerProfile.verificationLevel === 'level2' && (
+                                    <div className="absolute bottom-1 right-1 bg-blue-500 text-white p-1.5 rounded-full border-4 border-gray-900 shadow-sm" title="Verified Seller">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z" clipRule="evenodd" /></svg>
+                                    </div>
+                                )}
+                            </Link>
+                            
+                            <div className="flex-1 text-center md:text-left">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Sold By</p>
+                                <h3 className="text-3xl font-bold font-display mb-2">{sellerProfile.name}</h3>
+                                <div className="flex items-center justify-center md:justify-start gap-4 mb-4 text-gray-300">
+                                    <div className="flex items-center gap-1"><span className="text-yellow-400">★</span> <span className="font-bold text-white">{sellerRating.toFixed(1)}</span> rating</div>
+                                    <span>•</span>
+                                    <span>Member since {new Date(sellerProfile.memberSince).getFullYear()}</span>
+                                </div>
+                                <p className="text-gray-400 max-w-xl mx-auto md:mx-0 leading-relaxed">{sellerProfile.about || "This seller hasn't written a bio yet, but they have great items!"}</p>
+                            </div>
+                            
+                            <div className="flex flex-col gap-3 min-w-[200px]">
+                                <button 
+                                    onClick={() => setIsContactModalOpen(true)}
+                                    className="w-full py-3 px-6 bg-white text-gray-900 font-bold rounded-xl hover:bg-gray-100 transition-colors shadow-lg"
+                                >
+                                    Contact Seller
+                                </button>
+                                <Link 
+                                    to={`/user/${item.owner.id}`}
+                                    className="w-full py-3 px-6 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-colors border border-white/20 text-center"
+                                >
+                                    View Profile
+                                </Link>
+                            </div>
+                        </div>
+                     </div>
+                </Section>
+
+
+                {/* Related Items */}
+                {relatedItems.length > 0 && (
+                     <Section className="mt-20">
+                        <h2 className="text-3xl font-bold font-display text-center mb-12 text-text-primary">Explore Similar Products</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                            {relatedItems.map(relItem => (
+                                <ItemCard key={relItem.id} item={relItem} onQuickView={() => {}} />
+                            ))}
+                        </div>
+                         <div className="text-center mt-12">
+                             <Link to={`/browse?category=${item.category}`} className="inline-block px-8 py-3 border-2 border-text-primary font-bold rounded-full hover:bg-text-primary hover:text-surface transition-colors uppercase tracking-wider text-sm">
+                                View All Similar Items
+                            </Link>
+                        </div>
+                    </Section>
+                )}
+            </main>
         </div>
     );
 };

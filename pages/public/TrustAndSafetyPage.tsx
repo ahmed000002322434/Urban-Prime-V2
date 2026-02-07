@@ -2,10 +2,11 @@
 import React from 'react';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { Link } from 'react-router-dom';
+import IconBadge from '../../components/IconBadge';
 
 const TrustPoint: React.FC<{ icon: string; title: string; description: string }> = ({ icon, title, description }) => (
     <div className="flex gap-4 items-start">
-        <div className="text-3xl flex-shrink-0 bg-primary/10 p-3 rounded-lg">{icon}</div>
+        <IconBadge icon={icon} size="sm" className="bg-primary/10 border-primary/10" />
         <div>
             <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text mb-2">{title}</h3>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{description}</p>

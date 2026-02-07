@@ -42,6 +42,9 @@ const CheckoutPage: React.FC = () => {
     const [deliveryNote, setDeliveryNote] = useState('');
     const [giftWrap, setGiftWrap] = useState(false);
     const [contactless, setContactless] = useState(false);
+    const isAddressReady = !!selectedAddress;
+    const isPaymentReady = !!paymentMethodId || (isAddingCard && !!newCard.number && !!newCard.expiry && !!newCard.cvc && !!newCard.name);
+    const isReviewReady = isAddressReady && isPaymentReady;
 
     const getItemImage = (item: any) => {
         if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
@@ -157,6 +160,22 @@ const CheckoutPage: React.FC = () => {
                 <div className="mb-6 flex items-center gap-4">
                     <BackButton to="/cart" alwaysShowText />
                     <h1 className="text-3xl font-bold font-display text-text-primary">Checkout</h1>
+                </div>
+                <div className="mb-8 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    {[
+                        { label: 'Address', complete: isAddressReady },
+                        { label: 'Delivery', complete: cartGroups.length > 0 },
+                        { label: 'Payment', complete: isPaymentReady },
+                        { label: 'Review', complete: isReviewReady }
+                    ].map((step, idx) => (
+                        <div
+                            key={step.label}
+                            className={`px-3 py-2 rounded-full border uppercase tracking-[0.2em] font-semibold flex items-center gap-2 justify-center ${step.complete ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary'}`}
+                        >
+                            <span className="text-[10px]">{idx + 1}</span>
+                            <span className="text-[10px]">{step.label}</span>
+                        </div>
+                    ))}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -331,6 +350,11 @@ const CheckoutPage: React.FC = () => {
 
                     {/* RIGHT COLUMN: Order Summary */}
                     <div className="lg:col-span-1">
+                        {!isReviewReady && (
+                            <div className="mb-4 rounded-xl border border-border bg-surface p-4 text-xs text-text-secondary">
+                                Complete your address and payment details to place the order.
+                            </div>
+                        )}
                         <OrderSummaryCard 
                             isCheckout={true} 
                             onCheckout={handlePlaceOrder} 

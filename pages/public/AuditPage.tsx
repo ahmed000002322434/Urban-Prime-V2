@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useSpring } from 'framer-motion';
 import BackButton from '../../components/BackButton';
+import IconBadge from '../../components/IconBadge';
 
 // --- Custom Animated Logo ---
 const ShieldScanLogo = () => {
@@ -73,7 +74,7 @@ const DeepDiveSection: React.FC<{ title: string; description: string; features: 
 
 const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
     <div className="p-6 bg-[#0B1120] border border-cyan-900/30 rounded-2xl hover:bg-[#0F172A] hover:border-cyan-500/30 transition-all duration-300 group">
-        <div className="text-3xl mb-4 group-hover:scale-110 transition-transform duration-300">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 group-hover:scale-110 transition-transform duration-300" />
         <h3 className="text-lg font-bold text-slate-200 mb-2 group-hover:text-cyan-400 transition-colors">{title}</h3>
         <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
     </div>

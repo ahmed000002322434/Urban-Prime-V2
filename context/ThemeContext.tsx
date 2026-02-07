@@ -5,7 +5,7 @@ import React, { createContext, useState, useEffect, useMemo, useCallback } from 
 import { useAuth } from '../hooks/useAuth';
 import { userService } from '../services/itemService';
 
-export type Theme = 'light' | 'navy' | 'earth' | 'emerald' | 'obsidian' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
+export type Theme = 'light' | 'navy' | 'earth' | 'emerald' | 'obsidian' | 'noir' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
 type ResolvedTheme = Exclude<Theme, 'system'>;
 
 export interface ThemeDefinition {
@@ -25,6 +25,7 @@ export const THEMES: ThemeDefinition[] = [
   { name: 'light', label: 'Default Light', colors: { primary: '#0fb9b1', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
   { name: 'navy', label: 'Navy', colors: { primary: '#3b82f6', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
   { name: 'obsidian', label: 'Obsidian', colors: { primary: '#ffffff', background: '#000000', surface: '#111111' }, isDark: true },
+  { name: 'noir', label: 'Noir', colors: { primary: '#e7e1d6', background: '#0b0b0c', surface: 'rgba(18, 18, 20, 0.7)' }, isDark: true },
   { name: 'sandstone', label: 'Liquid Sandstone', colors: { primary: '#4E342E', background: '#dcbfa6', surface: 'rgba(230, 220, 200, 0.25)' }, isDark: false },
   { name: 'icy', label: 'Arctic Ice', colors: { primary: '#0077B6', background: '#CAF0F8', surface: 'rgba(225, 245, 255, 0.4)' }, isDark: false },
   { name: 'hydra', label: 'Hydra', colors: { primary: '#00E5FF', background: '#001020', surface: 'rgba(0, 20, 40, 0.6)' }, isDark: true },
@@ -48,7 +49,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<Theme>('system');
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>('light');
 
-  const LEGACY_THEMES = ['mono-dark', 'elite'] as const;
+  const LEGACY_THEMES = ['mono-dark', 'elite', 'best'] as const;
   const THEME_CLASSNAMES = [
     'system',
     'light',
@@ -56,6 +57,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     'earth',
     'emerald',
     'obsidian',
+    'noir',
+    'best',
     'sandstone',
     'icy',
     'hydra',
@@ -70,6 +73,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const normalizeTheme = (value?: string | null): Theme => {
     if (!value) return 'system';
+    if (value === 'best') return 'noir';
     if (LEGACY_THEMES.includes(value as any)) return 'obsidian';
     if (THEMES.some(t => t.name === value)) return value as Theme;
     return 'system';

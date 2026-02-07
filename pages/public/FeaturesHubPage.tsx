@@ -1,10 +1,11 @@
 
 import React from 'react';
 import BackButton from '../../components/BackButton';
+import IconBadge from '../../components/IconBadge';
 
 const FeatureCard: React.FC<{ title: string; icon: string; desc: string }> = ({ title, icon, desc }) => (
     <div className="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-cyan-500 transition-colors group">
-        <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 border-gray-700 bg-black/40 group-hover:scale-110 transition-transform" />
         <h3 className="text-2xl font-bold text-white mb-2">{title}</h3>
         <p className="text-gray-400 leading-relaxed">{desc}</p>
     </div>

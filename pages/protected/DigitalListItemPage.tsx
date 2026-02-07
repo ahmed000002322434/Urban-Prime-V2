@@ -39,19 +39,31 @@ const DigitalListItemPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [mockupPrompt, setMockupPrompt] = useState('');
     const [isGeneratingMockups, setIsGeneratingMockups] = useState(false);
+    const withTimeout = <T,>(promise: Promise<T>, ms = 15000) =>
+        Promise.race([
+            promise,
+            new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out. Check your connection.')), ms))
+        ]);
     
     const digitalCategories = categories.find(c => c.id === 'digital-products')?.subcategories || [];
 
     const handlePublish = async (status: 'published' | 'draft') => {
-        if (!user) return;
+        if (isLoading) return;
+        if (!user) {
+            showNotification("Please sign in to save or publish your listing.");
+            navigate('/login');
+            return;
+        }
         const finalData: Partial<Item> = { ...formData, status };
         setIsLoading(true);
         try {
-            const newItem = await itemService.addItem(finalData, user);
+            const newItem = await withTimeout(itemService.addItem(finalData, user));
             showNotification(status === 'published' ? "Digital product published!" : "Saved to drafts!");
             navigate(status === 'published' ? `/item/${newItem.id}` : '/profile/products');
         } catch (e) {
-            showNotification("Failed to save product.");
+            console.error('Failed to save product:', e);
+            const message = e instanceof Error ? e.message : 'Unknown error';
+            showNotification(`Failed to save product. ${message}`);
         } finally {
             setIsLoading(false);
         }
@@ -104,8 +116,13 @@ const DigitalListItemPage: React.FC = () => {
              <div className="flex justify-between items-center">
                  <h1 className="text-2xl font-bold font-display">List a Digital Product</h1>
                 <div className="flex gap-2">
-                    <button onClick={() => handlePublish('draft')} className="px-4 py-2 text-sm bg-gray-200 font-semibold rounded-md">Save as Draft</button>
-                    <button onClick={() => handlePublish('published')} className="px-4 py-2 text-sm bg-primary text-white font-bold rounded-md">Publish Product</button>
+                    <button type="button" onClick={() => handlePublish('draft')} disabled={isLoading} className="px-4 py-2 text-sm bg-gray-200 font-semibold rounded-md disabled:opacity-60 disabled:cursor-not-allowed">
+                        {isLoading ? 'Saving...' : 'Save as Draft'}
+                    </button>
+                    <button type="button" onClick={() => handlePublish('published')} disabled={isLoading} className="px-4 py-2 text-sm bg-primary text-white font-bold rounded-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2">
+                        {isLoading ? <Spinner size="sm" /> : null}
+                        {isLoading ? 'Publishing...' : 'Publish Product'}
+                    </button>
                 </div>
             </div>
             

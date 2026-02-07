@@ -3,7 +3,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/icons/urbanprime.svg" />
+    <link rel="apple-touch-icon" href="/icons/urbanprime.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Urban Prime - Global Marketplace</title>
     
@@ -461,10 +462,101 @@
         background-image: none; 
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); 
+        color: #f5f5f5 !important;
+      }
+      html.theme-obsidian .text-gray-900,
+      html.theme-obsidian .text-gray-800,
+      html.theme-obsidian .text-gray-700,
+      html.theme-obsidian .text-gray-600,
+      html.theme-obsidian .text-black {
+        color: #f5f5f5 !important;
+      }
+      html.theme-obsidian .text-gray-500,
+      html.theme-obsidian .text-gray-400 {
+        color: #a1a1aa !important;
       }
       html.theme-obsidian .bg-background,
       html.theme-obsidian .dark\:bg-dark-background {
           background-color: transparent !important;
+      }
+
+      /* BEST THEME - NOIR GRAIN, SOFT GLOW */
+      html.theme-noir {
+        --color-primary: #e7e1d6;
+        --color-secondary: #8f8b83;
+        --color-background: transparent;
+        --color-surface: rgba(18, 18, 20, 0.7);
+        --color-surface-soft: rgba(26, 26, 30, 0.55);
+        --color-border: rgba(255, 255, 255, 0.08);
+        --color-text-primary: #f1ebe0;
+        --color-text-secondary: #b9b2a7;
+        --scrollbar-track: #0b0b0c;
+        --scrollbar-thumb: #2b2b2f;
+        --scrollbar-thumb-hover: #3a3a40;
+        --color-primary-text: #0b0b0c;
+        --color-toggle-knob: #f1ebe0;
+        --color-footer-background: rgba(6, 6, 7, 0.9);
+        --color-footer-text: #f1ebe0;
+        --color-footer-text-secondary: #a09a90;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      html.theme-noir body {
+        background-color: #0b0b0c;
+          background-image:
+            radial-gradient(900px 500px at 50% 0%, rgba(255, 255, 255, 0.08), transparent 70%),
+            radial-gradient(600px 300px at 80% 15%, rgba(255, 255, 255, 0.05), transparent 70%),
+            radial-gradient(1200px 700px at 50% 100%, rgba(0, 0, 0, 0.35), transparent 70%),
+            url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.18'/%3E%3C/svg%3E");
+        background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+        background-size: 100% 100%, 100% 100%, 100% 100%, 140px 140px;
+        background-position: center top, right top, center bottom, center;
+        background-attachment: fixed;
+      }
+      html.theme-noir .bg-surface,
+      html.theme-noir .bg-white,
+      html.theme-noir .bg-gray-50,
+      html.theme-noir .bg-gray-100,
+      html.theme-noir .glass-panel,
+      html.theme-noir .dark\:bg-dark-surface {
+        background: linear-gradient(145deg, rgba(22, 22, 26, 0.75), rgba(12, 12, 14, 0.55)) !important;
+        backdrop-filter: blur(24px) saturate(120%) !important;
+        -webkit-backdrop-filter: blur(24px) saturate(120%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.8) !important;
+        color: #f1ebe0 !important;
+      }
+      html.theme-noir .text-gray-900,
+      html.theme-noir .text-gray-800,
+      html.theme-noir .text-gray-700,
+      html.theme-noir .text-gray-600 {
+        color: #f1ebe0 !important;
+      }
+      html.theme-noir .text-gray-500,
+      html.theme-noir .text-gray-400 {
+        color: #b9b2a7 !important;
+      }
+      html.theme-noir .text-black {
+        color: #f1ebe0 !important;
+      }
+      html.theme-noir input,
+      html.theme-noir select,
+      html.theme-noir textarea {
+        background-color: rgba(16, 16, 18, 0.6) !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+        color: #f1ebe0 !important;
+        backdrop-filter: blur(12px);
+      }
+      html.theme-noir .bg-primary,
+      html.theme-noir .bg-black {
+        background: linear-gradient(to right, #e7e1d6, #bfb8ad) !important;
+        color: #0b0b0c !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45) !important;
+      }
+      html.theme-noir .bg-background,
+      html.theme-noir .dark\:bg-dark-background {
+        background-color: transparent !important;
       }
 
       /* Elite Theme - Updated Footer Transparency */

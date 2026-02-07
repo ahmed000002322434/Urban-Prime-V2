@@ -2,6 +2,7 @@
 import React from 'react';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { Link } from 'react-router-dom';
+import IconBadge from '../../components/IconBadge';
 
 const HowItWorksPage: React.FC = () => {
     const heroRef = useScrollReveal<HTMLDivElement>();
@@ -59,7 +60,7 @@ const HowItWorksPage: React.FC = () => {
 
 const StepCard: React.FC<{ icon: string; title: string; description: string }> = ({ icon, title, description }) => (
     <div className="flex flex-col items-center">
-        <div className="text-5xl mb-4">{icon}</div>
+        <IconBadge icon={icon} size="lg" className="mb-4" />
         <h3 className="text-lg font-bold text-text-primary mb-2">{title}</h3>
         <p className="text-sm text-text-secondary">{description}</p>
     </div>
@@ -67,7 +68,7 @@ const StepCard: React.FC<{ icon: string; title: string; description: string }> =
 
 const DifferenceCard: React.FC<{ icon: string; title: string; description: string; }> = ({ icon, title, description }) => (
     <div className="bg-surface dark:bg-dark-surface/80 p-6 rounded-xl shadow-soft border border-border">
-        <div className="text-4xl mb-4">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4" />
         <h3 className="text-lg font-bold text-text-primary mb-2">{title}</h3>
         <p className="text-sm text-text-secondary">{description}</p>
     </div>

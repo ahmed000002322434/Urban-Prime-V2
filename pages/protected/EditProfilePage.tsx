@@ -38,9 +38,14 @@ const EditProfilePage: React.FC = () => {
         name: user?.name || '',
         dob: user?.dob || '',
         gender: user?.gender || 'prefer_not_to_say',
-        about: user?.about || user?.businessDescription || '',
+        about: user?.about || '',
+        businessName: user?.businessName || '',
+        businessDescription: user?.businessDescription || '',
         phone: user?.phone || '',
         email: user?.email || '',
+        avatar: user?.avatar || '',
+        city: user?.city || '',
+        country: user?.country || ''
     });
 
     // Store Settings Data
@@ -114,11 +119,23 @@ const EditProfilePage: React.FC = () => {
         }
     };
 
+    const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setFormData(prev => ({ ...prev, avatar: ev.target?.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     const handleSave = async () => {
         setIsLoading(true);
         try {
             // Update User Profile
-            await userService.updateUserProfile(user.id, formData);
+            const { email, ...profileUpdates } = formData;
+            await userService.updateUserProfile(user.id, profileUpdates);
 
             // Update Store Settings if user has a store
             if (storefront) {
@@ -157,9 +174,12 @@ const EditProfilePage: React.FC = () => {
             {/* Profile Section */}
             <FormCard title="Profile Photo">
                 <div className="flex items-center gap-6">
-                    <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover" />
+                    <img src={formData.avatar || user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover" />
                     <div>
-                        <button className="px-4 py-2 bg-text-primary text-background font-semibold rounded-md text-sm">Upload Photo</button>
+                        <label className="px-4 py-2 bg-text-primary text-background font-semibold rounded-md text-sm cursor-pointer inline-block">
+                            Upload Photo
+                            <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                        </label>
                         <p className="text-xs text-text-secondary mt-2">JPG, JPEG, PNG Min: 400px, Max: 1024px</p>
                     </div>
                 </div>
@@ -182,9 +202,22 @@ const EditProfilePage: React.FC = () => {
                             <option value="prefer_not_to_say">Prefer not to say</option>
                        </select>
                     </FormField>
-                     <FormField label="About me (optional)">
+                    <FormField label="About me (optional)">
                        <textarea name="about" value={formData.about} onChange={handleChange} rows={4} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" maxLength={200}></textarea>
                        <p className="text-xs text-text-secondary text-right">{formData.about.length}/200</p>
+                    </FormField>
+                    <FormField label="Business name">
+                       <input type="text" name="businessName" value={formData.businessName} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
+                    </FormField>
+                    <FormField label="Business description">
+                       <textarea name="businessDescription" value={formData.businessDescription} onChange={handleChange} rows={3} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" maxLength={200}></textarea>
+                       <p className="text-xs text-text-secondary text-right">{formData.businessDescription.length}/200</p>
+                    </FormField>
+                    <FormField label="City">
+                       <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
+                    </FormField>
+                    <FormField label="Country">
+                       <input type="text" name="country" value={formData.country} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
                     </FormField>
                 </div>
             </FormCard>
@@ -195,7 +228,7 @@ const EditProfilePage: React.FC = () => {
                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
                     </FormField>
                     <FormField label="Email" helpText="We won't reveal your email to anyone else nor use it to send you spam.">
-                        <EmailInput name="email" value={formData.email} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
+                        <EmailInput name="email" value={formData.email} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" disabled />
                     </FormField>
                 </div>
             </FormCard>

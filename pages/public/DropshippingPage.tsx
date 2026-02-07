@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useSpring } from 'framer-motion';
 import BackButton from '../../components/BackButton';
+import IconBadge from '../../components/IconBadge';
 
 // --- Custom Animated Logo ---
 const GlobeNetworkLogo = () => {
@@ -65,9 +66,9 @@ const DeepDiveSection: React.FC<{ title: string; description: string; features: 
     );
 };
 
-const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
+const GridFeature: React.FC<{ title: string; desc: string; icon: React.ReactNode }> = ({ title, desc, icon }) => (
     <div className="p-6 bg-[#1A1025] border border-pink-500/10 rounded-2xl hover:bg-[#251530] hover:border-pink-500/30 transition-all duration-300 group">
-        <div className="text-3xl mb-4 group-hover:scale-110 transition-transform duration-300">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 border-pink-500/20 bg-pink-500/10 text-pink-100 group-hover:scale-110 transition-transform duration-300" />
         <h3 className="text-lg font-bold text-pink-200 mb-2 group-hover:text-pink-400 transition-colors">{title}</h3>
         <p className="text-sm text-gray-400 leading-relaxed">{desc}</p>
     </div>

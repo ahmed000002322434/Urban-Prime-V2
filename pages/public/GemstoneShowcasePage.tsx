@@ -335,9 +335,9 @@ const GemstoneShowcasePage: React.FC = () => {
                                     </p>
                                     <div className="flex flex-col justify-between">
                                         <p className="text-sm font-light text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
-                                            From the ateliers of Paris to the digital runways of the metaverse, the definition of what we wear is changing. Discover how designers are merging code with cotton.
-                                        </p>
-                                        <a className="text-[10px] uppercase tracking-widest font-bold border-b border-black dark:border-white pb-1 self-start hover:text-[#D4AF37] hover:border-[#D4AF37] transition-colors text-black dark:text-white" href="/press">Read Full Article</a>
+                                                From the ateliers of Paris to the digital runways of the metaverse, the definition of what we wear is changing. Discover how designers are merging code with cotton.
+                                            </p>
+                                            <Link className="text-[10px] uppercase tracking-widest font-bold border-b border-black dark:border-white pb-1 self-start hover:text-[#D4AF37] hover:border-[#D4AF37] transition-colors text-black dark:text-white" to="/press">Read Full Article</Link>
                                     </div>
                                 </div>
                             </Reveal>

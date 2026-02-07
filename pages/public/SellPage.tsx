@@ -3,6 +3,7 @@ import React from 'react';
 import { motion, useScroll, useSpring } from 'framer-motion';
 import BackButton from '../../components/BackButton';
 import { useAuth } from '../../hooks/useAuth';
+import IconBadge from '../../components/IconBadge';
 
 // --- Custom Animated Logo ---
 const CommerceLogo = () => {
@@ -63,7 +64,7 @@ const DeepDiveSection: React.FC<{ title: string; description: string; features: 
 
 const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
     <div className="p-6 bg-[#0f0f0f] border border-white/10 rounded-2xl hover:bg-[#151515] transition-colors">
-        <div className="text-3xl mb-4">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 border-white/10 bg-white/5" />
         <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
         <p className="text-sm text-gray-400 leading-relaxed">{desc}</p>
     </div>

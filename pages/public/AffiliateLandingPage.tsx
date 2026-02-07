@@ -3,6 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useSpring } from 'framer-motion';
 import BackButton from '../../components/BackButton';
+import IconBadge from '../../components/IconBadge';
 
 // --- Custom Animated Logo ---
 const NetworkLogo = () => {
@@ -59,7 +60,7 @@ const DeepDiveSection: React.FC<{ title: string; description: string; features: 
 
 const GridFeature: React.FC<{ title: string; desc: string; icon: string }> = ({ title, desc, icon }) => (
     <div className="p-6 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl hover:bg-white dark:hover:bg-white/10 hover:shadow-xl transition-all duration-300 group">
-        <div className="text-3xl mb-4 group-hover:scale-110 transition-transform duration-300">{icon}</div>
+        <IconBadge icon={icon} size="md" className="mb-4 group-hover:scale-110 transition-transform duration-300" />
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{desc}</p>
     </div>

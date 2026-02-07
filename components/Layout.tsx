@@ -12,7 +12,6 @@ import type { SiteSettings } from '../types';
 import PixeFloatingButton from './PixeFloatingButton';
 import { useTheme } from '../hooks/useTheme';
 import OmniDashboard from './omni/OmniDashboard';
-import OmniFloatingButton from './omni/OmniFloatingButton';
 
 const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ message, onClose }) => (
     <div className="bg-primary text-white text-center p-2 text-sm font-semibold relative z-[60]">
@@ -50,15 +49,14 @@ const Layout: React.FC = () => {
   return (
     <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative`}>
       {isBannerActive && showBanner && <SiteBanner message={siteSettings.siteBanner.message} onClose={() => setShowBanner(false)} />}
-      {showHeader && <Header />}
+      {showHeader && <Header onOpenOmni={() => setIsOmniOpen(true)} />}
       <main className={`flex-grow relative z-10 ${mainBgClass} ${showHeader && !isHomePage ? 'pt-24' : ''}`}>
-        <div key={location.pathname}>
-            <Outlet />
+        <div>
+          <Outlet />
         </div>
       </main>
       
       {/* Omni Interface */}
-      <OmniFloatingButton onClick={() => setIsOmniOpen(true)} isOpen={isOmniOpen} />
       <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
 
       <ComparisonBar />

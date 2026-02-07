@@ -36,7 +36,7 @@ const parseNameFromEmail = (email: string): string => {
 const AuthModal: React.FC = () => {
     const [isSignUpActive, setIsSignUpActive] = useState(false);
     
-    const { login, register, signInWithGoogle } = useAuth();
+    const { login, register, signInWithGoogle, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -57,6 +57,13 @@ const AuthModal: React.FC = () => {
     const [signUpNameKey, setSignUpNameKey] = useState(0);
     
     const from = location.state?.from?.pathname || "/";
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            setLoading(false);
+            navigate(from, { replace: true });
+        }
+    }, [isAuthenticated, navigate, from]);
 
     const handleLoginEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newEmail = e.target.value;

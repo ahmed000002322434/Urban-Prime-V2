@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-const ReelsIcon = () => <img src="https://i.ibb.co/jkyfqdFV/Gemini-Generated-Image-gqj0u3gqj0u3gqj0.png" alt="Pixe Logo" className="w-6 h-6 object-contain" />;
+const ReelsIcon = () => <img src="/icons/pixe.svg" alt="Pixe Logo" className="w-6 h-6 object-contain" />;
 
 const PixeFloatingButton: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);

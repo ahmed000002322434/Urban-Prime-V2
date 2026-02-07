@@ -1,12 +1,15 @@
 import React from 'react';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
 import { Link } from 'react-router-dom';
+import IconBadge from '../../components/IconBadge';
 
-const SafetyFeature: React.FC<{ icon: string; title: string; children: React.ReactNode; delay?: number }> = ({ icon, title, children, delay = 0 }) => {
+const SafetyFeature: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode; delay?: number }> = ({ icon, title, children, delay = 0 }) => {
     const featureRef = useScrollReveal<HTMLDivElement>();
     return (
         <div ref={featureRef} className="animate-reveal text-center" style={{ transitionDelay: `${delay}ms` }}>
-            <div className="text-5xl mb-4 flex justify-center">{icon}</div>
+            <div className="mb-4 flex justify-center">
+                <IconBadge icon={icon} size="lg" className="border-primary/10 bg-primary/10 text-primary" />
+            </div>
             <h3 className="text-xl font-bold font-display text-gray-900 dark:text-dark-text mb-2">{title}</h3>
             <p className="text-gray-600 dark:text-gray-400">{children}</p>
         </div>

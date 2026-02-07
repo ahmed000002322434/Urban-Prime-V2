@@ -16,95 +16,134 @@ import LogoutConfirmationModal from './LogoutConfirmationModal';
 const { Link, NavLink, useLocation, useNavigate } = ReactRouterDOM as any;
 
 // --- ICONS ---
-const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
-const CartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>;
-const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
-const ReelsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 5.564v12.872a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2V5.564a2 2 0 0 0-2-2h-15a2 2 0 0 0-2 2z"></path><path d="m10 10.436 5 3.076-5 3.076v-6.152z"></path><path d="M7 3.564v-2"></path><path d="M12 3.564v-2"></path><path d="M17 3.564v-2"></path></svg>;
-const BattleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m14.5 17.5 7.5-7.5-2.5-2.5-7.5 7.5-2.5-2.5L2 22"/><path d="m18 14 4-4"/><path d="m6 8 4 4"/><path d="M3 21l7-7"/></svg>;
-const LiveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>;
-const MicIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>;
-const GenieIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
-const DiamondIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>;
+const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
+const CartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>;
+const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
+const ReelsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 5.564v12.872a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2V5.564a2 2 0 0 0-2-2h-15a2 2 0 0 0-2 2z"></path><path d="m10 10.436 5 3.076-5 3.076v-6.152z"></path><path d="M7 3.564v-2"></path><path d="M12 3.564v-2"></path><path d="M17 3.564v-2"></path></svg>;
+const BattleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m14.5 17.5 7.5-7.5-2.5-2.5-7.5 7.5-2.5-2.5L2 22"/><path d="m18 14 4-4"/><path d="m6 8 4 4"/><path d="M3 21l7-7"/></svg>;
+const LiveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>;
+const MicIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>;
+const GenieIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
+const DiamondIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>;
+const StoreIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18l-1.5-4.5h-15L3 7z"/><path d="M5 7v12h14V7"/><path d="M9 19v-6h6v6"/></svg>;
 
 // --- DROPDOWN ICONS ---
-const SupportIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 2.504 1.012 4.735 2.636 6.364L2 22l3.636-2.636A9.955 9.955 0 0 0 12 22z"/><path d="M8 14c.43.86 2.43 2.29 4 2.29s3.57-1.43 4-2.29"/></svg>;
-const PakistanFlagIcon = () => (<svg width="24" height="24" viewBox="0 0 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="11.5" fill="#14573C" stroke="#EAEAEA" strokeWidth="0.5"/><path d="M15.195 8.32C14.7731 9.47171 13.7225 10.2783 12.87 10.43C13.8812 10.7419 14.5443 11.6644 14.67 12.85C15.1432 11.8349 15.9392 11.082 16.5 10.85C15.8953 10.2217 15.2892 9.25514 15.195 8.32Z" fill="white"/><path d="M16.5 10.05L15.9886 11.4623L14.5 11.05L15.6114 12.1377L15.5 13.8L16.5 12.9L17.5 13.8L17.3886 12.1377L18.5 11.05L17.0114 11.4623L16.5 10.05Z" fill="white"/></svg>);
-const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 0 0-16 0" /></svg>;
-const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
-const ReviewIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="m15 5 3 3"/></svg>;
-const CouponIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 8v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a2 2 0 1 0-4 0v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a4 4 0 1 1 8 0Z"/><path d="M2 16.22V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-1.78c0-1.07-1.28-1.74-2.22-1.21-.52.29-1.04.53-1.58.7-1.12.35-2.28 0-3.2-1a4 4 0 0 0-4 0c-.92 1-2.08 1.35-3.2 1-.54-.17-1.06-.4-1.58-.7C3.28 14.48 2 15.15 2 16.22Z"/></svg>;
-const BalanceIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line><path d="M12 14a2 2 0 1 0-2-2"></path><path d="M10 14a2 2 0 1 0 2-2"></path></svg>;
-const FollowedStoreIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
-const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
-const MapPinIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>;
-const ShieldCheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>;
-const PermissionsIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="m10 10 2 2 4-4"/></svg>;
-const BellIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
-const SwitchAccountsIcon = () => <svg width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>;
-const LogOutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
-const HeadphonesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2z"/></svg>;
-const MessageSquareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>;
-const LockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>;
-const MoreHorizontalIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>;
-const PurchaseProtectionIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 10h6"/><path d="M9 14h4"/></svg>;
-const AdminPanelIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="3" y="15" width="7" height="5" /><rect x="14" y="11" width="7" height="9" /></svg>;
+const SupportIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 2.504 1.012 4.735 2.636 6.364L2 22l3.636-2.636A9.955 9.955 0 0 0 12 22z"/><path d="M8 14c.43.86 2.43 2.29 4 2.29s3.57-1.43 4-2.29"/></svg>;
+const PakistanFlagIcon = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="11.5" fill="#14573C" stroke="#EAEAEA" strokeWidth="0.5"/><path d="M15.195 8.32C14.7731 9.47171 13.7225 10.2783 12.87 10.43C13.8812 10.7419 14.5443 11.6644 14.67 12.85C15.1432 11.8349 15.9392 11.082 16.5 10.85C15.8953 10.2217 15.2892 9.25514 15.195 8.32Z" fill="white"/><path d="M16.5 10.05L15.9886 11.4623L14.5 11.05L15.6114 12.1377L15.5 13.8L16.5 12.9L17.5 13.8L17.3886 12.1377L18.5 11.05L17.0114 11.4623L16.5 10.05Z" fill="white"/></svg>);
+const UserIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 0 0-16 0" /></svg>;
+const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
+const ReviewIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="m15 5 3 3"/></svg>;
+const CouponIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 8v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a2 2 0 1 0-4 0v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a4 4 0 1 1 8 0Z"/><path d="M2 16.22V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-1.78c0-1.07-1.28-1.74-2.22-1.21-.52.29-1.04.53-1.58.7-1.12.35-2.28 0-3.2-1a4 4 0 0 0-4 0c-.92 1-2.08 1.35-3.2 1-.54-.17-1.06-.4-1.58-.7C3.28 14.48 2 15.15 2 16.22Z"/></svg>;
+const BalanceIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line><path d="M12 14a2 2 0 1 0-2-2"></path><path d="M10 14a2 2 0 1 0 2-2"></path></svg>;
+const FollowedStoreIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
+const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+const MapPinIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>;
+const ShieldCheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>;
+const PermissionsIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="m10 10 2 2 4-4"/></svg>;
+const BellIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
+const SwitchAccountsIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>;
+const LogOutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
+const HeadphonesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2z"/></svg>;
+const MessageSquareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>;
+const LockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>;
+const MoreHorizontalIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>;
+const PurchaseProtectionIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 10h6"/><path d="M9 14h4"/></svg>;
+const AdminPanelIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" /><rect x="3" y="15" width="7" height="5" /><rect x="14" y="11" width="7" height="9" /></svg>;
 
 
 // --- DROPDOWN COMPONENTS ---
 const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogout }) => {
-    const menuItems = [
-        { icon: <ListIcon />, text: 'Your orders', path: '/profile/orders' },
-        { icon: <ReviewIcon />, text: 'Your reviews', path: '/profile/reviews' },
-        { icon: <UserIcon />, text: 'Your profile', path: `/user/${user.id}` },
-        { icon: <CouponIcon />, text: 'Coupons & offers', path: '/profile/coupons' },
-        { icon: <BalanceIcon />, text: 'Credit balance', path: '/profile/wallet' },
-        { icon: <FollowedStoreIcon />, text: 'Followed stores', path: '/profile/followed-stores' },
-        { icon: <ClockIcon />, text: 'Browsing history', path: '/profile/history' },
-        { icon: <MapPinIcon />, text: 'Addresses', path: '/profile/settings/addresses' },
-        { icon: <ShieldCheckIcon />, text: 'Account security', path: '/profile/settings/trust-and-verification' },
-        { icon: <PermissionsIcon />, text: 'Permissions', path: '/profile/permissions' },
-        { icon: <SwitchAccountsIcon />, text: 'Switch accounts', path: '/profile/switch-accounts' },
+    const quickActions = [
+        { icon: <UserIcon />, text: 'Profile', path: `/user/${user.id}` },
+        { icon: <ListIcon />, text: 'Listings', path: '/profile/products' },
+        { icon: <MessageSquareIcon />, text: 'Messages', path: '/profile/messages' }
+    ];
+
+    const sections = [
+        {
+            title: 'My Activity',
+            items: [
+                { icon: <ListIcon />, text: 'Your orders', path: '/profile/orders' },
+                { icon: <ReviewIcon />, text: 'Your reviews', path: '/profile/reviews' },
+                { icon: <FollowedStoreIcon />, text: 'Followed stores', path: '/profile/followed-stores' },
+                { icon: <ClockIcon />, text: 'Browsing history', path: '/profile/history' },
+                { icon: <CouponIcon />, text: 'Coupons & offers', path: '/profile/coupons' },
+                { icon: <BalanceIcon />, text: 'Credit balance', path: '/profile/wallet' }
+            ]
+        },
+        {
+            title: 'Settings',
+            items: [
+                { icon: <MapPinIcon />, text: 'Addresses', path: '/profile/settings/addresses' },
+                { icon: <ShieldCheckIcon />, text: 'Account security', path: '/profile/settings/trust-and-verification' },
+                { icon: <PermissionsIcon />, text: 'Permissions', path: '/profile/permissions' },
+                { icon: <SwitchAccountsIcon />, text: 'Switch accounts', path: '/profile/switch-accounts' }
+            ]
+        }
     ];
 
     return (
-      <div className="absolute top-full right-0 mt-2 w-72 bg-surface rounded-lg shadow-2xl border border-border z-50 animate-dropdown-fade-in-up">
-        <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-surface-soft rounded-full flex items-center justify-center font-bold">{user.name.charAt(0).toUpperCase()}</div>
-                <span className="font-bold text-lg text-text-primary">{user.name}</span>
+        <div className="absolute top-full right-0 mt-2 w-[320px] bg-surface rounded-2xl shadow-2xl border border-border z-50 animate-dropdown-fade-in-up overflow-hidden">
+            <div className="p-4 border-b border-border bg-surface/80">
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center font-bold text-lg text-text-primary">
+                        {user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                        <p className="font-bold text-text-primary">{user.name}</p>
+                        <p className="text-xs text-text-secondary">{user.email || 'Urban Prime member'}</p>
+                    </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                    {quickActions.map(action => (
+                        <Link key={action.text} to={action.path} className="flex flex-col items-center gap-1 py-2 rounded-xl border border-border bg-surface-soft text-xs font-semibold text-text-primary hover:border-primary">
+                            <span className="text-text-secondary">{action.icon}</span>
+                            <span>{action.text}</span>
+                        </Link>
+                    ))}
+                </div>
             </div>
-        </div>
-        <ul className="py-2 max-h-[60vh] overflow-y-auto">
-            {user.isAdmin && (
-                <>
-                    <li>
+            <div className="max-h-[60vh] overflow-y-auto">
+                {user.isAdmin && (
+                    <div className="px-4 py-3 border-b border-border">
                         <Link
                             to="/admin/dashboard"
-                            className="flex items-center gap-3 px-4 py-2 text-sm font-bold text-primary hover:bg-surface-soft"
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-primary hover:bg-surface-soft"
                         >
                             <AdminPanelIcon /> Admin Panel
                         </Link>
-                    </li>
-                    <div className="h-px bg-border my-1 mx-4"></div>
-                </>
-            )}
-            {menuItems.map(item => (
-                <li key={item.text}>
-                    <Link to={item.path} className="flex items-center gap-3 px-4 py-2 text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary">
-                        {item.icon} {item.text}
-                    </Link>
-                </li>
-            ))}
-             <li>
-                <button
-                    onClick={onLogout}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary"
+                    </div>
+                )}
+                {sections.map(section => (
+                    <div key={section.title} className="px-4 py-3 border-b border-border last:border-0">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-text-secondary mb-2">{section.title}</p>
+                        <ul className="space-y-1">
+                            {section.items.map(item => (
+                                <li key={item.text}>
+                                    <Link to={item.path} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary">
+                                        <span className="w-9 h-9 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
+                                            {item.icon}
+                                        </span>
+                                        <span className="font-medium">{item.text}</span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+                <div className="px-4 py-3">
+                    <button
+                        onClick={onLogout}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary"
                     >
-                    <LogOutIcon /> Sign out
-                </button>
-            </li>
-        </ul>
-      </div>
+                        <span className="w-9 h-9 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
+                            <LogOutIcon />
+                        </span>
+                        Sign out
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -136,11 +175,11 @@ const NotificationMenu: React.FC<{ notifications: Notification[], onMarkAsRead: 
     );
 };
   
-const SupportMenu: React.FC = () => {
+const SupportMenu: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const menuItems = [
         { icon: <HeadphonesIcon />, text: 'Support center', path: '/support-center' },
         { icon: <ShieldCheckIcon />, text: 'Safety center', path: '/safety-center' },
-        { icon: <MessageSquareIcon />, text: 'Chat with Urban Prime', path: '/chat' },
+        { icon: <MessageSquareIcon />, text: 'Chat with Urban Prime', path: '/chat-with-us', action: onOpenOmni },
         { icon: <PurchaseProtectionIcon />, text: 'Urban Prime purchase protection', path: '/purchase-protection' },
         { icon: <LockIcon />, text: 'Privacy policy', path: '/privacy-policy' },
         { icon: <MoreHorizontalIcon />, text: 'Terms of use', path: '/terms-of-use' },
@@ -150,7 +189,21 @@ const SupportMenu: React.FC = () => {
         <div className="absolute top-full right-0 mt-2 w-72 bg-surface rounded-lg shadow-2xl border border-border z-50 animate-dropdown-fade-in-up">
             <ul className="py-2">
             {menuItems.map(item => (
-                <li key={item.text}><Link to={item.path} className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary">{item.icon} {item.text}</Link></li>
+                <li key={item.text}>
+                    {item.action ? (
+                        <button
+                            type="button"
+                            onClick={item.action}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary text-left"
+                        >
+                            {item.icon} {item.text}
+                        </button>
+                    ) : (
+                        <Link to={item.path} className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary">
+                            {item.icon} {item.text}
+                        </Link>
+                    )}
+                </li>
             ))}
             </ul>
         </div>
@@ -182,40 +235,67 @@ const LanguageMenu: React.FC = () => {
     );
 };
 
-const ExploreMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const ExploreMenu: React.FC<{ onClose: () => void; onOpenOmni?: () => void }> = ({ onClose, onOpenOmni }) => {
     const { t } = useTranslation();
     const features = [
-        { titleKey: 'exploreMenu.pixe.title', descKey: 'exploreMenu.pixe.desc', link: '/reels' },
-        { titleKey: 'exploreMenu.battles.title', descKey: 'exploreMenu.battles.desc', link: '/battles' },
-        { titleKey: 'exploreMenu.games.title', descKey: 'exploreMenu.games.desc', link: '/games' },
-        { titleKey: 'exploreMenu.affiliate.title', descKey: 'exploreMenu.affiliate.desc', link: '/affiliate-program' },
-        { titleKey: 'exploreMenu.stores.title', descKey: 'exploreMenu.stores.desc', link: '/stores' },
-        { titleKey: 'exploreMenu.browse.title', descKey: 'exploreMenu.browse.desc', link: '/browse' },
-        { titleKey: 'exploreMenu.sellers.title', descKey: 'exploreMenu.sellers.desc', link: '/sellers' },
-        { titleKey: 'exploreMenu.events.title', descKey: 'exploreMenu.events.desc', link: '/events' }
+        { title: 'Live', desc: 'Shop live streams and creator drops in real time.', link: '/live', icon: <LiveIcon /> },
+        { titleKey: 'exploreMenu.pixe.title', descKey: 'exploreMenu.pixe.desc', link: '/reels', icon: <ReelsIcon /> },
+        { titleKey: 'exploreMenu.battles.title', descKey: 'exploreMenu.battles.desc', link: '/battles', icon: <BattleIcon /> },
+        { titleKey: 'exploreMenu.games.title', descKey: 'exploreMenu.games.desc', link: '/games', icon: <DiamondIcon /> },
+        { titleKey: 'exploreMenu.affiliate.title', descKey: 'exploreMenu.affiliate.desc', link: '/affiliate-program', icon: <CouponIcon /> },
+        { titleKey: 'exploreMenu.stores.title', descKey: 'exploreMenu.stores.desc', link: '/stores', icon: <StoreIcon /> },
+        { titleKey: 'exploreMenu.browse.title', descKey: 'exploreMenu.browse.desc', link: '/browse', icon: <SearchIcon /> },
+        { titleKey: 'exploreMenu.sellers.title', descKey: 'exploreMenu.sellers.desc', link: '/sellers', icon: <UserIcon /> },
+        { titleKey: 'exploreMenu.events.title', descKey: 'exploreMenu.events.desc', link: '/events', icon: <ClockIcon /> },
+        { title: 'Omni Chat', desc: 'Instant help and marketplace chat.', link: '/chat-with-us', action: onOpenOmni, icon: <MessageSquareIcon /> }
     ];
   
     return (
         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[640px] bg-surface rounded-lg shadow-2xl border border-border z-50 p-4 animate-dropdown-fade-in-up">
             <div className="grid grid-cols-2 gap-4">
-                {features.map(feature => (
-                    <Link to={feature.link} onClick={onClose} key={feature.titleKey} className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors">
-                        <div className="flex-1">
-                            <p className="font-bold text-sm text-text-primary">{t(feature.titleKey)}</p>
-                            <p className="text-xs text-text-secondary">{t(feature.descKey)}</p>
-                        </div>
-                        <div className="text-text-secondary/50">
-                            <span className="transition-transform duration-200 ease-in-out inline-block group-hover:-translate-y-0.5">➡</span>
-                        </div>
-                    </Link>
-                ))}
+                {features.map(feature => {
+                    const content = (
+                        <>
+                            <div className="w-10 h-10 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
+                                {feature.icon}
+                            </div>
+                            <div className="flex-1">
+                                <p className="font-bold text-sm text-text-primary">{feature.titleKey ? t(feature.titleKey) : feature.title}</p>
+                                <p className="text-xs text-text-secondary">{feature.descKey ? t(feature.descKey) : feature.desc}</p>
+                            </div>
+                            <div className="text-text-secondary/50">
+                                <span className="transition-transform duration-200 ease-in-out inline-block group-hover:-translate-y-0.5">?</span>
+                            </div>
+                        </>
+                    );
+                    if (feature.action) {
+                        return (
+                            <button
+                                key={feature.titleKey || feature.title}
+                                type="button"
+                                onClick={() => {
+                                    feature.action?.();
+                                    onClose();
+                                }}
+                                className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors text-left"
+                            >
+                                {content}
+                            </button>
+                        );
+                    }
+                    return (
+                        <Link to={feature.link} onClick={onClose} key={feature.titleKey || feature.title} className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors">
+                            {content}
+                        </Link>
+                    );
+                })}
             </div>
         </div>
     );
 };
-  
+
 // --- MAIN HEADER ---
-const Header: React.FC = () => {
+const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const { isAuthenticated, user, openAuthModal, logout } = useAuth();
     const { cartCount } = useCart();
     const navigate = useNavigate();
@@ -238,6 +318,14 @@ const Header: React.FC = () => {
     const [isListening, setIsListening] = useState(false);
     const isListeningRef = useRef(false);
     const isHoveringSearchRef = useRef(false);
+
+    const handleOpenOmni = useCallback(() => {
+        if (onOpenOmni) {
+            onOpenOmni();
+        } else {
+            navigate('/chat-with-us');
+        }
+    }, [onOpenOmni, navigate]);
     
     // --- Notification State ---
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -481,9 +569,6 @@ const Header: React.FC = () => {
                     {/* Center Pill: Navigation + Search */}
                     <nav ref={navContainerRef} className={`flex items-center gap-1 p-1 rounded-full ${pillClasses}`}>
                         <NavLink to="/deals" className={getNavLinkClass}>{t('header.deals')}</NavLink>
-                        <NavLink to="/live" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-red-500' : 'hover:text-red-500'}`}>
-                             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Live
-                        </NavLink>
                         <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
                              <span className="text-purple-500"><GenieIcon /></span> Genie
                         </NavLink>
@@ -497,7 +582,7 @@ const Header: React.FC = () => {
                         </NavLink>
                         <div onMouseEnter={() => handleMenuEnter('explore')} onMouseLeave={handleMenuLeave}>
                             <button className={`px-3 py-2 text-sm font-semibold rounded-md ${getNavLinkClass({isActive: false})}`}>{t('header.explore')}</button>
-                            {activeMenu === 'explore' && <ExploreMenu onClose={() => setActiveMenu(null)} />}
+                            {activeMenu === 'explore' && <ExploreMenu onClose={() => setActiveMenu(null)} onOpenOmni={handleOpenOmni} />}
                         </div>
                     </nav>
                     
@@ -565,7 +650,6 @@ const Header: React.FC = () => {
                     )}
                     <div className="flex items-center gap-2">
                         <NavLink to="/battles" className="p-2 rounded-full hover:bg-surface-soft"><BattleIcon /></NavLink>
-                        <NavLink to="/live" className="p-2 rounded-full hover:bg-surface-soft text-red-500"><LiveIcon /></NavLink>
                         <NavLink to="/reels" className="p-2 rounded-full hover:bg-surface-soft"><ReelsIcon /></NavLink>
                         <button onClick={() => setIsMobileSearchOpen(true)} className="p-2 rounded-full hover:bg-surface-soft"><SearchIcon /></button>
                         {isAuthenticated && user ? (
