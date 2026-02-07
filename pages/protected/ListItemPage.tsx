@@ -1061,6 +1061,63 @@ const ListItemPage: React.FC = () => {
                                 </div>
                             )}
                         </FormCard>
+
+                        <FormCard title="Automation" subtitle="Let Urban Prime optimize pricing, restock, and promotions.">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.automation?.autoReprice || false}
+                                        onChange={e => setFormData(p => ({ ...p, automation: { ...p.automation, autoReprice: e.target.checked } }))}
+                                    />
+                                    <div>
+                                        <p className="font-bold text-text-primary">Auto‑Reprice</p>
+                                        <p className="text-xs text-text-secondary">Match market demand to stay competitive.</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.automation?.autoRestock || false}
+                                        onChange={e => setFormData(p => ({ ...p, automation: { ...p.automation, autoRestock: e.target.checked } }))}
+                                    />
+                                    <div>
+                                        <p className="font-bold text-text-primary">Auto‑Restock</p>
+                                        <p className="text-xs text-text-secondary">Low stock alerts + supplier sync.</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.automation?.autoPromote || false}
+                                        onChange={e => setFormData(p => ({ ...p, automation: { ...p.automation, autoPromote: e.target.checked } }))}
+                                    />
+                                    <div>
+                                        <p className="font-bold text-text-primary">Auto‑Promote</p>
+                                        <p className="text-xs text-text-secondary">Boost listings that are trending.</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-4 border border-border rounded-lg">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.automation?.autoFulfill || false}
+                                        onChange={e => setFormData(p => ({ ...p, automation: { ...p.automation, autoFulfill: e.target.checked } }))}
+                                    />
+                                    <div>
+                                        <p className="font-bold text-text-primary">Auto‑Fulfill</p>
+                                        <p className="text-xs text-text-secondary">Send orders to suppliers instantly.</p>
+                                    </div>
+                                </label>
+                            </div>
+                            <div className="mt-4">
+                                <label className="block text-sm font-bold text-text-secondary mb-2">Minimum Margin Guardrail (%)</label>
+                                <Input
+                                    type="number"
+                                    value={formData.automation?.minMarginPercent || 0}
+                                    onChange={e => setFormData(p => ({ ...p, automation: { ...p.automation, minMarginPercent: parseFloat(e.target.value) || 0 } }))}
+                                />
+                            </div>
+                        </FormCard>
                     </div>
 
                     <div className="lg:col-span-1 space-y-8">
