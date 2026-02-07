@@ -15,14 +15,14 @@ import { useNotification } from '../../context/NotificationContext';
 import { Link } from 'react-router-dom';
 
 // --- Icons ---
-const StoreIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
-const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
-const PackageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 9.4a4.5 4.5 0 1 0 0 5.2a4.5 4.5 0 1 0 0-5.2Z"/><path d="M16.5 9.4a4.5 4.5 0 1 1 0 5.2"/><path d="M3 12h13.5"/><path d="M21 12h-1.5"/><path d="M12 3v18"/></svg>;
-const DollarSignIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
-const TrendsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>;
-const FireIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><path d="M12 2c1.5 2.5 4 4 4 7 0 2.5-2.5 4.5-4 4.5s-4-2-4-4.5c0-3 2.5-4.5 4-7z"/><path d="M12 11.5c-2 2-3 4-3 6 0 1.5 1.5 2.5 3 2.5s3-1 3-2.5c0-2-1-4-3-6z"/></svg>;
-const GemIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M12 22 6 9l-4-6h12Z"/></svg>;
-const CategoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
+const StoreIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
+const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
+const PackageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 9.4a4.5 4.5 0 1 0 0 5.2a4.5 4.5 0 1 0 0-5.2Z"/><path d="M16.5 9.4a4.5 4.5 0 1 1 0 5.2"/><path d="M3 12h13.5"/><path d="M21 12h-1.5"/><path d="M12 3v18"/></svg>;
+const DollarSignIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
+const TrendsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>;
+const FireIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><path d="M12 2c1.5 2.5 4 4 4 7 0 2.5-2.5 4.5-4 4.5s-4-2-4-4.5c0-3 2.5-4.5 4-7z"/><path d="M12 11.5c-2 2-3 4-3 6 0 1.5 1.5 2.5 3 2.5s3-1 3-2.5c0-2-1-4-3-6z"/></svg>;
+const GemIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M12 22 6 9l-4-6h12Z"/></svg>;
+const CategoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
 
 // --- Sub-components (moved outside main component to fix React error) ---
 const SupplierProductCard: React.FC<{ product: SupplierProduct; onImport: (product: SupplierProduct) => void; }> = ({ product, onImport }) => {
@@ -51,9 +51,9 @@ const SupplierProductCard: React.FC<{ product: SupplierProduct; onImport: (produ
 // FIX: Moved TabButton component outside of CreatorHubPage to prevent re-definition on every render,
 // which causes React Hook errors. Added dark mode styling.
 const TabButton: React.FC<{
-    tab: 'find' | 'my-products' | 'orders' | 'trends';
-    activeTab: 'find' | 'my-products' | 'orders' | 'trends';
-    onClick: (tab: 'find' | 'my-products' | 'orders' | 'trends') => void;
+    tab: 'find' | 'my-products' | 'orders' | 'trends' | 'intelligence';
+    activeTab: 'find' | 'my-products' | 'orders' | 'trends' | 'intelligence';
+    onClick: (tab: 'find' | 'my-products' | 'orders' | 'trends' | 'intelligence') => void;
     children: React.ReactNode;
 }> = ({ tab, activeTab, onClick, children }) => (
     <button
@@ -74,7 +74,7 @@ const CreatorHubPage: React.FC = () => {
     const { user } = useAuth();
     const { currency } = useTranslation();
     const { showNotification } = useNotification();
-    const [activeTab, setActiveTab] = useState<'find' | 'my-products' | 'orders' | 'trends'>('find');
+    const [activeTab, setActiveTab] = useState<'find' | 'my-products' | 'orders' | 'trends' | 'intelligence'>('find');
     const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
     const [isLoadingSupplier, setIsLoadingSupplier] = useState(true);
     const [productToImport, setProductToImport] = useState<SupplierProduct | null>(null);
@@ -88,6 +88,27 @@ const CreatorHubPage: React.FC = () => {
         { id: 'ds-2', item: 'Minimalist Lamp', status: 'shipped', profit: 24.2, eta: '2-4 days' },
         { id: 'ds-3', item: 'Travel Organizer', status: 'delivered', profit: 12.0, eta: 'Delivered' }
     ];
+
+    const intelligenceSignals = useMemo(() => {
+        const marginScores = myProducts.map(item => {
+            const price = item.salePrice || 0;
+            const cost = (item.wholesalePrice || 0) + (item.supplierInfo?.shippingCost || 0);
+            const margin = price > 0 ? ((price - cost) / price) * 100 : 0;
+            return { id: item.id, title: item.title, margin };
+        }).sort((a, b) => a.margin - b.margin);
+
+        return {
+            marginAlerts: marginScores.slice(0, 3),
+            supplierHealth: 96,
+            deliverySla: 92,
+            chargebackRisk: 'Low',
+            nextActions: [
+                { title: 'Enable auto-reprice for low-margin items', action: 'Enable automation' },
+                { title: 'Request samples for top 3 trending picks', action: 'Request samples' },
+                { title: 'Turn on branded inserts for premium SKUs', action: 'Enable branding' }
+            ]
+        };
+    }, [myProducts]);
 
     const fetchMyProducts = useCallback(async () => {
         if (user) {
@@ -205,6 +226,70 @@ const CreatorHubPage: React.FC = () => {
                         </div>
                     </div>
                 );
+            case 'intelligence':
+                return (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Supplier Health</p>
+                                <p className="text-2xl font-bold text-text-primary">{intelligenceSignals.supplierHealth}%</p>
+                                <p className="text-xs text-text-secondary mt-1">On-time processing & QC</p>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Delivery SLA</p>
+                                <p className="text-2xl font-bold text-text-primary">{intelligenceSignals.deliverySla}%</p>
+                                <p className="text-xs text-text-secondary mt-1">Last 30 days</p>
+                            </div>
+                            <div className="bg-surface p-4 rounded-lg border border-border">
+                                <p className="text-xs text-text-secondary uppercase tracking-wider">Chargeback Risk</p>
+                                <p className="text-2xl font-bold text-text-primary">{intelligenceSignals.chargebackRisk}</p>
+                                <p className="text-xs text-text-secondary mt-1">Based on returns & disputes</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
+                            <div className="bg-surface rounded-xl border border-border p-6">
+                                <h3 className="text-lg font-bold text-text-primary mb-4">Margin Guardrails</h3>
+                                {intelligenceSignals.marginAlerts.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {intelligenceSignals.marginAlerts.map(item => (
+                                            <div key={item.id} className="flex items-center justify-between text-sm border-b border-border/60 pb-3 last:border-none last:pb-0">
+                                                <div>
+                                                    <p className="font-semibold text-text-primary">{item.title}</p>
+                                                    <p className="text-xs text-text-secondary">Margin {item.margin.toFixed(1)}%</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => showNotification(`Suggested repricing for ${item.title}.`)}
+                                                    className="px-3 py-1 rounded-full border border-border text-xs font-semibold hover:border-primary hover:text-primary"
+                                                >
+                                                    Optimize
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-text-secondary">No margin risks detected.</p>
+                                )}
+                            </div>
+                            <div className="bg-surface rounded-xl border border-border p-6">
+                                <h3 className="text-lg font-bold text-text-primary mb-4">Next Best Actions</h3>
+                                <div className="space-y-3">
+                                    {intelligenceSignals.nextActions.map(action => (
+                                        <div key={action.title} className="flex items-center justify-between text-sm border-b border-border/60 pb-3 last:border-none last:pb-0">
+                                            <p className="text-text-secondary">{action.title}</p>
+                                            <button
+                                                onClick={() => showNotification(action.action)}
+                                                className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+                                            >
+                                                {action.action}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
             case 'trends':
                 return (
                     <div className="bg-surface p-6 rounded-lg shadow-soft border border-border">
@@ -296,6 +381,7 @@ const CreatorHubPage: React.FC = () => {
                 <div className="flex gap-2 p-2 bg-surface rounded-lg shadow-sm border border-border mb-6">
                     <TabButton tab="find" activeTab={activeTab} onClick={setActiveTab}><SearchIcon /> Find Products</TabButton>
                     <TabButton tab="trends" activeTab={activeTab} onClick={setActiveTab}><TrendsIcon /> Trends</TabButton>
+                    <TabButton tab="intelligence" activeTab={activeTab} onClick={setActiveTab}><FireIcon /> Intelligence</TabButton>
                     <TabButton tab="my-products" activeTab={activeTab} onClick={setActiveTab}><PackageIcon /> My Products</TabButton>
                     <TabButton tab="orders" activeTab={activeTab} onClick={setActiveTab}><DollarSignIcon /> Orders</TabButton>
                 </div>
@@ -315,3 +401,4 @@ const CreatorHubPage: React.FC = () => {
 };
 
 export default CreatorHubPage;
+

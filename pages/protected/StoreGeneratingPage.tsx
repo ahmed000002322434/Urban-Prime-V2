@@ -7,7 +7,7 @@ import { itemService } from '../../services/itemService';
 import type { Store, StoreCreationData, Item, Review } from '../../types';
 
 const MagicWandIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-black animate-float">
+    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-black animate-float">
         <path d="M12 3c.3 0 .5.2.5.5v3c0 .3-.2.5-.5.5s-.5-.2-.5-.5v-3c0-.3.2-.5.5-.5zM6.4 6.4c.2-.2.5-.2.7 0l2.1 2.1c.2.2.2.5 0 .7s-.5.2-.7 0L6.4 7.1c-.2-.2-.2-.5 0-.7zm11.3 0c.2-.2.5-.2.7 0s.2.5 0 .7l-2.1 2.1c-.2.2-.5.2-.7 0s-.2-.5 0-.7l2.1-2.1zM4 12c0-.3.2-.5.5-.5h3c.3 0 .5.2.5.5s-.2.5-.5.5h-3c-.3 0-.5-.2-.5-.5zm15.5.5c.3 0 .5-.2.5-.5s-.2-.5-.5-.5h-3c-.3 0-.5.2-.5.5s.2.5.5.5h3zM6.4 17.6c.2-.2.5-.2.7 0l2.1 2.1c.2.2.2.5 0 .7s-.5.2-.7 0l-2.1-2.1c-.2-.2-.2-.5 0-.7zm11.3 0c.2-.2.5-.2.7 0s.2.5 0 .7l-2.1 2.1c-.2.2-.5.2-.7 0s-.2-.5 0-.7l2.1-2.1zM12 21c.3 0 .5-.2.5-.5v-3c0-.3-.2-.5-.5-.5s-.5.2-.5-.5v3c0 .3.2-.5.5-.5z" />
     </svg>
 );
@@ -160,3 +160,4 @@ const StoreGeneratingPage: React.FC = () => {
 };
 
 export default StoreGeneratingPage;
+

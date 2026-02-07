@@ -5,7 +5,7 @@ import ProviderOnboardingModal from '../../components/ProviderOnboardingModal';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
 import BackButton from '../../components/BackButton';
 
-const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
+const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
 
 const BecomeProviderPage: React.FC = () => {
     const { user } = useAuth();
@@ -46,14 +46,14 @@ const BecomeProviderPage: React.FC = () => {
                     </div>
                     <div className="p-8 bg-gray-50 dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-gray-700">
                         <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mb-6">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Secure Payments</h3>
                         <p className="text-gray-600 dark:text-gray-400">Payments are held in escrow and released to you immediately upon job completion. No more chasing invoices.</p>
                     </div>
                     <div className="p-8 bg-gray-50 dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-gray-700">
                         <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center mb-6">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Verified Badge</h3>
                         <p className="text-gray-600 dark:text-gray-400">Stand out with a "Verified Pro" badge. We handle the ID checks so clients trust you instantly.</p>
@@ -65,3 +65,4 @@ const BecomeProviderPage: React.FC = () => {
 };
 
 export default BecomeProviderPage;
+

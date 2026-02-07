@@ -17,6 +17,15 @@ const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" view
 const ShuffleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 
+const DEFAULT_PRICE_RANGE: [number, number] = [0, 10000];
+const formatPriceRange = (range: [number, number]) => {
+    const [min, max] = range;
+    if (min === 0 && max >= 10000) return 'Any price';
+    if (min === 0) return `Under $${max}`;
+    if (max >= 10000) return `$${min}+`;
+    return `$${min} - $${max}`;
+};
+
 
 const FilterDisclosure: React.FC<{ title: string, children: React.ReactNode, defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -155,6 +164,7 @@ const BrowsePage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const navigate = useNavigate();
+    const { categories } = useCategories();
     const [items, setItems] = useState<Item[]>([]);
     const [allBrands, setAllBrands] = useState<string[]>([]);
     const [totalItems, setTotalItems] = useState(0);
@@ -170,13 +180,51 @@ const BrowsePage: React.FC = () => {
         query: searchParams.get('q') || '',
         category: searchParams.get('category') || '',
         location: '',
-        priceRange: [0, 10000] as [number, number],
+        priceRange: DEFAULT_PRICE_RANGE,
         minRating: 0,
         listingType: '' as 'sale' | 'rent' | 'auction' | '',
         conditions: [] as string[],
         sortBy: 'newest' as 'newest' | 'price_asc' | 'price_desc' | 'popularity',
         page: 1
     });
+
+    const categoryLabel = useMemo(() => {
+        if (!filters.category) return '';
+        const findCategory = (list: Category[], id: string): string | null => {
+            for (const cat of list) {
+                if (cat.id === id) return cat.name;
+                if (cat.subcategories) {
+                    const sub = findCategory(cat.subcategories, id);
+                    if (sub) return sub;
+                }
+            }
+            return null;
+        };
+        return findCategory(categories, filters.category) || filters.category;
+    }, [categories, filters.category]);
+
+    const activeFilterChips = useMemo(() => {
+        const chips: { label: string; onRemove: () => void }[] = [];
+        if (filters.category) {
+            chips.push({ label: categoryLabel, onRemove: () => setFilters(p => ({ ...p, category: '', page: 1 })) });
+        }
+        if (filters.listingType) {
+            chips.push({ label: `Type: ${filters.listingType}`, onRemove: () => setFilters(p => ({ ...p, listingType: '', page: 1 })) });
+        }
+        if (filters.minRating) {
+            chips.push({ label: `${filters.minRating}★ & Up`, onRemove: () => setFilters(p => ({ ...p, minRating: 0, page: 1 })) });
+        }
+        if (filters.location) {
+            chips.push({ label: 'Local Only', onRemove: () => setFilters(p => ({ ...p, location: '', page: 1 })) });
+        }
+        if (filters.priceRange[0] !== DEFAULT_PRICE_RANGE[0] || filters.priceRange[1] !== DEFAULT_PRICE_RANGE[1]) {
+            chips.push({ label: formatPriceRange(filters.priceRange), onRemove: () => setFilters(p => ({ ...p, priceRange: DEFAULT_PRICE_RANGE, page: 1 })) });
+        }
+        filters.conditions.forEach(cond => {
+            chips.push({ label: cond.replace(/-/g, ' '), onRemove: () => setFilters(p => ({ ...p, conditions: p.conditions.filter(c => c !== cond), page: 1 })) });
+        });
+        return chips;
+    }, [filters, categoryLabel]);
 
     const fetchAllBrands = async () => {
         const { items: allItems } = await itemService.getItems({}, { page: 1, limit: 1000 });
@@ -269,6 +317,20 @@ const BrowsePage: React.FC = () => {
         }));
     };
 
+    const resetFilters = useCallback(() => {
+        setFilters(prev => ({
+            ...prev,
+            query: '',
+            category: '',
+            location: '',
+            priceRange: DEFAULT_PRICE_RANGE,
+            minRating: 0,
+            listingType: '',
+            conditions: [],
+            page: 1
+        }));
+    }, []);
+
     return (
         <>
             {quickViewItem && <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />}
@@ -319,6 +381,23 @@ const BrowsePage: React.FC = () => {
                         <button onClick={() => setFilters(p => ({ ...p, query: 'limited', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Limited</button>
                         <button onClick={() => setFilters(p => ({ ...p, query: 'verified', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Verified</button>
                     </div>
+                    {activeFilterChips.length > 0 && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                            {activeFilterChips.map((chip, idx) => (
+                                <button
+                                    key={`${chip.label}-${idx}`}
+                                    onClick={chip.onRemove}
+                                    className="px-3 py-1 rounded-full bg-surface-soft border border-border text-text-primary hover:border-primary flex items-center gap-2"
+                                >
+                                    <span className="capitalize">{chip.label}</span>
+                                    <span className="text-text-secondary">×</span>
+                                </button>
+                            ))}
+                            <button onClick={resetFilters} className="px-3 py-1 rounded-full border border-primary text-primary font-semibold">
+                                Clear All
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -411,7 +490,7 @@ const BrowsePage: React.FC = () => {
                                 <div className="text-4xl mb-4">🔍</div>
                                 <h3 className="text-xl font-bold text-text-primary">No Items Found</h3>
                                 <p className="text-text-secondary mt-2">Try adjusting your filters or search terms.</p>
-                                <button onClick={() => setFilters(p => ({...p, query: '', category: '', priceRange: [0, 10000]}))} className="mt-6 text-primary font-bold hover:underline">Clear All Filters</button>
+                                <button onClick={resetFilters} className="mt-6 text-primary font-bold hover:underline">Clear All Filters</button>
                             </div>
                         )}
 

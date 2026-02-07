@@ -14,8 +14,8 @@ interface AuthContextType {
   showOnboarding: boolean;
   onboardingPreset: OnboardingData['purpose'] | null;
   login: (email: string, pass: string) => Promise<User>;
-  register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<User | void>;
-  signInWithGoogle: () => Promise<void>;
+  register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<User>;
+  signInWithGoogle: () => Promise<User>;
   logout: () => void;
   switchUser: (targetUserId: string) => Promise<void>;
   completeOnboarding: (data: OnboardingData) => void;
@@ -44,55 +44,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const fromPath = location.state?.from?.pathname || "/";
     const authRedirectPath = (location.state?.from as any)?.pathname || "/";
 
+    const buildFallbackUser = useCallback((firebaseUser: FirebaseUser): User => ({
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || 'User',
+        email: firebaseUser.email || '',
+        avatar: firebaseUser.photoURL || 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
+        following: [],
+        followers: [],
+        wishlist: [],
+        cart: [],
+        badges: [],
+        memberSince: new Date().toISOString(),
+        status: 'active'
+    }), []);
+
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             setIsLoading(false);
-        }, 5000);
+        }, 1500);
 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
             try {
                 if (firebaseUser) {
-                    const profile = await authService.getProfile(firebaseUser.uid);
-                    if (profile) {
-                        setUser(profile);
-                        if (!profile.interests || profile.interests.length === 0) {
-                            setIsNewUser(true);
-                        }
-                    } else {
-                        const isNewRegistration = firebaseUser.metadata.creationTime === firebaseUser.metadata.lastSignInTime;
-                        if (isNewRegistration) {
-                            try {
-                                const newUserProfile = await authService.createUserProfile(firebaseUser, {});
-                                setUser(newUserProfile);
-                            } catch (error) {
-                                // Offline or Firestore unavailable. Use a local fallback profile.
-                                setUser({
-                                    id: firebaseUser.uid,
-                                    name: firebaseUser.displayName || 'User',
-                                    email: firebaseUser.email || '',
-                                    avatar: firebaseUser.photoURL || 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
-                                    following: [],
-                                    followers: [],
-                                    wishlist: [],
-                                    cart: [],
-                                    badges: [],
-                                    memberSince: new Date().toISOString(),
-                                    status: 'active'
-                                });
+                    try {
+                        const profile = await authService.getProfile(firebaseUser.uid);
+                        if (profile) {
+                            setUser(profile);
+                            if (!profile.interests || profile.interests.length === 0) {
+                                setIsNewUser(true);
+                            } else {
+                                setIsNewUser(false);
                             }
-                            setIsNewUser(true);
                         } else {
-                            console.error("User exists in Auth, but not in Firestore database.");
-                            setUser(null);
+                            const newUserProfile = await authService.createUserProfile(firebaseUser, {});
+                            setUser(newUserProfile);
+                            setIsNewUser(true);
                         }
+                    } catch (error) {
+                        console.error('Auth profile load failed, using fallback user:', error);
+                        setUser(buildFallbackUser(firebaseUser));
+                        setIsNewUser(true);
                     }
                 } else {
-                    const mockUser = authService.getMockUser?.() || null;
-                    if (mockUser) {
-                        setUser(mockUser);
-                    } else if(!user?.isAdmin) {
-                        setUser(null);
-                    }
+                    setUser(null);
                     setIsNewUser(false);
                 }
             } catch (error) {
@@ -108,7 +102,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             clearTimeout(timeoutId);
             unsubscribe();
         };
-    }, [user?.isAdmin]);
+    }, [buildFallbackUser]);
 
     const openAuthModal = useCallback((view: 'login' | 'register') => {
         navigate('/auth', { state: { from: location } });
@@ -120,54 +114,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     const login = useCallback(async (email: string, pass: string) => {
         const loggedInUser = await authService.login(email, pass);
-        if (loggedInUser.isAdmin || loggedInUser.id.startsWith('mock-')) {
-            setUser(loggedInUser);
-        }
-        // For regular users, onAuthStateChanged will handle setting the user state.
+        setUser(loggedInUser);
         return loggedInUser;
     }, []);
 
     const register = useCallback(async (name: string, email: string, pass: string, phone: string, city: string) => {
-        try {
-            const created = await authService.register(name, email, pass, phone, city);
-            if (created && created.id.startsWith('mock-')) {
-                setUser(created);
-            }
-            return created;
-        } catch (error) {
-            const mock = authService.createMockUser({ name, email, phone, city });
-            authService.saveMockUser(mock);
-            setUser(mock);
-            return mock;
-        }
+        const created = await authService.register(name, email, pass, phone, city);
+        setUser(created);
+        setIsNewUser(true);
+        return created;
     }, []);
 
     const signInWithGoogle = useCallback(async () => {
-        await authService.signInWithGoogle();
+        const googleUser = await authService.signInWithGoogle();
+        setUser(googleUser);
+        if (!googleUser.interests || googleUser.interests.length === 0) {
+            setIsNewUser(true);
+        }
     }, []);
     
     const logout = useCallback(() => {
-        if (user && user.isAdmin) {
-            // For mocked admin user, just clear the state.
-            setUser(null);
-        } else {
-            // For regular Firebase users.
-            authService.logout();
-        }
-        try { localStorage.removeItem('urbanprime_mock_user'); } catch {}
+        authService.logout();
+        setUser(null);
         navigate('/');
-    }, [user, navigate]);
+    }, [navigate]);
 
-    const switchUser = useCallback(async (targetUserId: string) => {
-       // This is a mock-specific feature. In a real Firebase app, you'd just sign out and sign in.
-       // For demo purposes, we will simulate a login for the other user.
+    const switchUser = useCallback(async (_targetUserId: string) => {
        await authService.logout();
-       // In a real app, this would redirect to a login screen.
-       alert(`Simulating switch to user ${targetUserId}. In a real app you would log in as this user. For now, we'll reload.`);
-       window.location.hash = '/auth';
-       window.location.reload();
-
-    }, []);
+       setUser(null);
+       navigate('/auth');
+    }, [navigate]);
 
     const completeOnboarding = useCallback(async (data: OnboardingData) => {
         try {

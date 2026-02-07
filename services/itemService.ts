@@ -87,6 +87,20 @@ const isIgnorableFirebaseError = (error: unknown) => {
     );
 };
 
+const buildFallbackUser = (firebaseUser: FirebaseUser): User => ({
+    id: firebaseUser.uid,
+    name: firebaseUser.displayName || 'User',
+    email: firebaseUser.email || '',
+    avatar: firebaseUser.photoURL || 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
+    following: [],
+    followers: [],
+    wishlist: [],
+    cart: [],
+    badges: [],
+    memberSince: new Date().toISOString(),
+    status: 'active'
+});
+
 // Helper to convert Firestore doc to typed object
 export const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
     const data = docSnap.data();
@@ -96,58 +110,42 @@ export const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
 // --- AUTH SERVICE ---
 export const authService = {
     login: async (email: string, pass: string): Promise<User> => {
-        // --- SECRET ADMIN PATHWAY ---
-        // This bypasses Firebase Auth for development/admin access
-        if (email === 'admin@urbanprime.com' && pass === 'secret_admin_123') {
-            return {
-                id: 'admin-master-001',
-                name: 'Master Admin',
-                email: 'admin@urbanprime.com',
-                avatar: 'https://cdn-icons-png.flaticon.com/512/9322/9322127.png',
-                isAdmin: true,
-                isServiceProvider: false,
-                isAffiliate: false,
-                following: [],
-                followers: [],
-                wishlist: [],
-                cart: [],
-                badges: ['admin'],
-                memberSince: new Date().toISOString(),
-                status: 'active'
-            };
-        }
-        // ----------------------------
-
+        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-            const user = await userService.getUserById(userCredential.user.uid);
-            if (!user) throw new Error('User profile not found');
-            return user;
-        } catch (error: any) {
-            const mock = authService.getMockUser();
-            if (mock && mock.email === email) {
-                return mock;
+            let user = await userService.getUserById(userCredential.user.uid);
+            if (!user) {
+                user = await userService.createUserProfile(userCredential.user, {});
             }
-            throw error;
+            return user;
+        } catch (error) {
+            console.error('Failed to load user profile after login:', error);
+            return buildFallbackUser(userCredential.user);
         }
     },
-    register: async (name: string, email: string, pass: string, phone: string, city: string): Promise<User | void> => {
-        try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-            await userService.createUserProfile(userCredential.user, { name, phone, city });
-            const created = await userService.getUserById(userCredential.user.uid);
-            return created || undefined;
-        } catch (error: any) {
-            const mockUser = authService.createMockUser({ name, email, phone, city });
-            authService.saveMockUser(mockUser);
-            return mockUser;
+    register: async (name: string, email: string, pass: string, phone: string, city: string): Promise<User> => {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+        await userService.createUserProfile(userCredential.user, { name, phone, city });
+        const created = await userService.getUserById(userCredential.user.uid);
+        if (!created) {
+            throw new Error('User profile not found after registration.');
         }
+        return created;
     },
     logout: async () => {
         await signOut(auth);
     },
-    signInWithGoogle: async (): Promise<void> => {
-        await signInWithPopup(auth, googleProvider);
+    signInWithGoogle: async (): Promise<User> => {
+        const credential = await signInWithPopup(auth, googleProvider);
+        try {
+            let user = await userService.getUserById(credential.user.uid);
+            if (!user) {
+                user = await userService.createUserProfile(credential.user, {});
+            }
+            return user;
+        } catch (error) {
+            console.error('Failed to load user profile after Google sign-in:', error);
+            return buildFallbackUser(credential.user);
+        }
     },
     getProfile: async (uid: string): Promise<User | null> => {
         return userService.getUserById(uid);
@@ -157,41 +155,11 @@ export const authService = {
     },
     requestPasswordReset: async (email: string) => {
         await sendPasswordResetEmail(auth, email);
-        return { token: 'mock-token' }; // Real token handled by email link
+        return;
     },
     // FIX: Implemented missing resetPassword method.
     resetPassword: async (token: string, newPass: string) => {
          await confirmPasswordReset(auth, token, newPass);
-    },
-    createMockUser: (data: { name: string; email: string; phone?: string; city?: string }): User => {
-        return {
-            id: `mock-${Date.now()}`,
-            name: data.name || 'Guest User',
-            email: data.email,
-            avatar: 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
-            following: [],
-            followers: [],
-            wishlist: [],
-            cart: [],
-            badges: [],
-            memberSince: new Date().toISOString(),
-            status: 'active',
-            phone: data.phone,
-            city: data.city
-        };
-    },
-    saveMockUser: (user: User) => {
-        try {
-            localStorage.setItem('urbanprime_mock_user', JSON.stringify(user));
-        } catch {}
-    },
-    getMockUser: (): User | null => {
-        try {
-            const raw = localStorage.getItem('urbanprime_mock_user');
-            return raw ? (JSON.parse(raw) as User) : null;
-        } catch {
-            return null;
-        }
     }
 };
 
@@ -199,11 +167,6 @@ export const authService = {
 export const userService = {
     getUserById: async (uid: string): Promise<User | null> => {
         try {
-            const mockRaw = localStorage.getItem('urbanprime_mock_user');
-            if (mockRaw) {
-                const mockUser = JSON.parse(mockRaw) as User;
-                if (mockUser.id === uid) return mockUser;
-            }
             const docRef = doc(db, 'users', uid);
             const docSnap = await getDoc(docRef);
             return docSnap.exists() ? fromFirestore<User>(docSnap) : null;
@@ -227,7 +190,13 @@ export const userService = {
             status: 'active',
             ...additionalData
         };
-        await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+        try {
+            await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+        } catch (error) {
+            if (!isIgnorableFirebaseError(error)) {
+                throw error;
+            }
+        }
         return newUser;
     },
     updateUserProfile: async (uid: string, updates: Partial<User>): Promise<User> => {
@@ -259,10 +228,25 @@ export const userService = {
          return snapshot.docs.map(doc => fromFirestore<WishlistItem>(doc));
     },
     toggleWishlist: async (userId: string, itemId: string) => {
-         // Logic to add/remove from wishlist collection
-         // This is a simplified mock implementation
-         const userRef = doc(db, 'users', userId);
-         // In reality, would query subcollection or separate collection
+         const wishlistRef = collection(db, 'wishlists');
+         const q = query(wishlistRef, where('userId', '==', userId), where('itemId', '==', itemId));
+         const snapshot = await getDocs(q);
+
+         if (!snapshot.empty) {
+             const batch = writeBatch(db);
+             snapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+             await batch.commit();
+             return;
+         }
+
+         await addDoc(wishlistRef, {
+             userId,
+             itemId,
+             addedAt: new Date().toISOString(),
+             isPublic: true,
+             likes: [],
+             comments: []
+         });
     },
     toggleWishlistLike: async (ownerId: string, itemId: string, likerId: string) => {
         // Implementation
@@ -422,6 +406,40 @@ export const userService = {
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => fromFirestore<WalletTransaction>(doc));
     },
+    getNotificationsForUser: async (userId: string, max: number = 20): Promise<Notification[]> => {
+        try {
+            const q = query(
+                collection(db, 'notifications'),
+                where('userId', '==', userId),
+                orderBy('createdAt', 'desc'),
+                limit(max)
+            );
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(doc => fromFirestore<Notification>(doc));
+        } catch (error) {
+            if (isIgnorableFirebaseError(error)) return [];
+            throw error;
+        }
+    },
+    markNotificationsAsRead: async (userId: string): Promise<void> => {
+        try {
+            const q = query(
+                collection(db, 'notifications'),
+                where('userId', '==', userId),
+                where('isRead', '==', false)
+            );
+            const snapshot = await getDocs(q);
+            if (snapshot.empty) return;
+            const batch = writeBatch(db);
+            snapshot.docs.forEach(docSnap => {
+                batch.update(docSnap.ref, { isRead: true });
+            });
+            await batch.commit();
+        } catch (error) {
+            if (isIgnorableFirebaseError(error)) return;
+            throw error;
+        }
+    },
     getPayoutMethods: async (userId: string): Promise<PayoutMethod[]> => {
         const q = query(collection(db, 'users', userId, 'payoutMethods'));
         const snapshot = await getDocs(q);
@@ -463,6 +481,19 @@ export const itemService = {
             if (filters.isFeatured) items = items.filter(i => i.isFeatured);
             if (filters.minPrice) items = items.filter(i => (i.salePrice || i.rentalPrice || 0) >= filters.minPrice);
             if (filters.maxPrice) items = items.filter(i => (i.salePrice || i.rentalPrice || 0) <= filters.maxPrice);
+            if (filters.listingType) {
+                if (filters.listingType === 'rent') {
+                    items = items.filter(i => i.listingType === 'rent' || i.listingType === 'both');
+                } else if (filters.listingType === 'sale') {
+                    items = items.filter(i => i.listingType === 'sale' || i.listingType === 'both');
+                } else {
+                    items = items.filter(i => i.listingType === filters.listingType);
+                }
+            }
+            if (filters.minRating) items = items.filter(i => (i.avgRating || 0) >= filters.minRating);
+            if (filters.conditions && Array.isArray(filters.conditions) && filters.conditions.length > 0) {
+                items = items.filter(i => filters.conditions.includes(i.condition || ''));
+            }
             if (!filters.includeArchived) items = items.filter(i => i.status === 'published' || !i.status);
 
             // Sort
@@ -507,7 +538,7 @@ export const itemService = {
         const newItem = {
             ...itemData,
             price: itemData.price ?? itemData.salePrice ?? itemData.rentalPrice ?? 0,
-            owner: { id: user.id, name: user.name, avatar: user.avatar },
+            owner: { id: user.id, name: user.name, avatar: user.avatar, businessName: user.businessName },
             createdAt: new Date().toISOString(),
             reviews: [],
             avgRating: 0
@@ -545,6 +576,46 @@ export const itemService = {
         
         await updateDoc(itemRef, { reviews: updatedReviews, avgRating: newAvg });
         return { ...item, reviews: updatedReviews, avgRating: newAvg };
+    },
+    placeBid: async (itemId: string, bidAmount: number, bidder: { id: string; name: string }) => {
+        const itemRef = doc(db, 'items', itemId);
+        const itemSnap = await getDoc(itemRef);
+        if (!itemSnap.exists()) throw new Error("Item not found");
+
+        const item = fromFirestore<Item>(itemSnap);
+        if (item.listingType !== 'auction') throw new Error("This item is not an auction listing.");
+
+        const existingAuction = item.auctionDetails || {
+            startingBid: item.salePrice || 0,
+            currentBid: item.salePrice || 0,
+            endTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            bidCount: 0,
+            bids: []
+        };
+
+        const minIncrement = Math.max(1, Math.round((existingAuction.currentBid || existingAuction.startingBid || 0) * 0.05));
+        const minBid = (existingAuction.currentBid || existingAuction.startingBid || 0) + minIncrement;
+        if (bidAmount < minBid) {
+            throw new Error(`Bid must be at least ${minBid.toFixed(2)}.`);
+        }
+
+        const bid = {
+            amount: bidAmount,
+            bidderId: bidder.id,
+            bidderName: bidder.name,
+            createdAt: new Date().toISOString()
+        };
+
+        const updatedAuction = {
+            ...existingAuction,
+            currentBid: bidAmount,
+            bidCount: (existingAuction.bidCount || 0) + 1,
+            bids: [...(existingAuction.bids || []), bid]
+        };
+
+        await updateDoc(itemRef, { auctionDetails: updatedAuction });
+
+        return { ...item, auctionDetails: updatedAuction };
     },
     // FIX: Implemented missing addHelpfulVote method.
     addHelpfulVote: async (itemId: string, questionId: string) => {

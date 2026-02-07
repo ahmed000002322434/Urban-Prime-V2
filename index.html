@@ -406,12 +406,23 @@
       html.theme-grassy .bg-background, html.theme-grassy .dark\:bg-dark-background { background-color: transparent !important; }
 
 
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      img, video, canvas {
+        max-width: 100%;
+        height: auto;
+      }
+      svg { max-width: 100%; }
       body {
         overscroll-behavior-y: none;
         background-color: var(--color-background);
         color: var(--color-text-primary);
         transition: background-color 0.3s ease;
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
       }
+      #root { min-height: 100vh; }
       
       /* Obsidian Theme - Updated Footer Transparency */
       html.theme-obsidian {

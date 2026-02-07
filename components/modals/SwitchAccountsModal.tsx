@@ -5,7 +5,7 @@ import { userService } from '../../services/itemService';
 import type { User } from '../../types';
 import Spinner from '../Spinner';
 
-const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
 
 const SwitchAccountsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { user: currentUser, switchUser } = useAuth();
@@ -56,3 +56,4 @@ const SwitchAccountsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 };
 
 export default SwitchAccountsModal;
+

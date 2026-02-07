@@ -13,14 +13,16 @@ import { useNotification } from '../../context/NotificationContext';
 import BoostListingModal from '../../components/BoostListingModal';
 
 const StarIcon = ({isFilled}: {isFilled: boolean}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill={isFilled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${isFilled ? 'text-yellow-400' : 'text-gray-400'}`}>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill={isFilled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${isFilled ? 'text-yellow-400' : 'text-gray-400'}`}>
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
     </svg>
 );
 
-const RocketIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="currentColor" className="text-purple-500"><path d="M12 2.5a.5.5 0 0 1 .5.5v3.032c1.928.272 3.65 1.254 4.875 2.705l2.146-2.147a.5.5 0 0 1 .708 0l.707.708a.5.5 0 0 1 0 .707l-2.147 2.146c1.45 1.225 2.433 2.947 2.705 4.875H21.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3.032c-.272 1.928-1.254 3.65-2.705 4.875l2.147 2.146a.5.5 0 0 1 0 .707l-.707.708a.5.5 0 0 1-.708 0l-2.146-2.147c-1.225 1.45-2.947 2.433-4.875 2.705V21.5a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-3.032c-1.928-.272-3.65-1.254-4.875-2.705l-2.146 2.147a.5.5 0 0 1-.708 0l-.707-.708a.5.5 0 0 1 0-.707l2.147-2.146c-1.45-1.225-2.433-2.947-2.705-4.875H2.5a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3.032c.272-1.928 1.254-3.65 2.705-4.875L5.836 6.444a.5.5 0 0 1 0-.707l.707-.708a.5.5 0 0 1 .708 0l2.146 2.147c1.225-1.45 2.947-2.433 4.875-2.705V3a.5.5 0 0 1 .5-.5h1zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>;
-const GridIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>;
-const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+const RocketIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-purple-500"><path d="M12 2.5a.5.5 0 0 1 .5.5v3.032c1.928.272 3.65 1.254 4.875 2.705l2.146-2.147a.5.5 0 0 1 .708 0l.707.708a.5.5 0 0 1 0 .707l-2.147 2.146c1.45 1.225 2.433 2.947 2.705 4.875H21.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3.032c-.272 1.928-1.254 3.65-2.705 4.875l2.147 2.146a.5.5 0 0 1 0 .707l-.707.708a.5.5 0 0 1-.708 0l-2.146-2.147c-1.225 1.45-2.947 2.433-4.875 2.705V21.5a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-3.032c-1.928-.272-3.65-1.254-4.875-2.705l-2.146 2.147a.5.5 0 0 1-.708 0l-.707-.708a.5.5 0 0 1 0-.707l2.147-2.146c-1.45-1.225-2.433-2.947-2.705-4.875H2.5a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3.032c.272-1.928 1.254-3.65 2.705-4.875L5.836 6.444a.5.5 0 0 1 0-.707l.707-.708a.5.5 0 0 1 .708 0l2.146 2.147c1.225-1.45 2.947-2.433 4.875-2.705V3a.5.5 0 0 1 .5-.5h1zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>;
+const GridIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>;
+const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+
+type AutomationKey = 'autoReprice' | 'autoRestock' | 'autoPromote' | 'autoFulfill';
 
 const getItemImage = (item: Item) => {
   if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
@@ -89,6 +91,14 @@ const MyListingsPage: React.FC = () => {
       showNotification(`${field === 'salePrice' ? 'Price' : 'Stock'} updated!`);
       // Update local state without full refetch for speed
       setMyItems(prev => prev.map(i => i.id === itemId ? { ...i, [field]: numValue } : i));
+  };
+
+  const handleAutomationToggle = async (item: Item, field: AutomationKey, label: string) => {
+      const current = item.automation?.[field] ?? false;
+      const updatedAutomation = { ...(item.automation || {}), [field]: !current };
+      await itemService.updateItem(item.id, { automation: updatedAutomation });
+      setMyItems(prev => prev.map(i => i.id === item.id ? { ...i, automation: updatedAutomation } : i));
+      showNotification(`${label} ${!current ? 'enabled' : 'disabled'}.`);
   };
 
   const filteredItems = myItems.filter(item => {
@@ -191,6 +201,7 @@ const MyListingsPage: React.FC = () => {
                                     <th className="px-4 py-3">Price</th>
                                     <th className="px-4 py-3">Stock</th>
                                     <th className="px-4 py-3">Boost</th>
+                                    <th className="px-4 py-3">Automation</th>
                                     <th className="px-4 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -231,6 +242,34 @@ const MyListingsPage: React.FC = () => {
                                                 <button onClick={() => setItemToBoost(item)} className="text-xs text-purple-500 hover:underline flex items-center gap-1"><RocketIcon /> Boost</button>
                                             )}
                                         </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    onClick={() => handleAutomationToggle(item, 'autoReprice', 'Auto repricing')}
+                                                    className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${item.automation?.autoReprice ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary'}`}
+                                                >
+                                                    Reprice
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAutomationToggle(item, 'autoRestock', 'Auto restock')}
+                                                    className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${item.automation?.autoRestock ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary'}`}
+                                                >
+                                                    Restock
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAutomationToggle(item, 'autoPromote', 'Auto promote')}
+                                                    className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${item.automation?.autoPromote ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary'}`}
+                                                >
+                                                    Promote
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAutomationToggle(item, 'autoFulfill', 'Auto fulfill')}
+                                                    className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${item.automation?.autoFulfill ? 'border-primary text-primary bg-primary/10' : 'border-border text-text-secondary'}`}
+                                                >
+                                                    Fulfill
+                                                </button>
+                                            </div>
+                                        </td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button onClick={() => navigate(`/profile/products/new?edit=${item.id}`)} className="text-primary hover:underline font-semibold">Edit</button>
@@ -260,3 +299,4 @@ const MyListingsPage: React.FC = () => {
 };
 
 export default MyListingsPage;
+

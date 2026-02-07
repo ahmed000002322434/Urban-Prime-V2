@@ -4,9 +4,9 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { userService } from '../services/itemService';
-import type { ThemePreference } from '../types';
 
-export type Theme = 'light' | 'navy' | 'mono-dark' | 'earth' | 'emerald' | 'elite' | 'obsidian' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
+export type Theme = 'light' | 'navy' | 'earth' | 'emerald' | 'obsidian' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
+type ResolvedTheme = Exclude<Theme, 'system'>;
 
 export interface ThemeDefinition {
   name: Theme;
@@ -24,8 +24,6 @@ export const THEMES: ThemeDefinition[] = [
   { name: 'system', label: 'System', colors: { primary: '#0fb9b1', background: '#f8fafc', surface: '#ffffff' }, isDark: false }, // Placeholder colors
   { name: 'light', label: 'Default Light', colors: { primary: '#0fb9b1', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
   { name: 'navy', label: 'Navy', colors: { primary: '#3b82f6', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
-  { name: 'mono-dark', label: 'Mono Dark', colors: { primary: '#f8fafc', background: '#000000', surface: '#121212' }, isDark: true },
-  { name: 'elite', label: 'Elite Dark', colors: { primary: '#22d3ee', background: '#000000', surface: '#111' }, isDark: true },
   { name: 'obsidian', label: 'Obsidian', colors: { primary: '#ffffff', background: '#000000', surface: '#111111' }, isDark: true },
   { name: 'sandstone', label: 'Liquid Sandstone', colors: { primary: '#4E342E', background: '#dcbfa6', surface: 'rgba(230, 220, 200, 0.25)' }, isDark: false },
   { name: 'icy', label: 'Arctic Ice', colors: { primary: '#0077B6', background: '#CAF0F8', surface: 'rgba(225, 245, 255, 0.4)' }, isDark: false },
@@ -38,6 +36,7 @@ export const THEMES: ThemeDefinition[] = [
 
 interface ThemeContextType {
   theme: Theme;
+  resolvedTheme: ResolvedTheme;
   setTheme: (themeName: Theme) => void;
   themes: ThemeDefinition[];
 }
@@ -46,19 +45,44 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(undefine
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>('system');
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>('light');
+
+  const LEGACY_THEMES = ['mono-dark', 'elite'] as const;
+  const THEME_CLASSNAMES = [
+    'system',
+    'light',
+    'navy',
+    'earth',
+    'emerald',
+    'obsidian',
+    'sandstone',
+    'icy',
+    'hydra',
+    'parchment',
+    'grassy',
+    ...LEGACY_THEMES
+  ];
+
+  const getSystemTheme = () => {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'obsidian' : 'light';
+  };
+
+  const normalizeTheme = (value?: string | null): Theme => {
+    if (!value) return 'system';
+    if (LEGACY_THEMES.includes(value as any)) return 'obsidian';
+    if (THEMES.some(t => t.name === value)) return value as Theme;
+    return 'system';
+  };
 
   const applyTheme = useCallback((themeName: Theme) => {
     const root = window.document.documentElement;
-    let actualTheme = themeName;
-    if (themeName === 'system') {
-        actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'elite' : 'light';
-    }
+    let actualTheme = themeName === 'system' ? getSystemTheme() : themeName;
     
     const themeDef = THEMES.find(t => t.name === actualTheme);
     
     // Remove all old theme classes
-    THEMES.forEach(t => root.classList.remove(`theme-${t.name}`));
+    THEME_CLASSNAMES.forEach(t => root.classList.remove(`theme-${t}`));
     
     // Add new theme class
     root.classList.add(`theme-${actualTheme}`);
@@ -71,6 +95,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     
     setThemeState(themeName);
+    setResolvedTheme(actualTheme as ResolvedTheme);
   }, []);
 
   useEffect(() => {
@@ -87,13 +112,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     if (isAuthLoading) return;
 
-    let initialTheme: Theme = 'light'; // Default to light
-    const savedTheme = localStorage.getItem('urbanprime-theme') as Theme | null;
+    let initialTheme: Theme = 'system'; // Default to automatic
+    const savedTheme = normalizeTheme(localStorage.getItem('urbanprime-theme'));
+    const userTheme = normalizeTheme(user?.themePreference);
 
-    if (savedTheme && THEMES.some(t => t.name === savedTheme)) {
+    if (savedTheme && savedTheme !== 'system') {
       initialTheme = savedTheme;
-    } else if (user?.themePreference && THEMES.some(t => t.name === user.themePreference)) {
-      initialTheme = user.themePreference as Theme;
+    } else if (userTheme && userTheme !== 'system') {
+      initialTheme = userTheme;
     }
     
     applyTheme(initialTheme);
@@ -115,7 +141,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [user, applyTheme]);
 
-  const value = useMemo(() => ({ theme, setTheme, themes: THEMES }), [theme, setTheme]);
+  const value = useMemo(() => ({ theme, resolvedTheme, setTheme, themes: THEMES }), [theme, resolvedTheme, setTheme]);
 
   return (
     <ThemeContext.Provider value={value}>

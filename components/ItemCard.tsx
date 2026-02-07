@@ -10,9 +10,9 @@ import { useComparison } from '../hooks/useComparison';
 import { useCart } from '../hooks/useCart';
 import { useTranslatedItem, useTranslation } from '../hooks/useTranslation';
 
-const CompareIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
-const EyeIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.432 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
-const CartIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.658-.463 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>;
+const CompareIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
+const EyeIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.432 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+const CartIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.658-.463 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>;
 
 const ListingTypeBadge: React.FC<{ listingType: Item['listingType'] }> = ({ listingType }) => {
   const typeInfo = {
@@ -50,6 +50,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const showTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const imageUrl = item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/600/750`;
   
   // Logic to determine display price
   let displayPrice = 0;
@@ -68,7 +69,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
           priceLabel = translatedItem.rentalPriceType ? ` / ${translatedItem.rentalPriceType}` : '';
       }
   } else if (translatedItem.listingType === 'auction') {
-      displayPrice = translatedItem.auctionDetails?.currentBid || 0;
+      displayPrice = translatedItem.auctionDetails?.currentBid || translatedItem.auctionDetails?.startingBid || translatedItem.salePrice || 0;
       priceLabel = ' (Bid)';
   } else {
       displayPrice = translatedItem.salePrice || 0;
@@ -82,6 +83,10 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const handleAddToCartClick = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (translatedItem.listingType === 'auction') {
+        navigate(`/item/${item.id}`);
+        return;
+      }
       addItemToCart(item, 1);
       setIsAnimatingCart(true);
       setTimeout(() => setIsAnimatingCart(false), 400); // Animation duration
@@ -90,8 +95,12 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const handleBuyNowClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (translatedItem.listingType === 'auction') {
+      navigate(`/item/${item.id}`);
+      return;
+    }
     addItemToCart(item, 1);
-    navigate('/cart');
+    navigate('/checkout');
   };
 
   const handleCompareClick = (e: React.MouseEvent) => {
@@ -146,7 +155,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
                 Add to Cart
             </button>
             <button onClick={handleBuyNowClick} className="w-full text-left px-3 py-2 rounded-lg bg-surface-soft hover:bg-gray-200 text-sm font-bold text-text-primary">
-                {translatedItem.listingType === 'rent' ? 'Rent Now' : 'Buy Now'}
+                {translatedItem.listingType === 'rent' ? 'Rent Now' : translatedItem.listingType === 'auction' ? 'Bid Now' : 'Buy Now'}
             </button>
         </div>
     </div>
@@ -158,7 +167,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
       <div ref={cardRef} className="relative group flex flex-col bg-surface/60 backdrop-blur-xl rounded-2xl shadow-soft border border-border/40 hover:shadow-xl transition-all duration-300 h-full overflow-hidden">
         <Link to={`/item/${item.id}`} className="block">
           <div className="relative overflow-hidden aspect-[4/5] bg-gray-100/10">
-            <img src={item.imageUrls[0]} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+            <img src={imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
             {discountPercentage > 0 && <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">-{discountPercentage}%</div>}
             <WishlistButton itemId={item.id} className="text-white hover:text-red-500" />
              <div className="absolute bottom-2 left-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -217,7 +226,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
           <WishlistButton itemId={item.id} />
       </div>
       <Link to={`/item/${item.id}`} className="block flex-shrink-0 w-full sm:w-48 relative">
-        <img src={item.imageUrls[0]} alt={item.title} className="w-full h-full object-cover aspect-[4/3] sm:aspect-auto" />
+        <img src={imageUrl} alt={item.title} className="w-full h-full object-cover aspect-[4/3] sm:aspect-auto" />
         <ListingTypeBadge listingType={item.listingType} />
       </Link>
       <div className="flex-grow flex flex-col p-5">
@@ -266,3 +275,4 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
 };
 
 export default ItemCard;
+

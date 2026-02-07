@@ -14,7 +14,7 @@ const FaqItem: React.FC<{ q: string, a: React.ReactNode, defaultOpen?: boolean }
         <div className="border-b border-gray-200 dark:border-gray-700 py-4">
             <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center text-left">
                 <span className="font-semibold text-gray-800 dark:text-dark-text">{q}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
             {isOpen && <div className="mt-4 text-gray-600 dark:text-gray-400 prose prose-sm max-w-none">{a}</div>}
         </div>

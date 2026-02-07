@@ -32,12 +32,38 @@ const parseNameFromEmail = (email: string): string => {
   return localPart.charAt(0).toUpperCase() + localPart.slice(1);
 };
 
+const getAuthErrorMessage = (error: unknown, mode: 'login' | 'register' | 'google') => {
+    const err = error as { code?: string; message?: string };
+    const code = err?.code || '';
+    switch (code) {
+        case 'auth/email-already-in-use':
+            return 'This email is already registered.';
+        case 'auth/invalid-email':
+            return 'Please enter a valid email address.';
+        case 'auth/weak-password':
+            return 'Password is too weak. Use at least 6 characters.';
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+            return 'Invalid email or password.';
+        case 'auth/too-many-requests':
+            return 'Too many attempts. Please try again in a few minutes.';
+        case 'auth/network-request-failed':
+            return 'Network error. Check your connection and try again.';
+        default:
+            if (mode === 'google') {
+                return 'Google sign-in failed. Please try again.';
+            }
+            return err?.message || 'An unknown error occurred.';
+    }
+};
+
 
 const LoginPage: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { login, register, signInWithGoogle } = useAuth();
-    const { theme } = useTheme();
+    const { resolvedTheme } = useTheme();
 
     const [isSignUpActive, setIsSignUpActive] = useState(location.pathname === '/register');
 
@@ -98,7 +124,7 @@ const LoginPage: React.FC = () => {
             await login(loginEmail, loginPassword);
             navigate(from, { replace: true });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            setError(getAuthErrorMessage(err, 'login'));
         } finally {
             setLoading(false);
         }
@@ -112,7 +138,7 @@ const LoginPage: React.FC = () => {
             await register(regName, regEmail, regPassword, '', '');
             navigate(from, { replace: true });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            setError(getAuthErrorMessage(err, 'register'));
         } finally {
             setLoading(false);
         }
@@ -125,7 +151,7 @@ const LoginPage: React.FC = () => {
             await signInWithGoogle();
             navigate(from, { replace: true });
         } catch (err) {
-             setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+             setError(getAuthErrorMessage(err, 'google'));
         } finally {
             setLoading(false);
         }
@@ -136,7 +162,7 @@ const LoginPage: React.FC = () => {
         <div className="auth-body relative overflow-hidden flex flex-col justify-center items-center h-screen bg-transparent">
             
             <BackButton className="absolute top-8 left-8 z-[101]" />
-            <div className={`auth-container ${isSignUpActive ? 'right-panel-active' : ''} ${theme === 'elite' || theme === 'obsidian' ? '!bg-white/5 !backdrop-blur-xl border border-white/20 shadow-2xl' : ''}`} style={{ minHeight: '600px' }}>
+            <div className={`auth-container ${isSignUpActive ? 'right-panel-active' : ''} ${resolvedTheme === 'obsidian' || resolvedTheme === 'hydra' ? '!bg-white/5 !backdrop-blur-xl border border-white/20 shadow-2xl' : ''}`} style={{ minHeight: '600px' }}>
                 {/* Sign Up Form */}
                 <div 
                     className="form-container sign-up-container" 

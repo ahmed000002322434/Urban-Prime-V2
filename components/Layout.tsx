@@ -24,7 +24,7 @@ const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ messag
 
 const Layout: React.FC = () => {
   const location = useLocation();
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [showBanner, setShowBanner] = useState(true);
   const [isOmniOpen, setIsOmniOpen] = useState(false);
@@ -43,11 +43,9 @@ const Layout: React.FC = () => {
   const showFooter = !isReelsPage && !isInspirationPage;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
   
-  const layoutClasses = (theme === 'elite' || theme === 'obsidian') 
-    ? 'bg-transparent text-text-primary' 
-    : 'bg-background text-text-primary';
-  
-  const mainBgClass = (theme === 'elite' || theme === 'obsidian') ? 'bg-transparent' : 'bg-background';
+  const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';
+  const layoutClasses = isDarkGlass ? 'bg-transparent text-text-primary' : 'bg-background text-text-primary';
+  const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
 
   return (
     <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative`}>

@@ -46,7 +46,7 @@ export interface User {
 // Added ThemePreference to fix context error
 export type ThemePreference = Theme;
 
-export type Theme = 'light' | 'navy' | 'mono-dark' | 'earth' | 'emerald' | 'elite' | 'obsidian' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
+export type Theme = 'light' | 'navy' | 'earth' | 'emerald' | 'obsidian' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
 
 export type VerificationLevel = 'none' | 'level1' | 'level2';
 

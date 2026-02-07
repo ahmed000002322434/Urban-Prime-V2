@@ -17,9 +17,8 @@ const ForgotPasswordPage: React.FC = () => {
         setError('');
         setMessage('');
         try {
-            const result = await authService.requestPasswordReset(email);
-            // For this environment, we show the reset link directly. In a real app, this would be emailed.
-            setMessage(`If an account exists for ${email}, a password reset link has been generated. \n\n<a href="/#/reset-password?token=${result.token}" class="text-primary-dark underline">Click here to reset your password</a>`);
+            await authService.requestPasswordReset(email);
+            setMessage(`If an account exists for ${email}, a password reset link has been sent. Please check your inbox.`);
         } catch (err) {
             // Display a generic message for security reasons, but still show the link for the demo user if they mistype.
             setMessage(`If an account exists for ${email}, a password reset link has been sent.`);
@@ -37,7 +36,7 @@ const ForgotPasswordPage: React.FC = () => {
                         <h1 className="auth-h1">Reset Password</h1>
                         {message ? (
                             <div className="mt-6 text-center">
-                                <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: message }}></p>
+                                <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{message}</p>
                             </div>
                         ) : (
                             <>

@@ -9,10 +9,8 @@ import Spinner from '../../components/Spinner';
 import ItemCard from '../../components/ItemCard';
 import QuickViewModal from '../../components/QuickViewModal';
 import GemstoneHeroCard from '../../components/GemstoneHeroCard';
-import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import Magnetic from '../../components/Magnetic';
-import { useNotification } from '../../context/NotificationContext';
 
 // --- Assets & Icons ---
 const ArrowRight = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>;
@@ -419,9 +417,7 @@ const GemstoneLounge: React.FC<{ items: Item[] }> = ({ items }) => {
 
 // --- MAIN PAGE ---
 const HomePage: React.FC = () => {
-    const { user } = useAuth();
     const { theme } = useTheme();
-    const { showNotification } = useNotification();
     const [products, setProducts] = useState<Item[]>([]);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
@@ -462,14 +458,6 @@ const HomePage: React.FC = () => {
         try {
             let productsData = await itemService.getItems({}, { page: isInitial ? 1 : page, limit: 12 });
             
-            // AUTOMATIC SEEDING LOGIC
-            if (isInitial && productsData.items.length === 0) {
-                 console.log("No items found, initiating automatic seed...");
-                 await itemService.seedDatabase(user ?? undefined);
-                 // Refetch after seeding
-                 productsData = await itemService.getItems({}, { page: 1, limit: 12 });
-            }
-
             if (isInitial) {
                 setProducts(productsData.items);
                 // Separate logic for flash sale items if desired, or just use high rated ones
@@ -492,7 +480,7 @@ const HomePage: React.FC = () => {
             if (isInitial) setIsLoading(false);
             else setIsLoadingMore(false);
         }
-    }, [page, user]);
+    }, [page]);
 
     useEffect(() => {
         fetchItems(true);

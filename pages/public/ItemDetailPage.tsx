@@ -29,6 +29,17 @@ const getVideoEmbedUrl = (url?: string) => {
     return null;
 };
 
+const formatTimeLeft = (ms: number) => {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+};
+
 const StatPill: React.FC<{ label: string; value?: string; highlight?: boolean }> = ({ label, value, highlight }) => (
     <div className={`px-3 py-2 rounded-full border text-[10px] uppercase tracking-[0.25em] font-semibold ${highlight ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-soft border-border text-text-secondary'}`}>
         <span className="mr-2">{label}</span>
@@ -77,6 +88,8 @@ const ItemDetailPage: React.FC = () => {
     const [purchaseMode, setPurchaseMode] = useState<'sale' | 'rent'>('sale');
     const [activeTab, setActiveTab] = useState<'details' | 'shipping' | 'seller' | 'reviews'>('details');
     const [reloadKey, setReloadKey] = useState(0);
+    const [bidAmount, setBidAmount] = useState<number | ''>('');
+    const [isPlacingBid, setIsPlacingBid] = useState(false);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -84,9 +97,19 @@ const ItemDetailPage: React.FC = () => {
     const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
 
     const initialLoadRef = useRef(true);
+    const fetchKeyRef = useRef<string | null>(null);
+
+    const isAuction = item?.listingType === 'auction';
+    const auctionDetails = item?.auctionDetails;
+    const currentBid = auctionDetails?.currentBid || auctionDetails?.startingBid || item?.salePrice || 0;
+    const minIncrement = Math.max(1, Math.round(currentBid * 0.05));
+    const minBid = currentBid + minIncrement;
 
     useEffect(() => {
         if (!id) return;
+        const fetchKey = `${id}-${reloadKey}`;
+        if (fetchKeyRef.current === fetchKey) return;
+        fetchKeyRef.current = fetchKey;
         let isActive = true;
         const hasItem = !!item && item.id === id;
         if (hasItem) {
@@ -162,13 +185,25 @@ const ItemDetailPage: React.FC = () => {
         setIsAvailable(null);
     }, [startDate, endDate]);
 
+    useEffect(() => {
+        if (isAuction) {
+            setBidAmount(current => (typeof current === 'number' && current === minBid ? current : minBid));
+        }
+    }, [isAuction, minBid]);
+
     const galleryImages = useMemo(() => {
         if (!item) return [] as string[];
-        const images = item.imageUrls?.length ? item.imageUrls : item.images || [];
+        const images = (item.imageUrls?.length ? item.imageUrls : item.images || []).filter(Boolean);
         return images.length > 0 ? images : [`https://picsum.photos/seed/${item.id}/1200/1200`];
     }, [item]);
 
-    if (isLoading) return <div className="h-screen flex justify-center items-center"><Spinner size="lg" /></div>;
+    useEffect(() => {
+        if (galleryImages.length > 0 && activeImage >= galleryImages.length) {
+            setActiveImage(0);
+        }
+    }, [galleryImages.length, activeImage]);
+
+    if (isLoading && !item) return <div className="h-screen flex justify-center items-center"><Spinner size="lg" /></div>;
     if (!item) {
         return (
             <div className="min-h-screen bg-background text-text-primary flex items-center justify-center px-6">
@@ -194,10 +229,11 @@ const ItemDetailPage: React.FC = () => {
         );
     }
 
-    const displayPrice = item.salePrice || item.rentalPrice || item.price || 0;
+    let displayPrice = item.salePrice || item.rentalPrice || item.price || 0;
     const isRentalOnly = item.listingType === 'rent';
     const isBoth = item.listingType === 'both';
     const isRentalMode = isRentalOnly || (isBoth && purchaseMode === 'rent');
+    const isOutOfStock = item.stock !== undefined && item.stock <= 0;
 
     let totalRentalPrice = 0;
     let rentalDays = 0;
@@ -208,6 +244,13 @@ const ItemDetailPage: React.FC = () => {
         const diffTime = Math.abs(end.getTime() - start.getTime());
         rentalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
         totalRentalPrice = rentalDays * item.rentalRates.daily;
+    }
+
+    const buyNowPrice = isAuction ? item.buyNowPrice : (item.salePrice || 0);
+    const auctionEndsAt = auctionDetails?.endTime ? new Date(auctionDetails.endTime) : null;
+    const auctionTimeLeft = auctionEndsAt ? Math.max(0, auctionEndsAt.getTime() - Date.now()) : null;
+    if (isAuction) {
+        displayPrice = currentBid;
     }
 
     const handleCheckAvailability = async () => {
@@ -225,6 +268,10 @@ const ItemDetailPage: React.FC = () => {
     };
 
     const handleAddToCart = async () => {
+        if (isOutOfStock) {
+            showNotification('This item is currently unavailable.');
+            return;
+        }
         if (isRentalMode) {
             if (!startDate || !endDate) {
                 showNotification('Please select rental dates.');
@@ -244,6 +291,71 @@ const ItemDetailPage: React.FC = () => {
             navigate('/cart');
         } else {
             addItemToCart(item, 1);
+        }
+    };
+
+    const handleBuyNow = async () => {
+        if (isOutOfStock) {
+            showNotification('This item is currently unavailable.');
+            return;
+        }
+        if (isAuction) {
+            if (!buyNowPrice) {
+                showNotification('Buy Now is not available for this auction.');
+                return;
+            }
+            addItemToCart({ ...item, salePrice: buyNowPrice }, 1);
+            navigate('/checkout');
+            return;
+        }
+
+        if (isRentalMode) {
+            if (!startDate || !endDate) {
+                showNotification('Please select rental dates.');
+                return;
+            }
+            if (isAvailable !== true) {
+                setIsCheckingAvailability(true);
+                const available = await itemService.checkAvailability(item.id, startDate, endDate);
+                setIsCheckingAvailability(false);
+                setIsAvailable(available);
+                if (!available) {
+                    showNotification('Item is not available for these dates.');
+                    return;
+                }
+            }
+            addItemToCart(item, 1, undefined, { startDate, endDate });
+            navigate('/checkout');
+            return;
+        }
+
+        addItemToCart(item, 1);
+        navigate('/checkout');
+    };
+
+    const handlePlaceBid = async () => {
+        if (!user) {
+            showNotification('Please log in to place a bid.');
+            return;
+        }
+        if (auctionTimeLeft !== null && auctionTimeLeft <= 0) {
+            showNotification('This auction has ended.');
+            return;
+        }
+        const amount = typeof bidAmount === 'number' ? bidAmount : Number(bidAmount);
+        if (!amount || amount < minBid) {
+            showNotification(`Minimum bid is ${formatMoney(minBid)}.`);
+            return;
+        }
+        setIsPlacingBid(true);
+        try {
+            const updated = await itemService.placeBid(item.id, amount, { id: user.id, name: user.name });
+            setItem(updated);
+            showNotification('Bid placed successfully.');
+        } catch (error) {
+            showNotification(error instanceof Error ? error.message : 'Failed to place bid.');
+        } finally {
+            setIsPlacingBid(false);
         }
     };
 
@@ -311,6 +423,7 @@ const ItemDetailPage: React.FC = () => {
                                 {item.isVerified && <StatPill label="Verified" highlight />}
                                 {item.productType === 'dropship' && <StatPill label="Dropship" />}
                                 {item.listingType === 'rent' && <StatPill label="Rental" />}
+                                {item.listingType === 'auction' && <StatPill label="Auction" highlight />}
                                 {item.fulfillmentType && <StatPill label="Fulfillment" value={item.fulfillmentType.replace('_', ' ')} />}
                             </div>
                         </div>
@@ -386,6 +499,7 @@ const ItemDetailPage: React.FC = () => {
                                     <p className="text-3xl font-bold text-text-primary">
                                         {formatMoney(displayPrice)}
                                         {isRentalMode && item.rentalRates?.daily && <span className="text-sm text-text-secondary font-normal"> / day</span>}
+                                        {isAuction && <span className="text-sm text-text-secondary font-normal"> current bid</span>}
                                     </p>
                                     {item.compareAtPrice && item.compareAtPrice > displayPrice && (
                                         <span className="text-sm text-text-secondary line-through">{formatMoney(item.compareAtPrice)}</span>
@@ -416,7 +530,53 @@ const ItemDetailPage: React.FC = () => {
                                 </div>
                             )}
 
-                            {isRentalMode ? (
+                            {isAuction ? (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="rounded-2xl border border-border bg-surface-soft p-4">
+                                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">Current Bid</p>
+                                            <p className="text-2xl font-bold text-text-primary mt-2">{formatMoney(currentBid)}</p>
+                                            <p className="text-xs text-text-secondary mt-1">{auctionDetails?.bidCount || 0} bids</p>
+                                        </div>
+                                        <div className="rounded-2xl border border-border bg-surface-soft p-4">
+                                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">Ends In</p>
+                                            <p className="text-2xl font-bold text-text-primary mt-2">
+                                                {auctionTimeLeft !== null ? (auctionTimeLeft <= 0 ? 'Ended' : formatTimeLeft(auctionTimeLeft)) : '—'}
+                                            </p>
+                                            <p className="text-xs text-text-secondary mt-1">
+                                                {auctionEndsAt ? auctionEndsAt.toLocaleString() : 'Schedule not set'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl border border-border bg-surface-soft p-4 space-y-2">
+                                        <label className="text-xs uppercase tracking-[0.2em] text-text-secondary">Your Bid</label>
+                                        <input
+                                            type="number"
+                                            min={minBid}
+                                            value={bidAmount}
+                                            onChange={e => setBidAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                                            className="w-full px-4 py-3 rounded-xl border border-border bg-surface text-text-primary font-semibold"
+                                        />
+                                        <p className="text-xs text-text-secondary">Minimum bid {formatMoney(minBid)} · Increment {formatMoney(minIncrement)}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={handlePlaceBid}
+                                            disabled={isPlacingBid || (auctionTimeLeft !== null && auctionTimeLeft <= 0)}
+                                            className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft disabled:opacity-50"
+                                        >
+                                            {isPlacingBid ? <Spinner size="sm" /> : 'Place Bid'}
+                                        </button>
+                                        <button
+                                            onClick={handleBuyNow}
+                                            disabled={!buyNowPrice}
+                                            className="py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40"
+                                        >
+                                            {buyNowPrice ? `Buy Now ${formatMoney(buyNowPrice)}` : 'Buy Now'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : isRentalMode ? (
                                 <div className="space-y-4">
                                     <div className="bg-surface-soft rounded-2xl p-4 border border-border">
                                         <h3 className="text-sm font-bold uppercase tracking-[0.2em] mb-3">Select Rental Dates</h3>
@@ -480,21 +640,31 @@ const ItemDetailPage: React.FC = () => {
                                         </button>
                                         <button
                                             onClick={handleAddToCart}
-                                            disabled={!startDate || !endDate || isAvailable === false}
+                                            disabled={!startDate || !endDate || isAvailable === false || isOutOfStock}
                                             className="py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50"
                                         >
-                                            Rent Now
+                                            {isOutOfStock ? 'Unavailable' : 'Rent Now'}
                                         </button>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    <button
-                                        onClick={handleAddToCart}
-                                        className="w-full py-4 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90"
-                                    >
-                                        Add to Cart
-                                    </button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={handleAddToCart}
+                                            disabled={isOutOfStock}
+                                            className="py-4 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft disabled:opacity-50"
+                                        >
+                                            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+                                        </button>
+                                        <button
+                                            onClick={handleBuyNow}
+                                            disabled={isOutOfStock}
+                                            className="py-4 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50"
+                                        >
+                                            Buy Now
+                                        </button>
+                                    </div>
                                     <div className="text-xs text-text-secondary text-center">
                                         Secure checkout - Buyer protection - 24/7 support
                                     </div>

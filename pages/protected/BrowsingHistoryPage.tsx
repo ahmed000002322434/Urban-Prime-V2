@@ -7,7 +7,7 @@ import ItemCard from '../../components/ItemCard';
 import QuickViewModal from '../../components/QuickViewModal';
 import BackButton from '../../components/BackButton';
 
-const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 dark:text-gray-700"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 dark:text-gray-700"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
 
 const BrowsingHistoryPage: React.FC = () => {
     const [historyItems, setHistoryItems] = useState<Item[]>([]);
@@ -83,3 +83,4 @@ const BrowsingHistoryPage: React.FC = () => {
 };
 
 export default BrowsingHistoryPage;
+

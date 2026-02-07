@@ -139,7 +139,7 @@ const GemstoneHeroCard: React.FC<GemstoneHeroCardProps> = ({ item }) => {
                     >
                         <span className="relative z-10 flex items-center gap-2">
                             Buy Now
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                         </span>
                         <div className="absolute inset-0 bg-gradient-to-r from-[#0052cc] to-[#0066FF]" />
                     </motion.button>
@@ -168,3 +168,4 @@ const GemstoneHeroCard: React.FC<GemstoneHeroCardProps> = ({ item }) => {
 };
 
 export default GemstoneHeroCard;
+

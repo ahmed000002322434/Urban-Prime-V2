@@ -9,6 +9,7 @@ import { useTheme } from '../../hooks/useTheme';
 
 const ProductCard: React.FC<{ item: Item; onVote: () => void; wins: number; appearances: number; showStats: boolean; }> = ({ item, onVote, wins, appearances, showStats }) => {
     const winRate = appearances > 0 ? ((wins / appearances) * 100).toFixed(0) : 50;
+    const imageUrl = item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/600/600`;
     
     return (
         <div 
@@ -21,7 +22,7 @@ const ProductCard: React.FC<{ item: Item; onVote: () => void; wins: number; appe
 
             <div className="relative z-10 p-4 w-full h-full flex flex-col justify-between">
                 <img 
-                    src={item.imageUrls[0]} 
+                    src={imageUrl} 
                     alt={item.title} 
                     className="w-full aspect-square object-cover rounded-lg shadow-2xl transition-transform duration-300 group-hover:scale-105"
                 />
@@ -42,7 +43,7 @@ const ProductBattlePage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [showStats, setShowStats] = useState(false);
     const [key, setKey] = useState(0);
-    const { theme } = useTheme();
+    const { resolvedTheme } = useTheme();
 
     const fetchNewPair = useCallback(async () => {
         setIsLoading(true);
@@ -80,7 +81,7 @@ const ProductBattlePage: React.FC = () => {
     };
     
     // In elite theme, use transparency. Otherwise default dark background.
-    const bgClass = theme === 'elite' ? 'bg-transparent' : 'bg-gray-900';
+    const bgClass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra' ? 'bg-transparent' : 'bg-gray-900';
 
     return (
         <div className={`h-screen w-full ${bgClass} flex flex-col items-center justify-center p-4 relative`}>

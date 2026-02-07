@@ -4,11 +4,11 @@ import * as THREE from 'three';
 import { useTheme } from '../hooks/useTheme';
 
 const StarryBackground: React.FC = () => {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (theme !== 'elite' || !containerRef.current) {
+    if (resolvedTheme !== 'obsidian' || !containerRef.current) {
         return;
     }
 
@@ -137,9 +137,9 @@ const StarryBackground: React.FC = () => {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [theme]);
+  }, [resolvedTheme]);
 
-  if (theme !== 'elite') {
+  if (resolvedTheme !== 'obsidian') {
     return null;
   }
 
