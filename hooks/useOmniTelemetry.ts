@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from './useAuth';
+import { isBackendConfigured } from '../services/backendClient';
 
 export interface TelemetryPoint {
   time: string;
@@ -19,6 +20,27 @@ export const useOmniTelemetry = () => {
   const [trendData, setTrendData] = useState<TelemetryPoint[]>([]);
 
   useEffect(() => {
+    if (isBackendConfigured()) {
+      const fallbackPoints: TelemetryPoint[] = [
+        { time: '50m', marketValue: 10, userValue: 0 },
+        { time: '40m', marketValue: 12, userValue: 1 },
+        { time: '30m', marketValue: 15, userValue: 1 },
+        { time: '20m', marketValue: 9, userValue: 0 },
+        { time: '10m', marketValue: 13, userValue: 2 },
+        { time: '0m', marketValue: 11, userValue: 1 }
+      ];
+      setDataPoints(fallbackPoints);
+      setTrendData([
+        { time: '50m', userValue: 0, marketValue: 0, tech: 25, fashion: 18, luxury: 10 },
+        { time: '40m', userValue: 0, marketValue: 0, tech: 28, fashion: 20, luxury: 12 },
+        { time: '30m', userValue: 0, marketValue: 0, tech: 30, fashion: 22, luxury: 14 },
+        { time: '20m', userValue: 0, marketValue: 0, tech: 26, fashion: 19, luxury: 13 },
+        { time: '10m', userValue: 0, marketValue: 0, tech: 32, fashion: 24, luxury: 15 },
+        { time: '0m', userValue: 0, marketValue: 0, tech: 34, fashion: 25, luxury: 16 }
+      ]);
+      return;
+    }
+
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     
     // Global query for market average
@@ -70,6 +92,8 @@ export const useOmniTelemetry = () => {
       
       setDataPoints(formatted);
       setTrendData(trends.reverse());
+    }, (error) => {
+      console.warn('Omni telemetry listener failed:', error);
     });
 
     return () => unsubscribe();

@@ -4,6 +4,7 @@ import type { Store, User } from '../types';
 import { db } from '../firebase';
 import { generateStorefront } from './geminiService';
 import supabaseMirror from './supabaseMirror';
+import { isBackendConfigured } from './backendClient';
 
 const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
     const data = docSnap.data();
@@ -13,6 +14,13 @@ const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
 
 export const storefrontService = {
   async saveStorefront(userId: string, storefrontData: Store): Promise<Store> {
+    if (isBackendConfigured()) {
+        const existing = await supabaseMirror.list<Store>('storefronts', { filters: { ownerId: userId }, limit: 1 });
+        const storeId = existing[0]?.id || storefrontData.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `store-${Date.now()}`);
+        await supabaseMirror.upsert('storefronts', storeId, { ...storefrontData, id: storeId, ownerId: userId });
+        return { ...storefrontData, id: storeId, ownerId: userId };
+    }
+
     if (supabaseMirror.enabled) {
         const existing = await supabaseMirror.list<Store>('storefronts', { filters: { ownerId: userId }, limit: 1 });
         if (existing[0]) {
@@ -66,6 +74,14 @@ export const storefrontService = {
           questionnaireAnswers: aiResult.questionnaireAnswers,
           createdAt: new Date().toISOString(),
       };
+
+      if (isBackendConfigured()) {
+          const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `store-${Date.now()}`;
+          const created = { ...newStoreData, id } as Store;
+          await supabaseMirror.upsert('storefronts', id, created);
+          return created;
+      }
+
       const docRef = await addDoc(collection(db, "storefronts"), newStoreData);
       const created = { ...newStoreData, id: docRef.id };
       await supabaseMirror.upsert('storefronts', docRef.id, created);
@@ -74,9 +90,18 @@ export const storefrontService = {
 
   async getStorefrontByUserId(userId: string): Promise<Store | null> {
     if (supabaseMirror.enabled) {
-        const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { ownerId: userId }, limit: 1 });
-        if (mirrored[0]) return mirrored[0];
+        try {
+          // Try to get from mirror, but don't filter on ownerId (column doesn't exist in mirror table)
+          // The mirror stores all data so filtering must be done client-side or via different approach
+          const mirrored = await supabaseMirror.list<Store>('storefronts', { limit: 100 });
+          const userStore = mirrored.find(s => s.ownerId === userId);
+          if (userStore) return userStore;
+        } catch (error) {
+          console.warn('Failed to get storefront from mirror:', error);
+          // Fall through to Firebase
+        }
     }
+    if (isBackendConfigured()) return null;
     const q = query(collection(db, "storefronts"), where("ownerId", "==", userId));
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
@@ -92,6 +117,7 @@ export const storefrontService = {
         const mirrored = await supabaseMirror.get<Store>('storefronts', storeId);
         if (mirrored) return { id: storeId, ...mirrored } as Store;
     }
+    if (isBackendConfigured()) return null;
     const docRef = doc(db, "storefronts", storeId);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) return null;
@@ -106,17 +132,16 @@ export const storefrontService = {
     let stores = supabaseMirror.enabled
         ? await supabaseMirror.list<Store>('storefronts', { limit: 500 })
         : [];
-    if (stores.length === 0) {
+    if (stores.length === 0 && !isBackendConfigured()) {
         stores = (await getDocs(collection(db, "storefronts"))).docs.map(doc => fromFirestore<Store>(doc));
         if (supabaseMirror.enabled) {
             await Promise.all(stores.map(store => supabaseMirror.upsert('storefronts', store.id, store)));
         }
     }
     
-    // In a real app, you might want to fetch owner data more efficiently
     const enrichedStores = await Promise.all(stores.map(async store => {
         let owner = await supabaseMirror.get<User>('users', store.ownerId);
-        if (!owner) {
+        if (!owner && !isBackendConfigured()) {
             const ownerSnap = await getDoc(doc(db, "users", store.ownerId));
             owner = ownerSnap.exists() ? fromFirestore<User>(ownerSnap) : null;
         }
@@ -131,6 +156,7 @@ export const storefrontService = {
         const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { slug }, limit: 1 });
         if (mirrored[0]) return mirrored[0];
     }
+    if (isBackendConfigured()) return null;
     const q = query(collection(db, "storefronts"), where("slug", "==", slug));
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
@@ -146,12 +172,17 @@ export const storefrontService = {
         const mirrored = await supabaseMirror.list<Store>('storefronts', { filters: { slug }, limit: 1 });
         if (mirrored.length > 0) return false;
       }
+      if (isBackendConfigured()) return true;
       const q = query(collection(db, "storefronts"), where("slug", "==", slug));
       const snapshot = await getDocs(q);
       return snapshot.empty;
   },
 
   async updateStoreBranding(storeId: string, data: Partial<Store>): Promise<void> {
+      if (isBackendConfigured()) {
+        await supabaseMirror.mergeUpdate<Store>('storefronts', storeId, data);
+        return;
+      }
       const storeRef = doc(db, "storefronts", storeId);
       await updateDoc(storeRef, data);
       await supabaseMirror.mergeUpdate<Store>('storefronts', storeId, data);

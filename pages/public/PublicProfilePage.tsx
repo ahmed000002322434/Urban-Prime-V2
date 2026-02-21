@@ -59,34 +59,58 @@ const PublicProfilePage: React.FC = () => {
         if (!id) return;
         setIsLoading(true);
         setLoadError(null);
-        Promise.all([
-            userService.getPublicProfile(id),
-            userService.getPublicCollectionsForUser(id),
-            reelService.getReelsByCreator(id),
-            itemService.getReviewsForOwner(id)
-        ]).then(([profileData, collectionsData, reelsData, reviewsData]) => {
-                if (profileData) {
-                    setProfile(profileData);
-                    setCollections(collectionsData);
-                    setReels(reelsData);
-                    setFollowersCount(profileData.user.followers.length);
-                    if (loggedInUser) {
-                        setIsFollowing(loggedInUser.following.includes(profileData.user.id));
-                    }
-                    // Calculate Rating
-                    setTotalReviews(reviewsData.length);
-                    const avg = reviewsData.length > 0 
-                        ? reviewsData.reduce((sum, r) => sum + r.rating, 0) / reviewsData.length 
-                        : 0;
-                    setAverageRating(avg);
-                }
-                setIsLoading(false);
-            })
-            .catch((error) => {
-                console.error(error);
+
+        const loadProfile = async () => {
+            const [profileRes, collectionsRes, reelsRes, reviewsRes] = await Promise.allSettled([
+                userService.getPublicProfile(id),
+                userService.getPublicCollectionsForUser(id),
+                reelService.getReelsByCreator(id),
+                itemService.getReviewsForOwner(id)
+            ]);
+
+            if (profileRes.status !== 'fulfilled' || !profileRes.value) {
+                setProfile(null);
                 setLoadError('Unable to load this profile right now.');
                 setIsLoading(false);
-            });
+                return;
+            }
+
+            const profileData = profileRes.value;
+            const collectionsData = collectionsRes.status === 'fulfilled' ? collectionsRes.value : [];
+            const reelsData = reelsRes.status === 'fulfilled' ? reelsRes.value : [];
+            const reviewsData = reviewsRes.status === 'fulfilled' ? reviewsRes.value : [];
+
+            const safeUser: User = {
+                ...profileData.user,
+                avatar: profileData.user.avatar || '/icons/urbanprime.svg',
+                badges: Array.isArray(profileData.user.badges) ? profileData.user.badges : [],
+                following: Array.isArray(profileData.user.following) ? profileData.user.following : [],
+                followers: Array.isArray(profileData.user.followers) ? profileData.user.followers : [],
+                wishlist: Array.isArray(profileData.user.wishlist) ? profileData.user.wishlist : [],
+                cart: Array.isArray(profileData.user.cart) ? profileData.user.cart : []
+            };
+
+            setProfile({ ...profileData, user: safeUser });
+            setCollections(collectionsData);
+            setReels(reelsData);
+            setFollowersCount(safeUser.followers.length);
+
+            if (loggedInUser) {
+                const followingList = Array.isArray(loggedInUser.following) ? loggedInUser.following : [];
+                setIsFollowing(followingList.includes(safeUser.id));
+            }
+
+            setTotalReviews(reviewsData.length);
+            const avg = reviewsData.length > 0 ? reviewsData.reduce((sum, r) => sum + r.rating, 0) / reviewsData.length : 0;
+            setAverageRating(avg);
+            setIsLoading(false);
+        };
+
+        loadProfile().catch((error) => {
+            console.error(error);
+            setLoadError('Unable to load this profile right now.');
+            setIsLoading(false);
+        });
     }, [id, loggedInUser]);
     
     if (isLoading) return <Spinner size="lg" className="mt-20" />;
@@ -94,7 +118,7 @@ const PublicProfilePage: React.FC = () => {
     if (!profile) return <div className="text-center py-20">User not found.</div>;
 
     const { user, items, store } = profile;
-    const userBadges = allBadgesData.filter(b => user.badges.includes(b.id));
+    const userBadges = allBadgesData.filter(b => (user.badges || []).includes(b.id));
     const isOwnProfile = isAuthenticated && loggedInUser?.id === user.id;
     const shopTheLookCollections = collections.filter(c => c.isShopTheLook);
 
@@ -134,7 +158,7 @@ const PublicProfilePage: React.FC = () => {
                     {/* Profile Header */}
                     <div className="bg-white dark:bg-dark-surface p-6 rounded-lg shadow-lg flex flex-col items-center gap-6">
                         <div className="flex flex-col sm:flex-row items-center gap-6 w-full">
-                             <img src={user.avatar} alt={user.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary dark:border-white flex-shrink-0" />
+                             <img src={user.avatar || '/icons/urbanprime.svg'} alt={user.name} className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary dark:border-white flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/icons/urbanprime.svg'; }} />
                             <div className="flex-1 w-full text-center sm:text-left">
                                 <div className="flex items-center gap-4 justify-center sm:justify-start flex-wrap">
                                     <h1 className="text-3xl font-bold font-display">{user.businessName || user.name}</h1>
@@ -159,7 +183,7 @@ const PublicProfilePage: React.FC = () => {
                                         </>
                                     )}
                                 </div>
-                                <p className="text-sm text-slate-500 dark:text-gray-400 mt-2">Member since {new Date(user.memberSince).toLocaleDateString()}{user.yearsInBusiness ? ` • ${user.yearsInBusiness} Years in Business` : ''}</p>
+                                <p className="text-sm text-slate-500 dark:text-gray-400 mt-2">Member since {new Date(user.memberSince).toLocaleDateString()}{user.yearsInBusiness ? ` | ${user.yearsInBusiness} Years in Business` : ''}</p>
                                 <p className="mt-2 text-sm text-light-text dark:text-gray-300">{user.about || user.businessDescription}</p>
                             </div>
                         </div>
@@ -167,7 +191,7 @@ const PublicProfilePage: React.FC = () => {
                              <Stat count={items.length} label="Posts" />
                              <Stat count={reels.length} label="Pixes" />
                              <Stat count={followersCount} label="Followers" />
-                             <Stat count={user.following.length} label="Following" />
+                             <Stat count={(user.following || []).length} label="Following" />
                         </div>
                     </div>
                     
@@ -185,7 +209,7 @@ const PublicProfilePage: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="text-center py-12 bg-white dark:bg-dark-surface rounded-lg shadow-lg">
-                                    <p className="text-slate-500 dark:text-gray-400">{user.name} has not listed any items yet.</p>
+                                    <p className="text-slate-500 dark:text-gray-400">{user.businessName || user.name} has not listed any items yet.</p>
                                 </div>
                             )
                         )}
@@ -205,7 +229,7 @@ const PublicProfilePage: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="text-center py-12 bg-white dark:bg-dark-surface rounded-lg shadow-lg">
-                                    <p className="text-slate-500 dark:text-gray-400">{user.name} has not posted any pixes yet.</p>
+                                    <p className="text-slate-500 dark:text-gray-400">{user.businessName || user.name} has not posted any pixes yet.</p>
                                 </div>
                             )
                         )}

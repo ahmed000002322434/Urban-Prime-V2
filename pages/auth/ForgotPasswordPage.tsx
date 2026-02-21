@@ -4,6 +4,7 @@ import { authService } from '../../services/itemService';
 import Spinner from '../../components/Spinner';
 import EmailInput from '../../components/EmailInput';
 import BackButton from '../../components/BackButton';
+import AuthVideoBackdrop from '../../components/auth/AuthVideoBackdrop';
 
 const ForgotPasswordPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -28,9 +29,10 @@ const ForgotPasswordPage: React.FC = () => {
     };
 
     return (
-        <div className="auth-body">
+        <div className="auth-body relative overflow-hidden bg-transparent">
+            <AuthVideoBackdrop />
             <BackButton to="/auth" text="Back to Login" className="absolute top-8 left-8 z-[101]" />
-            <div className="auth-container" style={{ minHeight: '400px', width: '420px', display: 'flex' }}>
+            <div className="auth-container relative z-10" style={{ minHeight: '400px', width: '420px', display: 'flex' }}>
                 <div className="form-container" style={{ width: '100%', left: 0, zIndex: 2 }}>
                     <form onSubmit={handleSubmit} className="auth-form animate-fade-in-up">
                         <h1 className="auth-h1">Reset Password</h1>

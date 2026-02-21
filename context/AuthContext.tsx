@@ -1,27 +1,128 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { User, OnboardingData } from '../types';
-import { authService, userService } from '../services/itemService';
+import type {
+  AccountPersona,
+  Capability,
+  CapabilityState,
+  OnboardingData,
+  OnboardingDraft,
+  OnboardingIntent,
+  OnboardingStepId,
+  PersonaType,
+  ProfileCompletion,
+  UnifiedProfile,
+  User,
+  UserOnboardingState
+} from '../types';
+import { authService } from '../services/itemService';
+import profileOnboardingService from '../services/profileOnboardingService';
+import personaService from '../services/personaService';
 import { auth } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Spinner from '../components/Spinner';
 
+const ONBOARDING_PRESET_KEY = 'urbanprime_onboarding_preset_v2';
+const ONBOARDING_REDIRECT_KEY = 'urbanprime_onboarding_redirect_v2';
+
+const toLegacyPurpose = (intents: OnboardingIntent[]): OnboardingData['purpose'] | undefined => {
+  const hasSell = intents.includes('sell');
+  const hasBuy = intents.includes('buy') || intents.includes('rent');
+  if (hasSell && hasBuy) return 'both';
+  if (hasSell) return 'list';
+  if (hasBuy) return 'rent';
+  return undefined;
+};
+
+const mapPurposeToIntents = (
+  purpose?: OnboardingData['purpose'] | OnboardingIntent | OnboardingIntent[]
+): OnboardingIntent[] => {
+  if (!purpose) return [];
+  if (Array.isArray(purpose)) {
+    return Array.from(new Set(purpose.filter(Boolean)));
+  }
+
+  const normalized = String(purpose).trim().toLowerCase();
+  if (normalized === 'both') return ['buy', 'sell'];
+  if (normalized === 'list') return ['sell'];
+  if (normalized === 'rent') return ['rent'];
+  if (normalized === 'provide_service') return ['provide'];
+  if (['buy', 'sell', 'provide', 'affiliate'].includes(normalized)) {
+    return [normalized as OnboardingIntent];
+  }
+  return [];
+};
+
+const defaultCompletion: ProfileCompletion = {
+  isComplete: false,
+  missingRequiredFields: ['name', 'phone', 'country', 'city', 'currency_preference', 'purpose', 'interests'],
+  nextStep: 'intent'
+};
+
+const completedBypassCompletion: ProfileCompletion = {
+  isComplete: true,
+  missingRequiredFields: [],
+  nextStep: 'completed'
+};
+
+const readProfileOnboardingFlag = () => {
+  const raw = import.meta.env.VITE_PROFILE_ONBOARDING_V2 as string | undefined;
+  if (raw === undefined) return true;
+  const normalized = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return true;
+};
+
+const fallbackCompletion = (profile: User): ProfileCompletion => {
+  const missingRequiredFields: string[] = [];
+  if (!profile?.name) missingRequiredFields.push('name');
+  if (!profile?.phone) missingRequiredFields.push('phone');
+  if (!profile?.country) missingRequiredFields.push('country');
+  if (!profile?.city) missingRequiredFields.push('city');
+  if (!profile?.currencyPreference) missingRequiredFields.push('currency_preference');
+  if (!profile?.purpose) missingRequiredFields.push('purpose');
+  if (!profile?.interests || profile.interests.length === 0) missingRequiredFields.push('interests');
+
+  let nextStep: OnboardingStepId = 'completed';
+  if (missingRequiredFields.includes('purpose')) nextStep = 'intent';
+  else if (missingRequiredFields.some((field) => ['name', 'phone', 'country', 'city', 'currency_preference'].includes(field))) nextStep = 'identity';
+  else if (missingRequiredFields.includes('interests')) nextStep = 'preferences';
+  else if (missingRequiredFields.length > 0) nextStep = 'review';
+
+  return {
+    isComplete: missingRequiredFields.length === 0,
+    missingRequiredFields,
+    nextStep
+  };
+};
+
 interface AuthContextType {
   isAuthenticated: boolean;
+  isGuest: boolean;
   user: User | null;
+  personas: AccountPersona[];
+  activePersona: AccountPersona | null;
   isLoading: boolean;
   isNewUser: boolean;
   showOnboarding: boolean;
-  onboardingPreset: OnboardingData['purpose'] | null;
+  onboardingPreset: OnboardingData['purpose'] | OnboardingIntent | null;
+  profileCompletion: ProfileCompletion | null;
+  isProfileOnboardingEnabled: boolean;
   login: (email: string, pass: string) => Promise<User>;
   register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<User>;
   signInWithGoogle: () => Promise<User>;
   logout: () => void;
   switchUser: (targetUserId: string) => Promise<void>;
-  completeOnboarding: (data: OnboardingData) => void;
-  openOnboarding: (purpose?: OnboardingData['purpose'], redirectPath?: string) => void;
+  completeOnboarding: (payload: OnboardingData | { selectedIntents?: OnboardingIntent[]; draft?: OnboardingDraft; roleSetup?: Record<string, unknown> }) => Promise<void>;
+  saveOnboardingStep: (stepId: OnboardingStepId, payload: { selectedIntents?: OnboardingIntent[]; draft?: OnboardingDraft }) => Promise<UserOnboardingState | null>;
+  refreshProfile: () => Promise<UnifiedProfile | null>;
+  openOnboarding: (purpose?: OnboardingData['purpose'] | OnboardingIntent | OnboardingIntent[], redirectPath?: string) => void;
   closeOnboarding: () => void;
   updateUser: (updatedData: Partial<User>) => void;
+  setActivePersona: (personaId: string) => Promise<void>;
+  createPersona: (type: PersonaType, payload?: Partial<AccountPersona>) => Promise<AccountPersona>;
+  hasCapability: (capability: Capability, personaId?: string) => boolean;
+  capabilityState: (capability: Capability, personaId?: string) => CapabilityState;
   openAuthModal: (view: 'login' | 'register') => void;
   closeAuthModal: () => void;
   authModalView: 'login' | 'register' | null;
@@ -31,221 +132,430 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isNewUser, setIsNewUser] = useState(false);
-    const [showOnboarding, setShowOnboarding] = useState(false);
-    const [onboardingPreset, setOnboardingPreset] = useState<OnboardingData['purpose'] | null>(null);
-    const [onboardingRedirect, setOnboardingRedirect] = useState<string | null>(null);
-    
-    const navigate = useNavigate();
-    const location = useLocation();
-    
-    const fromPath = location.state?.from?.pathname || "/";
-    const authRedirectPath = (location.state?.from as any)?.pathname || "/";
+  const onboardingFeatureDefault = readProfileOnboardingFlag();
+  const [user, setUser] = useState<User | null>(null);
+  const [personas, setPersonas] = useState<AccountPersona[]>([]);
+  const [activePersona, setActivePersonaState] = useState<AccountPersona | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showOnboarding] = useState(false);
+  const [onboardingPreset, setOnboardingPreset] = useState<OnboardingData['purpose'] | OnboardingIntent | null>(null);
+  const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
+  const [isProfileOnboardingEnabled, setIsProfileOnboardingEnabled] = useState<boolean>(onboardingFeatureDefault);
 
-    const buildFallbackUser = useCallback((firebaseUser: FirebaseUser): User => ({
-        id: firebaseUser.uid,
-        name: firebaseUser.displayName || 'User',
-        email: firebaseUser.email || '',
-        avatar: firebaseUser.photoURL || 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
-        following: [],
-        followers: [],
-        wishlist: [],
-        cart: [],
-        badges: [],
-        memberSince: new Date().toISOString(),
-        status: 'active'
-    }), []);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-    useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            setIsLoading(false);
-        }, 1500);
+  const fromPath = location.state?.from?.pathname || '/';
+  const authRedirectPath = (location.state?.from as any)?.pathname || '/';
 
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-            try {
-                if (firebaseUser) {
-                    try {
-                        const profile = await authService.getProfile(firebaseUser.uid);
-                        if (profile) {
-                            setUser(profile);
-                            if (!profile.interests || profile.interests.length === 0) {
-                                setIsNewUser(true);
-                            } else {
-                                setIsNewUser(false);
-                            }
-                        } else {
-                            const newUserProfile = await authService.createUserProfile(firebaseUser, {});
-                            setUser(newUserProfile);
-                            setIsNewUser(true);
-                        }
-                    } catch (error) {
-                        console.error('Auth profile load failed, using fallback user:', error);
-                        setUser(buildFallbackUser(firebaseUser));
-                        setIsNewUser(true);
-                    }
-                } else {
-                    setUser(null);
-                    setIsNewUser(false);
-                }
-            } catch (error) {
-                console.error('Auth initialization failed:', error);
-            } finally {
-                setIsLoading(false);
-                clearTimeout(timeoutId);
-            }
-        });
+  const buildFallbackUser = useCallback(
+    (firebaseUser: FirebaseUser): User => ({
+      id: firebaseUser.uid,
+      name: firebaseUser.displayName || 'User',
+      email: firebaseUser.email || '',
+      avatar: firebaseUser.photoURL || '/icons/urbanprime.svg',
+      phone: '',
+      city: '',
+      country: '',
+      purpose: undefined,
+      interests: [],
+      currencyPreference: '',
+      following: [],
+      followers: [],
+      wishlist: [],
+      cart: [],
+      badges: [],
+      memberSince: new Date().toISOString(),
+      status: 'active',
+      accountLifecycle: 'restricted',
+      capabilities: personaService.getCapabilitiesForPersonaType('consumer', { isAdmin: false })
+    }),
+    []
+  );
 
-        // Cleanup subscription on unmount
-        return () => {
-            clearTimeout(timeoutId);
-            unsubscribe();
-        };
-    }, [buildFallbackUser]);
+  const syncPersonas = useCallback(async (currentUser: User): Promise<AccountPersona[]> => {
+    const list = await personaService.ensureDefaultConsumerPersona(currentUser);
+    setPersonas(list);
+    const active = personaService.getActivePersona(currentUser.id, list);
+    setActivePersonaState(active);
+    if (active) {
+      setUser((prev) => (prev ? { ...prev, activePersonaId: active.id, capabilities: active.capabilities } : prev));
+    }
+    return list;
+  }, []);
 
-    const openAuthModal = useCallback((view: 'login' | 'register') => {
-        navigate('/auth', { state: { from: location } });
-    }, [navigate, location]);
+  const applyUnifiedProfile = useCallback(
+    async (unified: UnifiedProfile) => {
+      const onboardingEnabled = unified.featureFlags?.profileOnboardingV2 ?? onboardingFeatureDefault;
+      setIsProfileOnboardingEnabled(onboardingEnabled);
+      setUser(unified.user);
+      setPersonas(unified.personas);
+      setActivePersonaState(unified.activePersona || null);
+      setProfileCompletion(onboardingEnabled ? (unified.completion || defaultCompletion) : completedBypassCompletion);
+      if (!unified.personas || unified.personas.length === 0) {
+        await syncPersonas(unified.user);
+      }
+    },
+    [onboardingFeatureDefault, syncPersonas]
+  );
 
-    const closeAuthModal = useCallback(() => {
-        navigate(fromPath, { replace: true });
-    }, [navigate, fromPath]);
-    
-    const login = useCallback(async (email: string, pass: string) => {
-        const loggedInUser = await authService.login(email, pass);
-        setUser(loggedInUser);
-        return loggedInUser;
-    }, []);
-
-    const register = useCallback(async (name: string, email: string, pass: string, phone: string, city: string) => {
-        const created = await authService.register(name, email, pass, phone, city);
-        setUser(created);
-        setIsNewUser(true);
-        return created;
-    }, []);
-
-    const signInWithGoogle = useCallback(async () => {
-        const googleUser = await authService.signInWithGoogle();
-        setUser(googleUser);
-        if (!googleUser.interests || googleUser.interests.length === 0) {
-            setIsNewUser(true);
-        }
-    }, []);
-    
-    const logout = useCallback(() => {
-        authService.logout();
-        setUser(null);
-        navigate('/');
-    }, [navigate]);
-
-    const switchUser = useCallback(async (_targetUserId: string) => {
-       await authService.logout();
-       setUser(null);
-       navigate('/auth');
-    }, [navigate]);
-
-    const completeOnboarding = useCallback(async (data: OnboardingData) => {
-        try {
-            if (user) {
-                const updatedUser = await userService.updateUserProfile(user.id, { 
-                    interests: data.interests, 
-                    country: data.country, 
-                    currencyPreference: data.currency 
-                });
-                setUser(updatedUser);
-            } else {
-                localStorage.setItem('onboarding_data', JSON.stringify(data));
-            }
-            localStorage.setItem('onboarding_completed', 'true');
-        } catch (error) {
-            console.error('Failed to complete onboarding:', error);
-            if (user) {
-                setUser({
-                    ...user,
-                    interests: data.interests,
-                    country: data.country,
-                    currencyPreference: data.currency
-                });
-            }
-            localStorage.setItem('onboarding_completed', 'true');
-        } finally {
-            setIsNewUser(false);
-            setShowOnboarding(false);
-            if (onboardingRedirect) {
-                navigate(onboardingRedirect);
-                setOnboardingRedirect(null);
-            }
-        }
-    }, [user, onboardingRedirect, navigate]);
-
-    const openOnboarding = useCallback((purpose?: OnboardingData['purpose'], redirectPath?: string) => {
-        const completed = localStorage.getItem('onboarding_completed') === 'true';
-        if (completed) return;
-        setOnboardingPreset(purpose || null);
-        setOnboardingRedirect(redirectPath || null);
-        setShowOnboarding(true);
-    }, []);
-
-    const closeOnboarding = useCallback(() => {
-        setShowOnboarding(false);
-        setOnboardingRedirect(null);
-    }, []);
-
-    const updateUser = useCallback((updatedData: Partial<User>) => {
-        setUser(currentUser => {
-            if (!currentUser) return null;
-            return { ...currentUser, ...updatedData };
-        });
-    }, []);
-
-    const value = useMemo(() => ({
-        isAuthenticated: !!user,
-        user,
-        isLoading,
-        isNewUser,
-        showOnboarding,
-        onboardingPreset,
-        login,
-        register,
-        signInWithGoogle,
-        logout,
-        switchUser,
-        completeOnboarding,
-        openOnboarding,
-        closeOnboarding,
-        updateUser,
-        openAuthModal,
-        closeAuthModal,
-        authModalView: null, // This is now handled by the /auth route
-        authRedirectPath
-    }), [
-        user, 
-        isLoading, 
-        isNewUser, 
-        showOnboarding,
-        onboardingPreset,
-        login, 
-        register, 
-        signInWithGoogle, 
-        logout,
-        switchUser, 
-        completeOnboarding, 
-        openOnboarding,
-        closeOnboarding,
-        updateUser,
-        openAuthModal,
-        closeAuthModal,
-        authRedirectPath
-    ]);
-    
-    if (isLoading) {
-        return <div className="h-screen w-full flex items-center justify-center bg-background"><Spinner size="lg" /></div>;
+  const refreshProfile = useCallback(async (): Promise<UnifiedProfile | null> => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      setUser(null);
+      setPersonas([]);
+      setActivePersonaState(null);
+      setProfileCompletion(null);
+      setIsProfileOnboardingEnabled(onboardingFeatureDefault);
+      return null;
     }
 
+    try {
+      const unified = await profileOnboardingService.getProfileMe();
+      await applyUnifiedProfile(unified);
+      return unified;
+    } catch (error) {
+      console.error('Profile API unavailable, using fallback:', error);
+      const fallback = (await authService.getProfile(firebaseUser.uid)) || buildFallbackUser(firebaseUser);
+      setUser(fallback);
+      const completion = fallbackCompletion(fallback);
+      setProfileCompletion(onboardingFeatureDefault ? completion : completedBypassCompletion);
+      setIsProfileOnboardingEnabled(onboardingFeatureDefault);
+      const syncedPersonas = await syncPersonas(fallback);
+      const active = personaService.getActivePersona(fallback.id, syncedPersonas);
+      if (active) {
+        setUser((prev) => (prev ? { ...prev, activePersonaId: active.id, capabilities: active.capabilities } : prev));
+      }
+      return {
+        user: fallback,
+        profile: {},
+        personas: syncedPersonas,
+        activePersona: active,
+        completion,
+        featureFlags: {
+          profileOnboardingV2: onboardingFeatureDefault
+        }
+      };
+    }
+  }, [applyUnifiedProfile, buildFallbackUser, onboardingFeatureDefault, syncPersonas]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500);
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      try {
+        if (firebaseUser) {
+          await refreshProfile();
+        } else {
+          setUser(null);
+          setPersonas([]);
+          setActivePersonaState(null);
+          setProfileCompletion(null);
+          setIsProfileOnboardingEnabled(onboardingFeatureDefault);
+        }
+      } catch (error) {
+        console.error('Auth initialization failed:', error);
+      } finally {
+        setIsLoading(false);
+        clearTimeout(timeoutId);
+      }
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
+  }, [onboardingFeatureDefault, refreshProfile]);
+
+  const openAuthModal = useCallback(
+    (_view: 'login' | 'register') => {
+      navigate('/auth', { state: { from: location } });
+    },
+    [navigate, location]
+  );
+
+  const closeAuthModal = useCallback(() => {
+    navigate(fromPath, { replace: true });
+  }, [navigate, fromPath]);
+
+  const login = useCallback(
+    async (email: string, pass: string) => {
+      await authService.login(email, pass);
+      const unified = await refreshProfile();
+      if (unified?.user) return unified.user;
+      if (user) return user;
+      throw new Error('Login succeeded but profile could not be loaded.');
+    },
+    [refreshProfile, user]
+  );
+
+  const register = useCallback(
+    async (name: string, email: string, pass: string, phone: string, city: string) => {
+      await authService.register(name, email, pass, phone, city);
+      const unified = await refreshProfile();
+      if (unified?.user) return unified.user;
+      if (user) return user;
+      throw new Error('Registration succeeded but profile could not be loaded.');
+    },
+    [refreshProfile, user]
+  );
+
+  const signInWithGoogle = useCallback(async () => {
+    await authService.signInWithGoogle();
+    const unified = await refreshProfile();
+    if (unified?.user) return unified.user;
+    if (user) return user;
+    throw new Error('Google sign-in succeeded but profile could not be loaded.');
+  }, [refreshProfile, user]);
+
+  const logout = useCallback(() => {
+    authService.logout();
+    setUser(null);
+    setPersonas([]);
+    setActivePersonaState(null);
+    setProfileCompletion(null);
+    setIsProfileOnboardingEnabled(onboardingFeatureDefault);
+    navigate('/');
+  }, [navigate, onboardingFeatureDefault]);
+
+  const switchUser = useCallback(
+    async (_targetUserId: string) => {
+      await authService.logout();
+      setUser(null);
+      setPersonas([]);
+      setActivePersonaState(null);
+      setProfileCompletion(null);
+      setIsProfileOnboardingEnabled(onboardingFeatureDefault);
+      navigate('/auth');
+    },
+    [navigate, onboardingFeatureDefault]
+  );
+
+  const saveOnboardingStep = useCallback(
+    async (stepId: OnboardingStepId, payload: { selectedIntents?: OnboardingIntent[]; draft?: OnboardingDraft }) => {
+      if (!isProfileOnboardingEnabled) return null;
+      const response = await profileOnboardingService.saveOnboardingState({
+        currentStep: stepId,
+        selectedIntents: payload.selectedIntents,
+        draft: payload.draft
+      });
+      setProfileCompletion(response.completion);
+      return response.state;
+    },
+    [isProfileOnboardingEnabled]
+  );
+
+  const completeOnboarding = useCallback(
+    async (payload: OnboardingData | { selectedIntents?: OnboardingIntent[]; draft?: OnboardingDraft; roleSetup?: Record<string, unknown> }) => {
+      if (!isProfileOnboardingEnabled) {
+        await refreshProfile();
+        navigate('/profile', { replace: true });
+        return;
+      }
+
+      const isLegacyPayload = (payload as OnboardingData).interests !== undefined;
+      const normalizedPayload = isLegacyPayload
+        ? {
+            selectedIntents: mapPurposeToIntents((payload as OnboardingData).purpose),
+            draft: {
+              identity: {
+                country: (payload as OnboardingData).country,
+                currencyPreference: (payload as OnboardingData).currency
+              },
+              preferences: {
+                interests: (payload as OnboardingData).interests
+              }
+            } as OnboardingDraft
+          }
+        : payload;
+
+      const unified = await profileOnboardingService.completeOnboarding(normalizedPayload);
+      await applyUnifiedProfile(unified);
+
+      sessionStorage.removeItem(ONBOARDING_PRESET_KEY);
+      const redirectPath = sessionStorage.getItem(ONBOARDING_REDIRECT_KEY);
+      sessionStorage.removeItem(ONBOARDING_REDIRECT_KEY);
+      navigate(redirectPath || '/profile', { replace: true });
+    },
+    [applyUnifiedProfile, isProfileOnboardingEnabled, navigate, refreshProfile]
+  );
+
+  const openOnboarding = useCallback(
+    (purpose?: OnboardingData['purpose'] | OnboardingIntent | OnboardingIntent[], redirectPath?: string) => {
+      if (!isProfileOnboardingEnabled) {
+        navigate(redirectPath || '/profile');
+        return;
+      }
+
+      const intents = mapPurposeToIntents(purpose);
+      const legacyPurpose = toLegacyPurpose(intents);
+      if (legacyPurpose) {
+        setOnboardingPreset(legacyPurpose);
+      } else if (intents[0]) {
+        setOnboardingPreset(intents[0]);
+      } else {
+        setOnboardingPreset(null);
+      }
+
+      if (intents.length > 0) {
+        sessionStorage.setItem(ONBOARDING_PRESET_KEY, JSON.stringify(intents));
+      }
+      if (redirectPath) {
+        sessionStorage.setItem(ONBOARDING_REDIRECT_KEY, redirectPath);
+      }
+
+      if (!user) {
+        navigate('/auth', { state: { from: { pathname: '/auth/onboarding' } } });
+        return;
+      }
+
+      navigate('/auth/onboarding');
+    },
+    [isProfileOnboardingEnabled, navigate, user]
+  );
+
+  const closeOnboarding = useCallback(() => {
+    navigate('/profile');
+  }, [navigate]);
+
+  const updateUser = useCallback((updatedData: Partial<User>) => {
+    setUser((currentUser) => {
+      if (!currentUser) return null;
+      return { ...currentUser, ...updatedData };
+    });
+  }, []);
+
+  const setActivePersona = useCallback(
+    async (personaId: string) => {
+      if (!user) return;
+      const target = personas.find((persona) => persona.id === personaId);
+      if (!target) return;
+      await personaService.setActivePersona(user.id, personaId);
+      setActivePersonaState(target);
+      setUser((prev) => (prev ? { ...prev, activePersonaId: personaId, capabilities: target.capabilities } : prev));
+    },
+    [user, personas]
+  );
+
+  const createPersona = useCallback(
+    async (type: PersonaType, payload?: Partial<AccountPersona>) => {
+      if (!user) {
+        throw new Error('You must be logged in to create a persona.');
+      }
+      const created = await personaService.createPersona(user, type, {
+        displayName: payload?.displayName,
+        avatar: payload?.avatar,
+        handle: payload?.handle,
+        bio: payload?.bio,
+        settings: payload?.settings,
+        verification: payload?.verification
+      });
+      const updatedPersonas = await personaService.getPersonasForUser(user);
+      setPersonas(updatedPersonas);
+      if (!activePersona) {
+        await setActivePersona(created.id);
+      }
+      return created;
+    },
+    [user, activePersona, setActivePersona]
+  );
+
+  const hasCapability = useCallback(
+    (capability: Capability, personaId?: string) => {
+      const targetPersona = personaId
+        ? personas.find((persona) => persona.id === personaId) || null
+        : activePersona;
+      return personaService.hasCapability(targetPersona, capability);
+    },
+    [personas, activePersona]
+  );
+
+  const capabilityState = useCallback(
+    (capability: Capability, personaId?: string): CapabilityState => {
+      const targetPersona = personaId
+        ? personas.find((persona) => persona.id === personaId) || null
+        : activePersona;
+      if (!targetPersona) return 'inactive';
+      return targetPersona.capabilities?.[capability] || 'inactive';
+    },
+    [personas, activePersona]
+  );
+
+  const isNewUser = Boolean(isProfileOnboardingEnabled && user && profileCompletion && !profileCompletion.isComplete);
+
+  const value = useMemo(
+    () => ({
+      isAuthenticated: !!user,
+      isGuest: !user,
+      user,
+      personas,
+      activePersona,
+      isLoading,
+      isNewUser,
+      showOnboarding,
+      onboardingPreset,
+      profileCompletion,
+      isProfileOnboardingEnabled,
+      login,
+      register,
+      signInWithGoogle,
+      logout,
+      switchUser,
+      completeOnboarding,
+      saveOnboardingStep,
+      refreshProfile,
+      openOnboarding,
+      closeOnboarding,
+      updateUser,
+      setActivePersona,
+      createPersona,
+      hasCapability,
+      capabilityState,
+      openAuthModal,
+      closeAuthModal,
+      authModalView: null,
+      authRedirectPath
+    }),
+    [
+      user,
+      personas,
+      activePersona,
+      isLoading,
+      isNewUser,
+      showOnboarding,
+      onboardingPreset,
+      profileCompletion,
+      isProfileOnboardingEnabled,
+      login,
+      register,
+      signInWithGoogle,
+      logout,
+      switchUser,
+      completeOnboarding,
+      saveOnboardingStep,
+      refreshProfile,
+      openOnboarding,
+      closeOnboarding,
+      updateUser,
+      setActivePersona,
+      createPersona,
+      hasCapability,
+      capabilityState,
+      openAuthModal,
+      closeAuthModal,
+      authRedirectPath
+    ]
+  );
+
+  if (isLoading) {
     return (
-        <AuthContext.Provider value={value}>
-            {children}
-        </AuthContext.Provider>
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <Spinner size="lg" />
+      </div>
     );
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

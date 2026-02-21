@@ -1,219 +1,495 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { listerService } from '../../services/itemService';
-import type { SellerPerformanceStats, GrowthInsight } from '../../types';
-import Spinner from '../../components/Spinner';
-import VerifiedBadge from '../../components/VerifiedBadge';
+import dashboardService from '../../services/dashboardService';
+import type {
+  BuyerDashboardSnapshot,
+  GrowthInsight,
+  SellerDashboardCategoryPoint,
+  SellerDashboardEarningsPoint,
+  SellerDashboardSnapshot
+} from '../../types';
 import SellerActionCenter from '../../components/dashboard/SellerActionCenter';
 import AIGrowthInsights from '../../components/dashboard/AIGrowthInsights';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
-import { motion } from 'framer-motion';
-
-// --- Icons for Stat Cards ---
-const EarningsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
-const OrdersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>;
-const BellIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
-
-const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; link: string; badge?: number }> = ({ title, value, icon, link, badge }) => (
-    <Link to={link}>
-        <motion.div 
-            whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.1)" }}
-            className="relative block bg-surface/80 backdrop-blur-xl p-4 rounded-2xl shadow-soft border border-border/50 transition-all duration-300 group"
-        >
-            {badge && badge > 0 ? (
-                <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse shadow-sm">
-                    {badge} New
-                </span>
-            ) : null}
-            <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-primary/10 to-primary/20 text-primary rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    {icon}
-                </div>
-                <div>
-                    <p className="text-2xl font-black text-text-primary tracking-tight">{value}</p>
-                    <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest">{title}</h3>
-                </div>
-            </div>
-        </motion.div>
-    </Link>
-);
+import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
+import {
+  Area,
+  AreaChart,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
 
 const COLORS = ['#0fb9b1', '#f39c12', '#3b82f6', '#ec4899', '#8b5cf6'];
 
-const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-        opacity: 1,
-        transition: {
-            staggerChildren: 0.1
-        }
-    }
+const DotIcon = () => <span className="inline-block h-2 w-2 rounded-full bg-current" />;
+
+const SetupStepCard: React.FC<{
+  title: string;
+  status: string;
+  statusTone: 'ok' | 'pending';
+  body: string;
+  actionLabel: string;
+  actionTo: string;
+}> = ({ title, status, statusTone, body, actionLabel, actionTo }) => (
+  <div className="rounded-xl border border-[#d8d8d8] bg-[#f4f4f5] p-4">
+    <div className="mb-3 flex items-start justify-between gap-2">
+      <h3 className="text-lg font-semibold leading-6 text-[#1f1f1f]">{title}</h3>
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          statusTone === 'ok' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+        }`}
+      >
+        <DotIcon />
+        {status}
+      </span>
+    </div>
+    <p className="text-sm text-[#616161]">{body}</p>
+    <Link
+      to={actionTo}
+      className="mt-4 inline-flex h-8 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-[13px] font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]"
+    >
+      {actionLabel}
+    </Link>
+  </div>
+);
+
+const OverviewStat: React.FC<{
+  label: string;
+  value: string | number;
+  subtext?: string;
+  to: string;
+}> = ({ label, value, subtext, to }) => (
+  <Link to={to} className="rounded-xl border border-[#d8d8d8] bg-white p-4 transition-colors hover:bg-[#fafafa]">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">{label}</p>
+    <p className="mt-2 text-[23px] font-semibold leading-none text-[#1f1f1f] sm:text-[30px]">{value}</p>
+    {subtext ? <p className="mt-1 text-xs text-[#727272]">{subtext}</p> : null}
+  </Link>
+);
+
+const EmptyChartState: React.FC<{ title: string; body: string; ctaLabel: string; ctaTo: string }> = ({
+  title,
+  body,
+  ctaLabel,
+  ctaTo
+}) => (
+  <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-[#d8d8d8] bg-[#fafafa] p-6 text-center">
+    <p className="text-base font-semibold text-[#1f1f1f]">{title}</p>
+    <p className="mt-2 text-sm text-[#666]">{body}</p>
+    <Link
+      to={ctaTo}
+      className="mt-4 inline-flex h-9 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]"
+    >
+      {ctaLabel}
+    </Link>
+  </div>
+);
+
+const WorkspaceAction: React.FC<{ to: string; title: string; body: string }> = ({ to, title, body }) => (
+  <Link to={to} className="rounded-xl border border-[#d8d8d8] bg-white p-4 transition-colors hover:bg-[#fafafa]">
+    <p className="text-base font-semibold text-[#1f1f1f]">{title}</p>
+    <p className="mt-1 text-sm text-[#666]">{body}</p>
+  </Link>
+);
+
+const defaultBuyerSnapshot: BuyerDashboardSnapshot = {
+  generatedAt: new Date().toISOString(),
+  summary: {
+    totalOrders: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
+    activeRentals: 0,
+    upcomingReturns: 0,
+    totalPurchases: 0,
+    wishlistItems: 0,
+    unreadNotifications: 0,
+    conversations: 0
+  },
+  recentOrders: [],
+  upcomingReturns: []
 };
 
-const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 }
+const defaultSellerSnapshot: SellerDashboardSnapshot = {
+  generatedAt: new Date().toISOString(),
+  summary: {
+    totalRevenue: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
+    totalSalesUnits: 0,
+    totalViews: 0,
+    conversionRate: 0,
+    lowStockCount: 0,
+    unreadMessages: 0
+  },
+  earningsByMonth: [],
+  categorySales: [],
+  recentOrders: [],
+  lowStockItems: [],
+  insights: [],
+  setup: {
+    hasStore: false,
+    hasProducts: false,
+    hasContent: false,
+    hasApps: false
+  }
 };
 
 const DashboardOverview: React.FC = () => {
-    const { user } = useAuth();
-    const navigate = useNavigate();
-    const [stats, setStats] = useState<SellerPerformanceStats | null>(null);
-    const [insights, setInsights] = useState<GrowthInsight[]>([]);
-    const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
+  const { user, activePersona, hasCapability } = useAuth();
+  const navigate = useNavigate();
 
-    const fetchData = useCallback(async () => {
-        if (!user) return;
-        setIsLoading(true);
-        try {
-            const performanceStats = await listerService.getSellerPerformanceStats(user.id);
-            const growthInsights = await listerService.getGrowthInsights(performanceStats);
-            const bookings = await listerService.getBookings(user.id);
-            
-            const newSales = bookings.filter(b => b.status === 'confirmed').length;
-            
-            setStats(performanceStats);
-            setInsights(growthInsights);
-            setPendingOrdersCount(newSales);
-        } catch (error) {
-            console.error("Failed to load dashboard data:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [user]);
+  const [buyerSnapshot, setBuyerSnapshot] = useState<BuyerDashboardSnapshot>(defaultBuyerSnapshot);
+  const [sellerSnapshot, setSellerSnapshot] = useState<SellerDashboardSnapshot>(defaultSellerSnapshot);
+  const [insights, setInsights] = useState<GrowthInsight[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-    
-    if (isLoading) {
-        return <div className="flex justify-center items-center h-[50vh]"><Spinner size="lg" /></div>;
+  const isSellerWorkspace = activePersona?.type === 'seller' || hasCapability('sell');
+  const isProviderWorkspace = activePersona?.type === 'provider' || hasCapability('provide_service');
+  const isAffiliateWorkspace = activePersona?.type === 'affiliate' || hasCapability('affiliate');
+  const isConsumerWorkspace = !isSellerWorkspace && !isProviderWorkspace && !isAffiliateWorkspace;
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      if (isSellerWorkspace) {
+        const snapshot = await dashboardService.getSellerDashboardSnapshot(8);
+        setSellerSnapshot(snapshot);
+        setInsights(snapshot.insights || []);
+        setBuyerSnapshot(defaultBuyerSnapshot);
+      } else {
+        const snapshot = await dashboardService.getBuyerDashboardSnapshot(8);
+        setBuyerSnapshot(snapshot);
+        setSellerSnapshot(defaultSellerSnapshot);
+        setInsights([]);
+      }
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data.');
+      setBuyerSnapshot(defaultBuyerSnapshot);
+      setSellerSnapshot(defaultSellerSnapshot);
+      setInsights([]);
+    } finally {
+      setIsLoading(false);
     }
-    if (!user) return null;
+  }, [isSellerWorkspace, user]);
 
-    const chartData = stats?.earnings.length ? stats.earnings : [
-        { date: 'Jan', amount: 0 }, { date: 'Feb', amount: 0 }, { date: 'Mar', amount: 0 }, 
-        { date: 'Apr', amount: 0 }, { date: 'May', amount: 0 }, { date: 'Jun', amount: 0 }
-    ];
-    const pieData = stats?.categorySales.length ? stats.categorySales : [{ category: 'No Sales', value: 1 }];
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    const totalEarnings = stats?.earnings.reduce((acc, curr) => acc + curr.amount, 0) || 0;
-    const completedSales = stats?.categorySales.reduce((acc, curr) => acc + curr.value, 0) || 0;
+  const earningsData = useMemo<SellerDashboardEarningsPoint[]>(
+    () => sellerSnapshot.earningsByMonth,
+    [sellerSnapshot.earningsByMonth]
+  );
+
+  const pieData = useMemo<SellerDashboardCategoryPoint[]>(() => sellerSnapshot.categorySales, [sellerSnapshot.categorySales]);
+
+  if (isLoading) {
+    return <DashboardPageLoader title="Loading dashboard overview..." />;
+  }
+
+  if (!user) return null;
+
+  if (isConsumerWorkspace) {
+    const summary = buyerSnapshot.summary;
 
     return (
-        <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="space-y-8"
-        >
-            {/* Header Section */}
-            <motion.div variants={itemVariants} className="bg-surface/60 backdrop-blur-xl p-6 md:p-8 rounded-2xl shadow-soft border border-border/50 flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-                <img src={user.avatar} alt={user.name} className="w-24 h-24 md:w-32 md:h-32 rounded-full ring-4 ring-white dark:ring-white/10 shadow-lg object-cover z-10"/>
-                <div className="flex-1 text-center md:text-left z-10">
-                    <div className="flex items-center gap-3 justify-center md:justify-start">
-                        <h1 className="text-3xl font-black font-display text-text-primary tracking-tight">Welcome, {user.name.split(' ')[0]}!</h1>
-                        <VerifiedBadge type="user" level={user.verificationLevel} />
-                    </div>
-                    <p className="text-text-secondary mt-1 font-medium">Here's your performance overview for today.</p>
-                </div>
-            </motion.div>
+      <div className="dashboard-page space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <SetupStepCard
+            title="Complete your profile"
+            status={user.phone && user.country && user.city ? 'Complete' : 'Pending'}
+            statusTone={user.phone && user.country && user.city ? 'ok' : 'pending'}
+            body="Keep your contact and profile info current so checkout and support work without issues."
+            actionLabel="Open profile"
+            actionTo="/profile/settings"
+          />
+          <SetupStepCard
+            title="Review active orders"
+            status={summary.pendingOrders === 0 ? 'Clear' : 'Needs action'}
+            statusTone={summary.pendingOrders === 0 ? 'ok' : 'pending'}
+            body="Track purchases and rentals, including return timelines and order states."
+            actionLabel="Open orders"
+            actionTo="/profile/orders"
+          />
+          <SetupStepCard
+            title="Personalize your feed"
+            status={summary.wishlistItems > 0 ? 'Configured' : 'Pending'}
+            statusTone={summary.wishlistItems > 0 ? 'ok' : 'pending'}
+            body="Add wishlist items and follow stores to improve recommendations."
+            actionLabel="Manage wishlist"
+            actionTo="/profile/wishlist"
+          />
+        </div>
 
-            {/* Quick Stats Row */}
-            <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <StatCard title="Total Earnings" value={`$${totalEarnings.toLocaleString()}`} icon={<EarningsIcon />} link="/profile/earnings" />
-                 <StatCard title="New Sales" value={pendingOrdersCount} icon={<BellIcon />} link="/profile/sales" badge={pendingOrdersCount} />
-                 <StatCard title="Total Orders" value={completedSales} icon={<OrdersIcon />} link="/profile/sales" />
-                 <StatCard title="Conversion Rate" value={`${stats?.conversionRate.toFixed(1)}%`} icon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>} link="/profile/analytics/advanced" />
-            </motion.div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <OverviewStat label="Total Orders" value={summary.totalOrders} subtext={`${summary.completedOrders} completed`} to="/profile/orders" />
+          <OverviewStat label="Pending Orders" value={summary.pendingOrders} subtext="Needs review" to="/profile/orders" />
+          <OverviewStat label="Active Rentals" value={summary.activeRentals} subtext="Current bookings" to="/profile/orders" />
+          <OverviewStat label="Wishlist" value={summary.wishlistItems} subtext="Saved products" to="/profile/wishlist" />
+        </div>
 
-            {/* Quick Actions */}
-            <motion.div variants={itemVariants} className="bg-surface/80 backdrop-blur-xl p-5 rounded-2xl shadow-soft border border-border/50">
-                <h3 className="font-bold text-sm text-text-secondary uppercase tracking-widest mb-4">Quick Actions</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <button onClick={() => navigate('/profile/products/new')} className="py-3 rounded-xl bg-black text-white font-bold text-sm hover:opacity-90">List New Item</button>
-                    <button onClick={() => navigate('/profile/sales')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">View Orders</button>
-                    <button onClick={() => navigate('/dropshipping')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">Creator Hub</button>
-                    <button onClick={() => navigate('/profile/promotions')} className="py-3 rounded-xl border border-border font-semibold text-sm hover:bg-surface-soft">Run Promotion</button>
-                </div>
-            </motion.div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Column: Charts */}
-                <div className="lg:col-span-2 space-y-8">
-                     {/* Earnings Chart */}
-                    <motion.div 
-                        variants={itemVariants} 
-                        className="bg-surface/80 backdrop-blur-xl p-6 rounded-2xl shadow-soft border border-border/50"
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                    >
-                        <h3 className="font-bold text-lg text-text-primary mb-6">Earnings Overview</h3>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData}>
-                                    <defs>
-                                        <linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#0fb9b1" stopOpacity={0.3}/>
-                                            <stop offset="95%" stopColor="#0fb9b1" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                                    <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-                                    <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: '12px', border: 'none', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)' }} />
-                                    <Area type="monotone" dataKey="amount" stroke="#0fb9b1" strokeWidth={3} fillOpacity={1} fill="url(#colorEarnings)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </motion.div>
-                    
-                    {/* Action Center */}
-                    <motion.div variants={itemVariants}>
-                        {stats && <SellerActionCenter pendingShipments={pendingOrdersCount} lowStockItems={stats.lowStockItems} unreadMessages={stats.unreadMessages} />}
-                    </motion.div>
-                </div>
-
-                {/* Right Column: Insights & Pie Chart */}
-                <div className="space-y-8">
-                     <motion.div variants={itemVariants}>
-                        <AIGrowthInsights insights={insights} />
-                     </motion.div>
-                     
-                     <motion.div 
-                        variants={itemVariants}
-                        className="bg-surface/80 backdrop-blur-xl p-6 rounded-2xl shadow-soft border border-border/50"
-                     >
-                        <h3 className="font-bold text-lg text-text-primary mb-4">Sales by Category</h3>
-                        <div className="h-[250px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={pieData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {pieData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none' }} />
-                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                     </motion.div>
-                </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+            <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Upcoming returns</h3>
+            <div className="mt-3 space-y-2">
+              {buyerSnapshot.upcomingReturns.length > 0 ? (
+                buyerSnapshot.upcomingReturns.map((entry) => (
+                  <Link key={entry.orderItemId} to={`/profile/orders/${entry.orderId}`} className="block rounded-lg border border-[#e1e1e1] p-3 hover:bg-[#f8f8f8]">
+                    <p className="text-sm font-semibold text-[#1f1f1f]">{entry.itemTitle}</p>
+                    <p className="mt-1 text-xs text-[#666]">Due {new Date(entry.rentalEnd).toLocaleDateString()} | Qty {entry.quantity}</p>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed border-[#d8d8d8] p-3 text-sm text-[#666]">No returns due in the next 7 days.</p>
+              )}
             </div>
-        </motion.div>
+          </div>
+
+          <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+            <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Recent orders</h3>
+            <div className="mt-3 space-y-2">
+              {buyerSnapshot.recentOrders.length > 0 ? (
+                buyerSnapshot.recentOrders.map((order) => (
+                  <Link key={order.id} to={`/profile/orders/${order.id}`} className="block rounded-lg border border-[#e1e1e1] p-3 hover:bg-[#f8f8f8]">
+                    <p className="text-sm font-semibold text-[#1f1f1f]">Order #{order.id.slice(0, 8)}</p>
+                    <p className="mt-1 text-xs text-[#666]">
+                      {new Date(order.createdAt).toLocaleDateString()} | {order.quantityTotal} qty | {order.currency} {order.total.toFixed(2)}
+                    </p>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed border-[#d8d8d8] p-3 text-sm text-[#666]">No recent orders found yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {loadError ? <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
+      </div>
     );
+  }
+
+  if (!isSellerWorkspace) {
+    const summary = buyerSnapshot.summary;
+
+    return (
+      <div className="dashboard-page space-y-4">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
+          <h2 className="text-2xl font-semibold text-[#1f1f1f]">
+            {isProviderWorkspace ? 'Provider workspace' : 'Affiliate workspace'}
+          </h2>
+          <p className="mt-1 text-sm text-[#666]">
+            Use workspace actions below. Analytics and store modules unlock automatically when seller setup is completed.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {isProviderWorkspace ? (
+            <>
+              <WorkspaceAction to="/profile/provider-dashboard" title="Provider dashboard" body="Manage service listings, leads, and requests." />
+              <WorkspaceAction to="/profile/services/new" title="List a service" body="Create a new service offer with pricing and delivery details." />
+            </>
+          ) : null}
+          {isAffiliateWorkspace ? (
+            <WorkspaceAction to="/profile/affiliate" title="Affiliate dashboard" body="Track referral performance and commission activity." />
+          ) : null}
+          <WorkspaceAction to="/profile/switch-accounts" title="Switch workspace" body="Move to another persona to access the right tools." />
+          <WorkspaceAction to="/profile/settings" title="Profile settings" body="Update account details, preferences, and verification." />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <OverviewStat label="Total Orders" value={summary.totalOrders} subtext={`${summary.completedOrders} completed`} to="/profile/orders" />
+          <OverviewStat label="Pending Orders" value={summary.pendingOrders} subtext="Needs review" to="/profile/orders" />
+          <OverviewStat label="Wishlist" value={summary.wishlistItems} subtext="Saved products" to="/profile/wishlist" />
+          <OverviewStat label="Conversations" value={summary.conversations} subtext="Messages and threads" to="/profile/messages" />
+        </div>
+
+        {loadError ? <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
+      </div>
+    );
+  }
+
+  const sellerSummary = sellerSnapshot.summary;
+  const attentionCount = sellerSummary.pendingOrders + sellerSummary.unreadMessages + sellerSummary.lowStockCount;
+
+  return (
+    <div className="dashboard-page space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <SetupStepCard
+          title="Store setup"
+          status={sellerSnapshot.setup.hasStore ? 'Configured' : 'Pending'}
+          statusTone={sellerSnapshot.setup.hasStore ? 'ok' : 'pending'}
+          body={
+            sellerSnapshot.setup.hasStore
+              ? 'Store is connected and ready for catalog management.'
+              : 'Create your store profile to unlock storefront and branded pages.'
+          }
+          actionLabel={sellerSnapshot.setup.hasStore ? 'Manage store' : 'Set up store'}
+          actionTo="/profile/store"
+        />
+        <SetupStepCard
+          title="Product catalog"
+          status={sellerSnapshot.setup.hasProducts ? 'Live' : 'Empty'}
+          statusTone={sellerSnapshot.setup.hasProducts ? 'ok' : 'pending'}
+          body={
+            sellerSnapshot.setup.hasProducts
+              ? 'Catalog is active. Continue adding products and variants.'
+              : 'Add your first product to start collecting traffic and orders.'
+          }
+          actionLabel={sellerSnapshot.setup.hasProducts ? 'Manage products' : 'Add product'}
+          actionTo={sellerSnapshot.setup.hasProducts ? '/profile/products' : '/profile/products/new'}
+        />
+        <SetupStepCard
+          title="Operations"
+          status={attentionCount > 0 ? 'Needs action' : 'Healthy'}
+          statusTone={attentionCount > 0 ? 'pending' : 'ok'}
+          body={`${sellerSummary.pendingOrders} pending orders, ${sellerSummary.unreadMessages} unread messages, ${sellerSummary.lowStockCount} low-stock items.`}
+          actionLabel="Open inbox"
+          actionTo="/profile/messages"
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <OverviewStat
+          label="Store Status"
+          value={sellerSnapshot.setup.hasStore ? 'Healthy' : 'Setup pending'}
+          subtext={sellerSnapshot.setup.hasStore ? 'No blockers' : 'Store not configured'}
+          to="/profile/store"
+        />
+        <OverviewStat label="Total Earnings" value={`$${sellerSummary.totalRevenue.toLocaleString()}`} subtext="All time" to="/profile/earnings" />
+        <OverviewStat label="Total Sales" value={sellerSummary.totalSalesUnits} subtext="Units sold" to="/profile/sales" />
+        <OverviewStat label="Pending Orders" value={sellerSummary.pendingOrders} subtext="Requires action" to="/profile/sales" />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.8fr_1fr]">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Earnings overview</h3>
+          <div className="mt-4 h-[280px] w-full">
+            {earningsData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={earningsData}>
+                  <defs>
+                    <linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.26} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="month" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+                  <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickFormatter={(value) => `$${value}`} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#fff',
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <Area type="monotone" dataKey="earnings" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorEarnings)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyChartState
+                title="No earnings data yet"
+                body="Publish products and complete orders to populate revenue analytics."
+                ctaLabel="Add product"
+                ctaTo="/profile/products/new"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Sales by category</h3>
+          <div className="mt-4 h-[280px] w-full">
+            {pieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={88} paddingAngle={4} dataKey="value">
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${entry.category}-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyChartState
+                title="No category sales yet"
+                body="Category insights appear after your first completed orders."
+                ctaLabel="Manage catalog"
+                ctaTo="/profile/products"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+        <SellerActionCenter
+          pendingShipments={sellerSummary.pendingOrders}
+          lowStockItems={sellerSnapshot.lowStockItems}
+          unreadMessages={sellerSummary.unreadMessages}
+        />
+        <AIGrowthInsights insights={insights} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <OverviewStat label="Conversion Rate" value={`${sellerSummary.conversionRate.toFixed(1)}%`} subtext="Performance" to="/profile/analytics/advanced" />
+        <OverviewStat label="Low Stock" value={sellerSummary.lowStockCount} subtext="Catalog alerts" to="/profile/products" />
+        <OverviewStat label="Unread Messages" value={sellerSummary.unreadMessages} subtext="Inbox" to="/profile/messages" />
+        <OverviewStat label="Total Views" value={sellerSummary.totalViews} subtext="Store traffic" to="/profile/analytics/advanced" />
+      </div>
+
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+        <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Quick actions</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => navigate('/profile/products/new')} className="h-9 rounded-lg border border-[#c9c9c9] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f8f8f8]">
+            List new item
+          </button>
+          <button onClick={() => navigate('/profile/sales')} className="h-9 rounded-lg border border-[#c9c9c9] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f8f8f8]">
+            View orders
+          </button>
+          <button onClick={() => navigate('/profile/promotions')} className="h-9 rounded-lg border border-[#c9c9c9] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f8f8f8]">
+            Run promotion
+          </button>
+          <button onClick={() => navigate('/profile/messages')} className="h-9 rounded-lg border border-[#c9c9c9] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f8f8f8]">
+            Open inbox
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+        <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Recent orders</h3>
+        <div className="mt-3 space-y-2">
+          {sellerSnapshot.recentOrders.length > 0 ? (
+            sellerSnapshot.recentOrders.map((order) => (
+              <Link key={order.id} to="/profile/sales" className="block rounded-lg border border-[#e1e1e1] p-3 hover:bg-[#f8f8f8]">
+                <p className="text-sm font-semibold text-[#1f1f1f]">Order #{order.id.slice(0, 8)}</p>
+                <p className="mt-1 text-xs text-[#666]">
+                  {new Date(order.createdAt).toLocaleDateString()} | {order.quantityTotal} qty | {order.currency} {order.total.toFixed(2)}
+                </p>
+              </Link>
+            ))
+          ) : (
+            <p className="rounded-lg border border-dashed border-[#d8d8d8] p-3 text-sm text-[#666]">No recent orders available yet.</p>
+          )}
+        </div>
+      </div>
+
+      {loadError ? <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
+    </div>
+  );
 };
 
 export default DashboardOverview;
-

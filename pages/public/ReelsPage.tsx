@@ -549,7 +549,7 @@ const ReelsPage: React.FC = () => {
                                 {activePanel === 'comments' && (
                                     <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20">
                                         <form onSubmit={submitComment} className="flex gap-2 items-center">
-                                            <img src={user?.avatar || "https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png"} className="w-8 h-8 rounded-full border border-gray-200 dark:border-white/10" />
+                                            <img src={user?.avatar || "/icons/urbanprime.svg"} className="w-8 h-8 rounded-full border border-gray-200 dark:border-white/10" />
                                             <input 
                                                 value={commentInput} 
                                                 onChange={e => setCommentInput(e.target.value)} 
@@ -571,3 +571,4 @@ const ReelsPage: React.FC = () => {
 };
 
 export default ReelsPage;
+

@@ -7,6 +7,7 @@ import EmailInput from '../../components/EmailInput';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter';
 import BackButton from '../../components/BackButton';
 import { useTheme } from '../../hooks/useTheme';
+import AuthVideoBackdrop from '../../components/auth/AuthVideoBackdrop';
 
 // Icons for social buttons
 const FacebookIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0-.002 3.603-.002 8.05c0 4.017 2.926 7.347 6.75 7.951v-5.625h-2.03V8.05H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951z"/></svg>;
@@ -46,6 +47,10 @@ const getAuthErrorMessage = (error: unknown, mode: 'login' | 'register' | 'googl
         case 'auth/wrong-password':
         case 'auth/invalid-credential':
             return 'Invalid email or password.';
+        case 'auth/operation-not-allowed':
+            return 'Email/password sign-in is disabled in Firebase. Enable it in the Firebase console.';
+        case 'auth/user-disabled':
+            return 'This account has been disabled.';
         case 'auth/too-many-requests':
             return 'Too many attempts. Please try again in a few minutes.';
         case 'auth/network-request-failed':
@@ -62,7 +67,7 @@ const getAuthErrorMessage = (error: unknown, mode: 'login' | 'register' | 'googl
 const LoginPage: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { login, register, signInWithGoogle, isAuthenticated } = useAuth();
+    const { login, register, signInWithGoogle, isAuthenticated, profileCompletion, isProfileOnboardingEnabled } = useAuth();
     const { resolvedTheme } = useTheme();
 
     const [isSignUpActive, setIsSignUpActive] = useState(location.pathname === '/register');
@@ -90,10 +95,15 @@ const LoginPage: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated) {
+            if (!profileCompletion) return;
             setLoading(false);
-            navigate(from, { replace: true });
+            if (isProfileOnboardingEnabled && profileCompletion && !profileCompletion.isComplete) {
+                navigate('/auth/onboarding', { replace: true });
+            } else {
+                navigate(from, { replace: true });
+            }
         }
-    }, [isAuthenticated, navigate, from]);
+    }, [isAuthenticated, isProfileOnboardingEnabled, profileCompletion, navigate, from]);
 
     const handleLoginEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newEmail = e.target.value;
@@ -129,7 +139,6 @@ const LoginPage: React.FC = () => {
         setLoading(true);
         try {
             await login(loginEmail, loginPassword);
-            navigate(from, { replace: true });
         } catch (err) {
             setError(getAuthErrorMessage(err, 'login'));
         } finally {
@@ -143,7 +152,6 @@ const LoginPage: React.FC = () => {
         setLoading(true);
         try {
             await register(regName, regEmail, regPassword, '', '');
-            navigate(from, { replace: true });
         } catch (err) {
             setError(getAuthErrorMessage(err, 'register'));
         } finally {
@@ -156,7 +164,6 @@ const LoginPage: React.FC = () => {
         setLoading(true);
         try {
             await signInWithGoogle();
-            navigate(from, { replace: true });
         } catch (err) {
              const code = (err as { code?: string })?.code;
              if (code === 'auth/redirect') {
@@ -172,9 +179,9 @@ const LoginPage: React.FC = () => {
 
     return (
         <div className="auth-body relative overflow-hidden flex flex-col justify-center items-center h-screen bg-transparent">
-            
+            <AuthVideoBackdrop />
             <BackButton className="absolute top-8 left-8 z-[101]" />
-            <div className={`auth-container ${isSignUpActive ? 'right-panel-active' : ''} ${resolvedTheme === 'obsidian' || resolvedTheme === 'hydra' ? '!bg-white/5 !backdrop-blur-xl border border-white/20 shadow-2xl' : ''}`} style={{ minHeight: '600px' }}>
+            <div className={`auth-container relative z-10 ${isSignUpActive ? 'right-panel-active' : ''} ${resolvedTheme === 'obsidian' || resolvedTheme === 'hydra' ? '!bg-white/5 !backdrop-blur-xl border border-white/20 shadow-2xl' : ''}`} style={{ minHeight: '600px' }}>
                 {/* Sign Up Form */}
                 <div 
                     className="form-container sign-up-container" 

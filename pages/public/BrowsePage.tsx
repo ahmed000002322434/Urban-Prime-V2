@@ -336,10 +336,10 @@ const BrowsePage: React.FC = () => {
     return (
         <>
             {quickViewItem && <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />}
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 animate-fade-in-up">
                 
                 <RecentlyViewedBar />
-                <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
                         { title: 'Verified Sellers', desc: 'Shop trusted storefronts with quality checks.', tag: 'Trust' },
                         { title: 'Free Shipping', desc: 'Discover items with seller-paid delivery.', tag: 'Delivery' },
@@ -375,11 +375,11 @@ const BrowsePage: React.FC = () => {
                                 </button>
                             )}
                         </div>
-                        <div className="flex items-center gap-3">
-                            <button onClick={handleShuffle} className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary hover:bg-surface-soft flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button onClick={handleShuffle} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-border text-xs sm:text-sm font-semibold text-text-primary hover:bg-surface-soft flex items-center gap-2">
                                 <ShuffleIcon /> Shuffle
                             </button>
-                            <button onClick={() => setShowFilters(true)} className="px-4 py-3 rounded-xl bg-black text-white font-semibold text-sm hover:opacity-90 flex items-center gap-2">
+                            <button onClick={() => setShowFilters(true)} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-black text-white font-semibold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2">
                                 Advanced Filters
                                 {activeFilterCount > 0 && (
                                     <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">
@@ -423,7 +423,7 @@ const BrowsePage: React.FC = () => {
 
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
                     {/* Mobile Filter Toggle */}
-                    <div className="lg:hidden w-full flex gap-2">
+                    <div className="lg:hidden w-full flex flex-col sm:flex-row gap-2">
                          <button onClick={() => setIsSidebarOpen(true)} className="flex-1 flex items-center justify-center gap-2 p-3 font-semibold text-text-primary bg-surface border border-border rounded-lg shadow-sm">
                             <FilterIcon/> Filters
                             {activeFilterCount > 0 && (
@@ -449,9 +449,9 @@ const BrowsePage: React.FC = () => {
 
                     {/* Sidebar */}
                     <aside className={`
-                        fixed inset-0 z-50 bg-background 
+                        fixed inset-0 z-50 bg-background/95 backdrop-blur-md 
                         lg:static lg:bg-transparent lg:z-auto 
-                        lg:w-1/4 xl:w-1/5 overflow-y-auto lg:overflow-visible p-6 lg:p-0 
+                        lg:w-1/4 xl:w-1/5 overflow-y-auto lg:overflow-visible p-5 lg:p-0 pb-24 
                         transition-transform duration-300
                         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
                         ${showFilters ? 'lg:translate-x-0 lg:block' : 'lg:hidden'}
@@ -507,11 +507,11 @@ const BrowsePage: React.FC = () => {
 
                         {/* Results Grid */}
                         {isLoading && items.length === 0 ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                                 {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
                             </div>
                         ) : items.length > 0 ? (
-                            <div className={`grid gap-6 animate-fade-in-up ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
+                            <div className={`grid gap-4 sm:gap-6 animate-fade-in-up ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
                                 {items.map(item => <ItemCard key={item.id} item={item} onQuickView={setQuickViewItem} viewMode={viewMode} />)}
                             </div>
                         ) : (

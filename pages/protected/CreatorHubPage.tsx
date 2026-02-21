@@ -58,7 +58,7 @@ const TabButton: React.FC<{
 }> = ({ tab, activeTab, onClick, children }) => (
     <button
         onClick={() => onClick(tab)}
-        className={`px-4 py-2 font-semibold text-sm rounded-lg flex items-center gap-2 transition-colors ${
+        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-2 transition-colors ${
             activeTab === tab 
             ? 'bg-primary/10 text-primary' 
             : 'text-text-secondary hover:bg-surface-soft'
@@ -159,7 +159,7 @@ const CreatorHubPage: React.FC = () => {
         switch (activeTab) {
             case 'find':
                 return isLoadingSupplier ? <Spinner /> : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {supplierProducts.map(p => <SupplierProductCard key={p.id} product={p} onImport={setProductToImport} />)}
                     </div>
                 );
@@ -167,7 +167,7 @@ const CreatorHubPage: React.FC = () => {
                  return isLoadingMyProducts ? <Spinner /> : (
                     <div className="space-y-4">
                         {myProducts.length > 0 ? myProducts.map(item => (
-                             <div key={item.id} className="p-3 bg-surface rounded-md border border-border flex items-center gap-4">
+                             <div key={item.id} className="p-3 bg-surface rounded-md border border-border flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
                                  <img src={item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/200/200`} alt={item.title} className="w-16 h-16 rounded object-cover" />
                                  <div className="flex-1">
                                     <Link to={`/item/${item.id}`} className="font-bold hover:underline text-text-primary">{item.title}</Link>
@@ -188,8 +188,8 @@ const CreatorHubPage: React.FC = () => {
             case 'orders':
                 return (
                     <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-surface p-4 rounded-lg border border-border">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="bg-surface p-3 sm:p-4 rounded-lg border border-border">
                                 <p className="text-xs text-text-secondary uppercase tracking-wider">Orders in Progress</p>
                                 <p className="text-2xl font-bold text-text-primary">{mockOrders.filter(o => o.status !== 'delivered').length}</p>
                             </div>
@@ -359,12 +359,12 @@ const CreatorHubPage: React.FC = () => {
     return (
         <>
         <div className="bg-background min-h-[calc(100vh-80px)]">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
                 <header className="mb-8">
-                    <h1 className="text-3xl font-bold font-display text-text-primary">Creator Hub</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold font-display text-text-primary">Creator Hub</h1>
                     <p className="text-text-secondary">Your dashboard for managing your dropshipping business.</p>
                 </header>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     <div className="bg-surface p-4 rounded-lg border border-border">
                         <p className="text-xs text-text-secondary uppercase tracking-wider">Imported Products</p>
                         <p className="text-2xl font-bold text-text-primary">{myProducts.length}</p>
@@ -378,7 +378,7 @@ const CreatorHubPage: React.FC = () => {
                         <p className="text-2xl font-bold text-text-primary">Enabled</p>
                     </div>
                 </div>
-                <div className="flex gap-2 p-2 bg-surface rounded-lg shadow-sm border border-border mb-6">
+                <div className="flex gap-2 p-2 bg-surface rounded-lg shadow-sm border border-border mb-6 overflow-x-auto no-scrollbar">
                     <TabButton tab="find" activeTab={activeTab} onClick={setActiveTab}><SearchIcon /> Find Products</TabButton>
                     <TabButton tab="trends" activeTab={activeTab} onClick={setActiveTab}><TrendsIcon /> Trends</TabButton>
                     <TabButton tab="intelligence" activeTab={activeTab} onClick={setActiveTab}><FireIcon /> Intelligence</TabButton>

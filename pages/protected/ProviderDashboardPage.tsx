@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { serviceService, providerService } from '../../services/itemService';
-import type { Service, Job } from '../../types';
+import proposalService from '../../services/proposalService';
+import type { Service, Job, Proposal } from '../../types';
 import Spinner from '../../components/Spinner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -104,30 +105,62 @@ const ServiceRow: React.FC<{ service: Service }> = ({ service }) => (
     </motion.div>
 );
 
+const ProposalRow: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ y: -2 }}
+        className="p-4 bg-surface rounded-xl border border-border hover:shadow-md transition-all"
+    >
+        <div className="flex items-start justify-between gap-4">
+            <div>
+                <p className="text-xs font-black tracking-wider uppercase text-text-secondary">Proposal</p>
+                <h4 className="font-bold text-text-primary">{proposal.title}</h4>
+                <p className="text-sm text-text-secondary mt-1 line-clamp-2">{proposal.coverLetter || 'No cover letter provided.'}</p>
+                <p className="text-sm font-mono text-text-secondary mt-2">
+                    ${proposal.priceTotal.toLocaleString()} {proposal.currency} • {proposal.deliveryDays || 0} days
+                </p>
+            </div>
+            <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                proposal.status === 'accepted'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : proposal.status === 'declined'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+            }`}>
+                {proposal.status}
+            </span>
+        </div>
+    </motion.div>
+);
+
 const ProviderDashboardPage: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'overview' | 'requests' | 'active' | 'services'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'requests' | 'active' | 'services' | 'proposals'>('overview');
     const [stats, setStats] = useState<any>(null);
     const [requests, setRequests] = useState<Job[]>([]);
     const [activeJobs, setActiveJobs] = useState<Job[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const [proposals, setProposals] = useState<Proposal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const [statsData, reqs, active, servs] = await Promise.all([
+            const [statsData, reqs, active, servs, proposalRows] = await Promise.all([
                 providerService.getProviderStats(user.id),
                 providerService.getIncomingRequests(user.id),
                 providerService.getActiveJobs(user.id),
-                serviceService.getServicesByProvider(user.id)
+                serviceService.getServicesByProvider(user.id),
+                proposalService.getProviderProposals(user.id)
             ]);
             setStats(statsData);
             setRequests(reqs);
             setActiveJobs(active);
             setServices(servs);
+            setProposals(proposalRows);
         } catch (e) {
             console.error(e);
         } finally {
@@ -174,7 +207,7 @@ const ProviderDashboardPage: React.FC = () => {
 
                 {/* Tabs */}
                 <div className="flex gap-8 border-b border-border mb-8 overflow-x-auto">
-                    {['overview', 'requests', 'active', 'services'].map(tab => (
+                    {['overview', 'requests', 'active', 'services', 'proposals'].map(tab => (
                         <button 
                             key={tab}
                             onClick={() => setActiveTab(tab as any)}
@@ -185,6 +218,7 @@ const ProviderDashboardPage: React.FC = () => {
                             }`}
                         >
                             {tab} {tab === 'requests' && requests.length > 0 && <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-xs ml-1 shadow-sm">{requests.length}</span>}
+                            {tab === 'proposals' && proposals.length > 0 && <span className="bg-primary text-white px-2 py-0.5 rounded-full text-xs ml-1 shadow-sm">{proposals.length}</span>}
                         </button>
                     ))}
                 </div>
@@ -230,6 +264,18 @@ const ProviderDashboardPage: React.FC = () => {
                                 <button onClick={() => navigate('/profile/services/new')} className="flex items-center justify-center p-6 border-2 border-dashed border-border rounded-xl text-text-secondary font-bold hover:border-primary hover:text-primary transition-all h-24 hover:bg-primary/5">
                                     + Add Another Service
                                 </button>
+                            </div>
+                        )}
+
+                        {activeTab === 'proposals' && (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {proposals.length > 0 ? proposals.map(proposal => (
+                                    <ProposalRow key={proposal.id} proposal={proposal} />
+                                )) : (
+                                    <div className="col-span-2 text-center py-20 text-text-secondary font-medium">
+                                        No proposals yet. Send offers from requests to start closing contracts.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </motion.div>

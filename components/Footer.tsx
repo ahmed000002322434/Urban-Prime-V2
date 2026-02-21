@@ -96,7 +96,7 @@ const Footer: React.FC = () => {
     <footer className="bg-footer-background text-footer-text relative z-[60] backdrop-blur-xl border-t border-white/5">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[800px] opacity-100 mb-12' : 'max-h-0 opacity-0'}`}>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-y-10 gap-x-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-y-10 gap-x-8">
                <div>
                 <h4 className="font-bold text-sm tracking-wider text-footer-text mb-4 uppercase">Features</h4>
                 <ul className="space-y-3">
@@ -159,7 +159,7 @@ const Footer: React.FC = () => {
                 <div className="flex-1 flex justify-center sm:justify-start items-center gap-4">
                     <ThemeSelector />
                      <Link to="/" className="text-xl font-extrabold font-display hidden lg:block">
-                        <span className="text-footer-text">Urban</span><span className="text-primary">Prime</span>
+                        <span className="urban-prime-wordmark text-[0.88rem]">Urban Prime</span>
                     </Link>
                 </div>
                 <div className="flex-1 flex flex-col items-center order-first sm:order-none">
@@ -168,7 +168,7 @@ const Footer: React.FC = () => {
                           <ChevronUpIcon />
                         </div>
                     </button>
-                    <p className="text-sm text-gray-500">© 2025 Urban Prime. All rights reserved.</p>
+                    <p className="text-sm text-gray-500">© 2025 <span className="urban-prime-wordmark-tight">Urban Prime</span>. All rights reserved.</p>
                 </div>
                 <div className="flex-1 flex justify-center sm:justify-end">
                     <div className="flex space-x-4 text-footer-text-secondary">

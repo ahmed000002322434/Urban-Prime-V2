@@ -3,6 +3,23 @@ import { useAuth } from '../../hooks/useAuth';
 import { listerService } from '../../services/itemService';
 import type { DiscountCode } from '../../types';
 import Spinner from '../../components/Spinner';
+import { motion } from 'framer-motion';
+
+const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.1,
+            delayChildren: 0.1,
+        },
+    },
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+};
 
 const PromotionsManagerPage: React.FC = () => {
     const { user } = useAuth();
@@ -43,54 +60,119 @@ const PromotionsManagerPage: React.FC = () => {
     };
     
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold font-display">Promotions Manager</h1>
-                <button 
-                    onClick={() => setShowCreateForm(!showCreateForm)}
-                    className="px-4 py-2 text-sm bg-primary text-white font-bold rounded-md"
+        <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="space-y-6"
+        >
+            {/* Header */}
+            <motion.div 
+                variants={itemVariants}
+                className="flex justify-between items-center"
+            >
+                <motion.h1 
+                    className="text-3xl font-bold font-display text-text-primary"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
                 >
-                    {showCreateForm ? 'Cancel' : '+ New Discount'}
-                </button>
-            </div>
+                    Promotions Manager
+                </motion.h1>
+                <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowCreateForm(!showCreateForm)}
+                    className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${showCreateForm ? 'bg-red-500 hover:bg-red-600' : 'bg-gradient-to-r from-primary to-primary/80 hover:shadow-lg'} text-white`}
+                >
+                    {showCreateForm ? '✕ Cancel' : '+ New Discount'}
+                </motion.button>
+            </motion.div>
             
-            {showCreateForm && (
-                <div className="bg-white p-4 rounded-xl shadow-soft border border-gray-200">
-                    <form onSubmit={handleCreateCode} className="flex flex-col sm:flex-row gap-4 items-end">
-                        <div className="flex-1">
-                            <label className="text-xs font-semibold">Discount Code</label>
+            {/* Create Form */}
+            <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: showCreateForm ? 1 : 0, height: showCreateForm ? 'auto' : 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+            >
+                <motion.div 
+                    className="bg-surface/80 backdrop-blur-xl p-6 rounded-xl shadow-soft border border-border"
+                    initial={{ y: -20 }}
+                    animate={{ y: 0 }}
+                >
+                    <motion.form 
+                        onSubmit={handleCreateCode} 
+                        className="flex flex-col sm:flex-row gap-4 items-end"
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                    >
+                        <motion.div 
+                            variants={itemVariants}
+                            className="flex-1"
+                        >
+                            <label className="text-xs font-semibold text-text-secondary block mb-2">Discount Code</label>
                             <input
                                 type="text"
                                 value={newCode.code}
                                 onChange={e => setNewCode(p => ({ ...p, code: e.target.value.toUpperCase() }))}
                                 placeholder="e.g., FALL20"
                                 required
-                                className="w-full p-2 border rounded-md"
+                                className="w-full p-2 border border-border rounded-md bg-surface/50 text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                        </div>
-                        <div className="flex-1">
-                             <label className="text-xs font-semibold">Percentage Off</label>
-                             <input
+                        </motion.div>
+                        <motion.div 
+                            variants={itemVariants}
+                            className="flex-1"
+                        >
+                            <label className="text-xs font-semibold text-text-secondary block mb-2">Percentage Off</label>
+                            <input
                                 type="number"
                                 value={newCode.percentage}
                                 onChange={e => setNewCode(p => ({ ...p, percentage: Number(e.target.value) }))}
                                 min="1" max="100"
                                 required
-                                className="w-full p-2 border rounded-md"
+                                className="w-full p-2 border border-border rounded-md bg-surface/50 text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                        </div>
-                        <button type="submit" className="px-4 py-2 bg-black text-white rounded-md font-semibold text-sm">
+                        </motion.div>
+                        <motion.button 
+                            type="submit" 
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-md font-semibold text-sm hover:shadow-lg transition-shadow"
+                        >
                             Create
-                        </button>
-                    </form>
-                </div>
-            )}
+                        </motion.button>
+                    </motion.form>
+                </motion.div>
+            </motion.div>
 
-            <div className="bg-white p-6 rounded-xl shadow-soft border border-gray-200">
-                 {isLoading ? <Spinner /> : (
-                    <div className="overflow-x-auto">
+            {/* Codes Table */}
+            <motion.div 
+                variants={itemVariants}
+                className="bg-surface/80 backdrop-blur-xl p-6 rounded-xl shadow-soft border border-border"
+            >
+                {isLoading ? (
+                    <div className="flex justify-center py-10"><Spinner /></div>
+                ) : codes.length === 0 ? (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-center py-10"
+                    >
+                        <p className="text-text-secondary">No discount codes created yet.</p>
+                        <p className="text-text-secondary text-sm mt-1">Create your first discount code to get started.</p>
+                    </motion.div>
+                ) : (
+                    <motion.div 
+                        className="overflow-x-auto"
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                    >
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-500 uppercase bg-gray-50">
+                            <thead className="text-xs text-text-secondary uppercase bg-surface/50 border-b border-border">
                                 <tr>
                                     <th className="px-4 py-3">Code</th>
                                     <th className="px-4 py-3">Discount</th>
@@ -99,28 +181,41 @@ const PromotionsManagerPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {codes.map(code => (
-                                    <tr key={code.id} className="border-b hover:bg-gray-50">
-                                        <td className="px-4 py-3 font-mono font-semibold">{code.code}</td>
-                                        <td className="px-4 py-3">{code.percentage}% off</td>
+                                {codes.map((code, index) => (
+                                    <motion.tr 
+                                        key={code.id} 
+                                        variants={itemVariants}
+                                        whileHover={{ backgroundColor: "rgba(0,0,0,0.02)" }}
+                                        className="border-b border-border/50 hover:bg-surface/50 transition-colors"
+                                    >
+                                        <td className="px-4 py-3 font-mono font-semibold text-text-primary">{code.code}</td>
+                                        <td className="px-4 py-3 text-text-primary">{code.percentage}% off</td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${code.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                                                {code.isActive ? 'Active' : 'Inactive'}
-                                            </span>
+                                            <motion.span 
+                                                whileHover={{ scale: 1.05 }}
+                                                className={`inline-block px-2 py-1 text-xs font-bold rounded-full transition-all ${code.isActive ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30' : 'bg-gray-500/20 text-gray-600 dark:text-gray-400 border border-gray-500/30'}`}
+                                            >
+                                                {code.isActive ? '✓ Active' : '○ Inactive'}
+                                            </motion.span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <button onClick={() => handleToggleActive(code)} className="font-semibold text-sm text-primary hover:underline">
+                                            <motion.button 
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                onClick={() => handleToggleActive(code)} 
+                                                className="font-semibold text-sm text-primary hover:text-primary/80 transition-colors"
+                                            >
                                                 {code.isActive ? 'Deactivate' : 'Activate'}
-                                            </button>
+                                            </motion.button>
                                         </td>
-                                    </tr>
+                                    </motion.tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+                    </motion.div>
                 )}
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 };
 

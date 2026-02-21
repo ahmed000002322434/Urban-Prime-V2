@@ -33,68 +33,71 @@ const DashboardLayout: React.FC = () => {
     const { user, logout } = useAuth();
 
     const getNavLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `flex items-center gap-4 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-            isActive ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-soft'
+        `flex items-center gap-3 px-4 py-2.5 rounded-md transition-colors text-sm font-medium ${
+            isActive 
+                ? 'bg-slate-100 text-slate-900 border-l-2 border-slate-900' 
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
         }`;
     
     const NavGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
         <div>
-            <h3 className="px-4 text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">{title}</h3>
+            <h3 className="px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{title}</h3>
             <ul className="space-y-1">{children}</ul>
         </div>
     );
 
     return (
-        <div className="bg-background min-h-screen">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="flex flex-col md:flex-row gap-8 items-start">
-                    <aside className="w-full md:w-64 flex-shrink-0 bg-surface p-4 rounded-xl shadow-soft border border-border">
-                        <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-                            <img src={user?.avatar} alt={user?.name} className="w-12 h-12 rounded-full" />
-                            <div>
-                                <p className="font-bold text-text-primary">{user?.name}</p>
-                                <p className="text-xs text-text-secondary">{user?.email}</p>
-                            </div>
+        <div className="bg-slate-50 min-h-screen">
+            <div className="flex flex-col md:flex-row">
+                {/* Sidebar */}
+                <aside className="w-full md:w-64 md:min-h-screen bg-white border-b md:border-b-0 md:border-r border-slate-200 p-6">
+                    <div className="flex md:flex-col items-center md:items-start md:gap-3 pb-6 md:pb-6 border-b border-slate-200 mb-6">
+                        <img src={user?.avatar} alt={user?.name} className="w-12 h-12 rounded-lg object-cover" />
+                        <div className="ml-3 md:ml-0">
+                            <p className="font-bold text-slate-900 text-sm">{user?.name}</p>
+                            <p className="text-xs text-slate-500">{user?.email}</p>
                         </div>
+                    </div>
 
-                        <nav className="space-y-6">
-                            <NavGroup title="Dashboard">
-                                <li><NavLink to="/profile" end className={getNavLinkClass}><HomeIcon /> Overview</NavLink></li>
-                                <li><NavLink to="/profile/orders" className={getNavLinkClass}><OrdersIcon /> My Orders</NavLink></li>
-                                <li><NavLink to="/profile/messages" className={getNavLinkClass}><MessagesIcon /> Messages</NavLink></li>
-                            </NavGroup>
+                    <nav className="space-y-8 overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-none">
+                        <NavGroup title="Dashboard">
+                            <li><NavLink to="/profile" end className={getNavLinkClass}><HomeIcon /> Overview</NavLink></li>
+                            <li><NavLink to="/profile/orders" className={getNavLinkClass}><OrdersIcon /> My Orders</NavLink></li>
+                            <li><NavLink to="/profile/messages" className={getNavLinkClass}><MessagesIcon /> Messages</NavLink></li>
+                        </NavGroup>
 
-                             <NavGroup title="My Activity">
-                                <li><NavLink to="/profile/wishlist" className={getNavLinkClass}><WishlistIcon /> Wishlist</NavLink></li>
-                                <li><NavLink to="/profile/reviews" className={getNavLinkClass}><ReviewIcon /> My Reviews</NavLink></li>
-                                <li><NavLink to="/profile/coupons" className={getNavLinkClass}><CouponIcon /> Coupons & Offers</NavLink></li>
-                                <li><NavLink to="/profile/followed-stores" className={getNavLinkClass}><FollowedStoreIcon /> Followed Stores</NavLink></li>
-                                <li><NavLink to="/profile/history" className={getNavLinkClass}><ClockIcon /> Browsing History</NavLink></li>
-                            </NavGroup>
+                         <NavGroup title="My Activity">
+                            <li><NavLink to="/profile/wishlist" className={getNavLinkClass}><WishlistIcon /> Wishlist</NavLink></li>
+                            <li><NavLink to="/profile/reviews" className={getNavLinkClass}><ReviewIcon /> My Reviews</NavLink></li>
+                            <li><NavLink to="/profile/coupons" className={getNavLinkClass}><CouponIcon /> Coupons & Offers</NavLink></li>
+                            <li><NavLink to="/profile/followed-stores" className={getNavLinkClass}><FollowedStoreIcon /> Followed Stores</NavLink></li>
+                            <li><NavLink to="/profile/history" className={getNavLinkClass}><ClockIcon /> Browsing History</NavLink></li>
+                        </NavGroup>
 
-                            <NavGroup title="Selling">
-                                <li><NavLink to="/profile/store" className={getNavLinkClass}><StoreIcon /> My Store</NavLink></li>
-                                <li><NavLink to="/profile/products" className={getNavLinkClass}><ProductsIcon /> My Products</NavLink></li>
-                                <li><NavLink to="/profile/collections" className={getNavLinkClass}><CollectionsIcon /> My Collections</NavLink></li>
-                                <li><NavLink to="/profile/sales" className={getNavLinkClass}><EarningsIcon /> Sales Management</NavLink></li>
-                                <li><NavLink to="/profile/offers" className={getNavLinkClass}><OffersIcon /> Offers</NavLink></li>
-                                <li><NavLink to="/profile/creator-hub" className={getNavLinkClass}><CreatorHubIcon /> Creator Hub</NavLink></li>
-                                <li><NavLink to="/profile/affiliate" className={getNavLinkClass}><AffiliateIcon /> Affiliate Program</NavLink></li>
-                            </NavGroup>
+                        <NavGroup title="Selling">
+                            <li><NavLink to="/profile/store" className={getNavLinkClass}><StoreIcon /> My Store</NavLink></li>
+                            <li><NavLink to="/profile/products" className={getNavLinkClass}><ProductsIcon /> My Products</NavLink></li>
+                            <li><NavLink to="/profile/collections" className={getNavLinkClass}><CollectionsIcon /> My Collections</NavLink></li>
+                            <li><NavLink to="/profile/sales" className={getNavLinkClass}><EarningsIcon /> Sales Management</NavLink></li>
+                            <li><NavLink to="/profile/offers" className={getNavLinkClass}><OffersIcon /> Offers</NavLink></li>
+                            <li><NavLink to="/profile/creator-hub" className={getNavLinkClass}><CreatorHubIcon /> Creator Hub</NavLink></li>
+                            <li><NavLink to="/profile/affiliate" className={getNavLinkClass}><AffiliateIcon /> Affiliate Program</NavLink></li>
+                        </NavGroup>
 
-                             <NavGroup title="Account">
-                                <li><NavLink to="/profile/wallet" className={getNavLinkClass}><WalletIcon/> Wallet</NavLink></li>
-                                <li><NavLink to="/profile/permissions" className={getNavLinkClass}><PermissionsIcon /> Permissions</NavLink></li>
-                                <li><NavLink to="/profile/switch-accounts" className={getNavLinkClass}><SwitchAccountsIcon /> Switch Accounts</NavLink></li>
-                                <li><NavLink to="/profile/settings" className={getNavLinkClass}><SettingsIcon /> Settings</NavLink></li>
-                                <li><button onClick={logout} className="flex items-center gap-4 px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-500/10 w-full"><LogoutIcon /> Logout</button></li>
-                            </NavGroup>
-                        </nav>
-                    </aside>
-                    <main className="flex-1">
-                        <Outlet />
-                    </main>
-                </div>
+                         <NavGroup title="Account">
+                            <li><NavLink to="/profile/wallet" className={getNavLinkClass}><WalletIcon/> Wallet</NavLink></li>
+                            <li><NavLink to="/profile/permissions" className={getNavLinkClass}><PermissionsIcon /> Permissions</NavLink></li>
+                            <li><NavLink to="/profile/switch-accounts" className={getNavLinkClass}><SwitchAccountsIcon /> Switch Accounts</NavLink></li>
+                            <li><NavLink to="/profile/settings" className={getNavLinkClass}><SettingsIcon /> Settings</NavLink></li>
+                            <li><button onClick={logout} className="flex items-center gap-4 px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-500/10 w-full"><LogoutIcon /> Logout</button></li>
+                        </NavGroup>
+                    </nav>
+                </aside>
+                
+                {/* Main Content */}
+                <main className="flex-1 p-6 sm:p-8 lg:p-12">
+                    <Outlet />
+                </main>
             </div>
         </div>
     );

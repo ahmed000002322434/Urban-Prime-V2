@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { itemService, userService } from '../../services/itemService';
+import { isBackendConfigured } from '../../services/backendClient';
 import type { ChatThread, User, Item, ChatMessage, CustomOffer } from '../../types';
 import Spinner from '../../components/Spinner';
 import { db } from '../../firebase';
@@ -135,7 +136,42 @@ const MessagesPage: React.FC = () => {
                             userService.getUserById(otherUserId),
                             itemService.getItemById(thread.itemId)
                         ]);
-                        return { ...thread, otherUser: otherUser!, item: item! };
+
+                        const fallbackUser: User = otherUser || {
+                            id: otherUserId,
+                            name: 'User',
+                            email: '',
+                            avatar: '/icons/urbanprime.svg',
+                            following: [],
+                            followers: [],
+                            wishlist: [],
+                            cart: [],
+                            badges: [],
+                            memberSince: new Date().toISOString(),
+                            status: 'active'
+                        };
+
+                        const fallbackItem: Item = item || ({
+                            id: thread.itemId,
+                            title: 'Listing',
+                            description: '',
+                            category: 'general',
+                            price: 0,
+                            listingType: 'sale',
+                            imageUrls: [],
+                            images: [],
+                            owner: {
+                                id: otherUserId,
+                                name: fallbackUser.name,
+                                avatar: fallbackUser.avatar || '/icons/urbanprime.svg'
+                            },
+                            avgRating: 0,
+                            reviews: [],
+                            stock: 0,
+                            createdAt: new Date().toISOString()
+                        } as Item);
+
+                        return { ...thread, otherUser: fallbackUser, item: fallbackItem };
                     })
                 );
                 
@@ -169,17 +205,29 @@ const MessagesPage: React.FC = () => {
     useEffect(() => {
         if (!threadId) return;
 
+        if (isBackendConfigured()) {
+            const fallbackThread = threads.find(t => t.id === threadId);
+            setMessages(fallbackThread?.messages || []);
+            return;
+        }
+
         const q = query(collection(db, "chatThreads", threadId, "messages"), orderBy("timestamp", "asc"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const msgs: ChatMessage[] = [];
-            querySnapshot.forEach((doc) => {
-                msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
-            });
-            setMessages(msgs);
-        });
+        const unsubscribe = onSnapshot(
+            q,
+            (querySnapshot) => {
+                const msgs: ChatMessage[] = [];
+                querySnapshot.forEach((doc) => {
+                    msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
+                });
+                setMessages(msgs);
+            },
+            (error) => {
+                console.warn('Realtime message listener failed:', error);
+            }
+        );
 
         return () => unsubscribe();
-    }, [threadId]);
+    }, [threadId, threads]);
     
     const handleSelectThread = (thread: ThreadWithDetails) => {
         navigate(`/profile/messages/${thread.id}`);
@@ -233,14 +281,14 @@ const MessagesPage: React.FC = () => {
     return (
         <>
             {isOfferModalOpen && <CreateOfferModal onClose={() => setIsOfferModalOpen(false)} onSend={handleSendOffer} />}
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in-up">
-                <h1 className="text-3xl font-bold mb-6 text-text-primary">Messages</h1>
-                <div className="h-[75vh] flex bg-surface rounded-xl shadow-soft border border-border overflow-hidden">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 animate-fade-in-up">
+                <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-text-primary">Messages</h1>
+                <div className="h-[70vh] md:h-[75vh] flex flex-col md:flex-row bg-surface rounded-xl shadow-soft border border-border overflow-hidden">
                     {/* Conversation List */}
-                    <aside className="w-1/3 border-r border-border h-full flex flex-col hidden md:flex">
+                    <aside className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-border h-auto md:h-full flex flex-col">
                         <div className="p-4 border-b border-border"><input type="text" placeholder="Search messages..." className="w-full text-sm p-3 bg-surface-soft text-text-primary rounded-lg border-none focus:ring-2 focus:ring-primary" /></div>
                         {threads.length > 0 ? (
-                            <ul className="overflow-y-auto flex-1">
+                            <ul className="overflow-y-auto flex-1 max-h-[30vh] md:max-h-none">
                                 {threads.map(thread => {
                                     const lastMessage = thread.messages[thread.messages.length - 1];
                                     return (
@@ -277,7 +325,7 @@ const MessagesPage: React.FC = () => {
                                     </div>
                                     <Link to={`/item/${activeThread.item.id}`} className="text-xs font-bold border border-border px-3 py-1.5 rounded-lg hover:bg-white transition-colors">View Item</Link>
                                 </header>
-                                <div className="flex-1 p-6 overflow-y-auto bg-background">
+                                <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-background">
                                     <div className="space-y-6">
                                          {messages.map(msg => (
                                              <div key={msg.id} className={`flex items-end gap-2 ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}>
@@ -285,6 +333,17 @@ const MessagesPage: React.FC = () => {
                                                  <div className={`max-w-[85%] ${msg.type === 'offer' ? 'w-full max-w-sm' : ''}`}>
                                                      {msg.type === 'offer' && msg.offer ? (
                                                          <OfferCard offer={msg.offer} isSender={msg.senderId === user?.id} onAccept={() => handleAcceptOffer(msg.offer!.id)} />
+                                                     ) : (msg.type === 'contract' || msg.type === 'milestone') ? (
+                                                         <div className="px-4 py-3 rounded-2xl border border-blue-200 bg-blue-50 text-blue-900 text-sm shadow-sm">
+                                                             <p className="font-bold mb-1">
+                                                                 {msg.type === 'contract' ? 'Contract Update' : 'Milestone Update'}
+                                                             </p>
+                                                             <p className="leading-relaxed whitespace-pre-wrap">
+                                                                 {typeof msg.content === 'string'
+                                                                     ? msg.content
+                                                                     : msg.content?.summary || msg.text || 'New workflow update shared in this conversation.'}
+                                                             </p>
+                                                         </div>
                                                      ) : (
                                                          <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm ${msg.senderId === user?.id ? 'bg-primary text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}`}>
                                                              {msg.imageUrl && <img src={msg.imageUrl} alt="attached" className="rounded-lg mb-2 max-w-xs w-full" />}
@@ -310,7 +369,7 @@ const MessagesPage: React.FC = () => {
                                         <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-surface-soft rounded-full transition-colors" title="Attach Image">
                                             <AttachmentIcon />
                                         </button>
-                                        <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 px-4 py-3 bg-surface-soft text-text-primary border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all" />
+                                        <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 px-4 py-2.5 bg-surface-soft text-text-primary border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all" />
                                         <button type="submit" disabled={!newMessage.trim() && !imageToSend} className="p-3 bg-primary text-white rounded-full disabled:bg-gray-300 disabled:cursor-not-allowed hover:scale-105 transition-transform shadow-md">
                                             <SendIcon />
                                         </button>
@@ -334,4 +393,3 @@ const MessagesPage: React.FC = () => {
 };
 
 export default MessagesPage;
-

@@ -13,7 +13,7 @@ const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" heigh
 // 1. Custom Futuristic Play Logo (Code Generated)
 const FuturisticPlayLogo = () => {
     return (
-        <div className="relative w-48 h-48 md:w-64 md:h-64 flex items-center justify-center">
+        <div className="relative w-36 h-36 sm:w-48 sm:h-48 md:w-64 md:h-64 flex items-center justify-center">
             {/* Outer Rotating Ring */}
             <motion.div 
                 animate={{ rotate: 360 }}
@@ -100,7 +100,7 @@ const DeepDiveSection: React.FC<{
     const isEven = index % 2 === 0;
     
     return (
-        <section className="py-24 md:py-32 relative overflow-hidden">
+        <section className="py-16 sm:py-20 md:py-32 relative overflow-hidden">
              {/* Background decoration */}
              <div className={`absolute top-1/2 -translate-y-1/2 ${isEven ? 'right-0 translate-x-1/3' : 'left-0 -translate-x-1/3'} w-1/2 h-full bg-gradient-to-b from-primary/5 via-purple-500/5 to-transparent blur-[100px] pointer-events-none rounded-full`} />
 
@@ -155,7 +155,7 @@ const DeepDiveSection: React.FC<{
                                 <div className="h-px bg-gradient-to-r from-primary to-transparent w-24"></div>
                             </motion.div>
                             
-                            <h2 className="text-4xl md:text-5xl lg:text-6xl font-black font-display text-gray-900 dark:text-white leading-[1.1] mb-6">
+                            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black font-display text-gray-900 dark:text-white leading-[1.1] mb-6">
                                 {title}
                             </h2>
                         </div>
@@ -193,7 +193,7 @@ const PricingCard: React.FC<{ tier: string; rate: string; color: string; feature
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="relative p-8 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-[2rem] shadow-xl overflow-hidden flex flex-col h-full transform transition-all duration-500 perspective-1000 group"
+            className="relative p-6 sm:p-8 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-[2rem] shadow-xl overflow-hidden flex flex-col h-full transform transition-all duration-500 perspective-1000 group"
         >
             <div className={`absolute top-0 left-0 w-full h-1.5 ${color} opacity-80 group-hover:opacity-100 transition-opacity`}></div>
             

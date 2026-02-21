@@ -156,15 +156,15 @@ const initialFormData: WizardFormData = {
 };
 
 // --- UI Components ---
-const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder-gray-400 text-sm font-medium dark:text-white" />;
-const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...props} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all text-sm font-medium dark:text-white" />;
-const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder-gray-400 text-sm font-medium dark:text-white" />;
+const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} className="w-full px-3 py-2.5 md:px-4 md:py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder-gray-400 text-sm font-medium dark:text-white" />;
+const Select = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...props} className="w-full px-3 py-2.5 md:px-4 md:py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all text-sm font-medium dark:text-white" />;
+const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} className="w-full px-3 py-2.5 md:px-4 md:py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-background focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder-gray-400 text-sm font-medium dark:text-white" />;
 
 const FormCard: React.FC<{title: string, subtitle?: string, children: React.ReactNode}> = ({title, subtitle, children}) => (
-    <div className="bg-white dark:bg-dark-surface p-8 rounded-2xl shadow-soft border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-bold mb-1 text-gray-900 dark:text-dark-text font-display">{title}</h3>
+    <div className="bg-white dark:bg-dark-surface p-4 sm:p-6 md:p-8 rounded-2xl shadow-soft border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg sm:text-xl font-bold mb-1 text-gray-900 dark:text-dark-text font-display">{title}</h3>
         {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{subtitle}</p>}
-        <div className="space-y-6 mt-4">{children}</div>
+        <div className="space-y-5 sm:space-y-6 mt-4">{children}</div>
     </div>
 );
 
@@ -470,8 +470,8 @@ const ListItemPage: React.FC = () => {
                             <p className="text-gray-500 dark:text-gray-400">List an item for sale or rent.</p>
                          </div>
                      </div>
-                     <div className="flex items-center gap-3">
-                        <button type="button" onClick={() => setIsAIPostModalOpen(true)} className="px-5 py-2.5 text-sm bg-purple-50 text-purple-700 font-bold rounded-lg flex items-center gap-2 hover:bg-purple-100 border border-purple-200 transition-colors shadow-sm">
+                     <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => setIsAIPostModalOpen(true)} className="px-4 py-2 text-xs sm:text-sm bg-purple-50 text-purple-700 font-bold rounded-lg flex items-center gap-2 hover:bg-purple-100 border border-purple-200 transition-colors shadow-sm">
                             <SparklesIcon /> Generate with AI
                         </button>
                         <div className="h-6 w-px bg-gray-300 dark:bg-gray-700"></div>
@@ -479,7 +479,7 @@ const ListItemPage: React.FC = () => {
                             type="button"
                             onClick={() => handlePublish('draft')}
                             disabled={isSubmitting}
-                            className="px-5 py-2.5 text-sm bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-300 font-bold rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="px-4 py-2 text-xs sm:text-sm bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-300 font-bold rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? 'Saving...' : 'Save Draft'}
                         </button>
@@ -487,7 +487,7 @@ const ListItemPage: React.FC = () => {
                             type="button"
                             onClick={() => handlePublish('published')}
                             disabled={isSubmitting}
-                            className="px-6 py-2.5 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-lg shadow-black/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-4 sm:px-6 py-2 text-xs sm:text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shadow-lg shadow-black/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             {isSubmitting ? <Spinner size="sm" className="w-4 h-4" /> : null}
                             {isSubmitting ? 'Publishing...' : 'Publish Now'}
@@ -495,13 +495,13 @@ const ListItemPage: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
                     <div className="lg:col-span-2 space-y-8">
                         <FormCard title="Product Details" subtitle="Accurate information helps buyers find your item.">
                             <Input name="title" placeholder="Product Title" value={formData.title} onChange={handleChange} />
                             <Textarea name="description" placeholder="Product Description... Include key details about condition and features." value={formData.description} onChange={handleChange} rows={6} />
                             
-                            <div className="p-4 bg-gray-50 dark:bg-dark-background rounded-xl border border-gray-200 dark:border-gray-700">
+                            <div className="p-3 sm:p-4 bg-gray-50 dark:bg-dark-background rounded-xl border border-gray-200 dark:border-gray-700">
                                  <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-3">Key Features & Highlights</h4>
                                  <div className="space-y-2">
                                     {formData.features.map((feature, index) => (
@@ -518,12 +518,12 @@ const ListItemPage: React.FC = () => {
                                 <button onClick={() => setFormData(prev => ({...prev, features: [...prev.features, '']}))} className="text-sm font-bold text-primary hover:underline mt-3 inline-block">+ Add another feature</button>
                             </div>
 
-                             <div className="p-4 bg-gray-50 dark:bg-dark-background rounded-xl border border-gray-200 dark:border-gray-700">
+                             <div className="p-3 sm:p-4 bg-gray-50 dark:bg-dark-background rounded-xl border border-gray-200 dark:border-gray-700">
                                 <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-3">Technical Specifications</h4>
                                 <div className="space-y-2">
                                     {formData.specifications.map((spec, index) => (
-                                        <div key={index} className="flex gap-4">
-                                            <div className="w-1/3">
+                                        <div key={index} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                                            <div className="w-full sm:w-1/3">
                                                 <Input value={spec.key} onChange={e => handleSpecChange(index, 'key', e.target.value)} placeholder="Label (e.g. Weight)" />
                                             </div>
                                             <div className="flex-1">
@@ -537,7 +537,7 @@ const ListItemPage: React.FC = () => {
                         </FormCard>
                         
                          <FormCard title="Media" subtitle="Upload high-quality images. The first image will be the cover.">
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                                 {formData.imageUrls?.map((url, index) => (
                                     <div key={index} className="relative group aspect-square rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700">
                                         <img src={url} alt={`upload preview ${index + 1}`} className="w-full h-full object-cover" />
@@ -586,7 +586,7 @@ const ListItemPage: React.FC = () => {
 
                             {/* SALE INPUTS */}
                             {formData.listingType === 'sale' && (
-                                <div className="grid grid-cols-2 gap-6 animate-fade-in-up">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 animate-fade-in-up">
                                     <div>
                                         <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Sale Price</label>
                                         <div className="relative">
@@ -607,7 +607,7 @@ const ListItemPage: React.FC = () => {
                             {/* RENT INPUTS */}
                             {formData.listingType === 'rent' && (
                                 <div className="space-y-6 animate-fade-in-up">
-                                    <div className="grid grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                         <div>
                                             <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Hourly Rate</label>
                                             <div className="relative">
@@ -631,7 +631,7 @@ const ListItemPage: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                                         <div className="relative group">
                                             <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block flex items-center gap-1">
                                                 Security Deposit
@@ -673,7 +673,7 @@ const ListItemPage: React.FC = () => {
 
                              {/* AUCTION INPUTS */}
                             {formData.listingType === 'auction' && (
-                                <div className="grid grid-cols-2 gap-6 animate-fade-in-up">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 animate-fade-in-up">
                                     <div>
                                         <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Starting Bid</label>
                                         <div className="relative">
@@ -730,7 +730,7 @@ const ListItemPage: React.FC = () => {
 
                             <div className="space-y-4">
                                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Who pays for shipping?</label>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                      <button 
                                         type="button"
                                         onClick={() => setFormData(p => ({ ...p, whoPaysShipping: 'buyer' }))}
@@ -779,7 +779,7 @@ const ListItemPage: React.FC = () => {
 
                              {formData.shippingWeightClass === 'custom' && (
                                  <div className="mt-4 p-4 bg-gray-50 dark:bg-dark-background rounded-lg border border-gray-200 dark:border-gray-700">
-                                     <div className="grid grid-cols-2 gap-4">
+                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                          <div>
                                              <label className="text-xs font-bold uppercase mb-1 block">Weight (lbs)</label>
                                              <Input type="number" placeholder="0.0" />
@@ -800,7 +800,7 @@ const ListItemPage: React.FC = () => {
                         <FormCard title="Fulfillment & Compliance" subtitle="Power your dropship, 3PL, or in-house flow.">
                             <div className="space-y-4">
                                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Fulfillment Type</label>
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                     {[
                                         { id: 'in_house', label: 'In-House' },
                                         { id: 'dropship', label: 'Dropship' },
@@ -819,7 +819,7 @@ const ListItemPage: React.FC = () => {
                             </div>
 
                             {(formData.fulfillmentType === 'dropship' || formData.fulfillmentType === '3pl') && (
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Supplier / Partner</label>
                                         <Input
@@ -839,7 +839,7 @@ const ListItemPage: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Origin Country</label>
                                     <Input name="originCountry" placeholder="Country of origin" value={formData.originCountry} onChange={handleChange} />
@@ -850,7 +850,7 @@ const ListItemPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Length (in)</label>
                                     <Input
@@ -907,7 +907,7 @@ const ListItemPage: React.FC = () => {
                         </FormCard>
 
                         <FormCard title="Policies & Protection" subtitle="Set return and warranty expectations.">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Return Window (days)</label>
                                     <Input
@@ -957,7 +957,7 @@ const ListItemPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Warranty Coverage</label>
                                     <Input
@@ -1024,7 +1024,7 @@ const ListItemPage: React.FC = () => {
                         <FormCard title="Delivery Options" subtitle="Give customers precise ETA windows.">
                             <div className="space-y-4">
                                 {(formData.shippingEstimates || []).map((estimate, index) => (
-                                    <div key={index} className="grid grid-cols-5 gap-3 items-end">
+                                    <div key={index} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 items-end">
                                         <div>
                                             <label className="text-xs font-bold uppercase mb-1 block">Min Days</label>
                                             <Input type="number" value={estimate.minDays} onChange={e => updateShippingEstimate(index, 'minDays', e.target.value)} />
@@ -1067,7 +1067,7 @@ const ListItemPage: React.FC = () => {
                                 />
                             </div>
                             {formData.affiliateEligibility?.enabled && (
-                                <div className="grid grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Commission (%)</label>
                                         <Input

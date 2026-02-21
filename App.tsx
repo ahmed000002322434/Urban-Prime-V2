@@ -1,6 +1,6 @@
 
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -15,15 +15,15 @@ import { OmniProvider } from './context/OmniContext';
 
 import Layout from './components/Layout';
 import Spinner from './components/Spinner';
-import { useAuth } from './hooks/useAuth';
-import OnboardingModal from './components/OnboardingModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import StarryBackground from './components/StarryBackground';
 import ContextualThemeWrapper from './components/ContextualThemeWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
+import PersonaRoute from './components/PersonaRoute';
 import AdminRoute from './components/AdminRoute';
 import AdminLayout from './pages/admin/AdminLayout';
 import ErrorBoundary from './components/ErrorBoundary';
+import AutoDraftPersistence from './components/AutoDraftPersistence';
 
 // Layouts
 const DashboardLayout = lazy(() => import('./layouts/DashboardLayout'));
@@ -53,6 +53,8 @@ const AffiliateLandingPage = lazy(() => import('./pages/public/AffiliateLandingP
 const SellerResourceCenterPage = lazy(() => import('./pages/public/SellerResourceCenterPage'));
 const StoresDirectoryPage = lazy(() => import('./pages/public/StoresDirectoryPage'));
 const SellerDirectoryPage = lazy(() => import('./pages/public/SellerDirectoryPage'));
+const RenterDirectoryPage = lazy(() => import('./pages/public/RenterDirectoryPage'));
+const BuyerDirectoryPage = lazy(() => import('./pages/public/BuyerDirectoryPage'));
 const BrowsePage = lazy(() => import('./pages/public/BrowsePage'));
 const BrowseServicesPage = lazy(() => import('./pages/public/BrowseServicesPage'));
 const ItemDetailPage = lazy(() => import('./pages/public/ItemDetailPage'));
@@ -168,6 +170,8 @@ const GamesHubPage = lazy(() => import('./pages/public/GamesHubPage'));
 
 // Protected Pages
 const DashboardOverview = lazy(() => import('./pages/protected/DashboardOverview'));
+const ActivityPage = lazy(() => import('./pages/protected/ActivityPage'));
+const OwnerControlsPage = lazy(() => import('./pages/protected/OwnerControlsPage'));
 const MyOrdersPage = lazy(() => import('./pages/protected/MyOrdersPage'));
 const OrderDetailsPage = lazy(() => import('./pages/protected/OrderDetailsPage'));
 const MessagesPage = lazy(() => import('./pages/protected/MessagesPage'));
@@ -205,6 +209,10 @@ const WalletPage = lazy(() => import('./pages/protected/WalletPage'));
 const EarningsPage = lazy(() => import('./pages/protected/EarningsPage'));
 const PackagesPage = lazy(() => import('./pages/protected/PackagesPage'));
 const AdvancedAnalyticsPage = lazy(() => import('./pages/protected/AdvancedAnalyticsPage'));
+const TrafficAnalyticsPage = lazy(() => import('./pages/protected/TrafficAnalyticsPage'));
+const RevenueAnalyticsPage = lazy(() => import('./pages/protected/RevenueAnalyticsPage'));
+const SalesUnitsAnalyticsPage = lazy(() => import('./pages/protected/SalesUnitsAnalyticsPage'));
+const ConversionAnalyticsPage = lazy(() => import('./pages/protected/ConversionAnalyticsPage'));
 const StoreEditorPage = lazy(() => import('./pages/protected/StoreEditorPage'));
 const StoreGeneratingPage = lazy(() => import('./pages/protected/StoreGeneratingPage'));
 const CreateStorePage = lazy(() => import('./pages/protected/CreateStorePage'));
@@ -216,6 +224,7 @@ const CartPage = lazy(() => import('./pages/protected/CartPage'));
 const CheckoutPage = lazy(() => import('./pages/protected/CheckoutPage'));
 const DisputeCenterPage = lazy(() => import('./pages/protected/DisputeCenterPage'));
 const HelpPage = lazy(() => import('./pages/protected/HelpPage'));
+const WorkflowHubPage = lazy(() => import('./pages/protected/WorkflowHubPage'));
 
 // Admin Pages
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -229,13 +238,14 @@ const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
 
 // Auth Pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
+const OnboardingPage = lazy(() => import('./pages/auth/OnboardingPage'));
 const RegisterPage = lazy(() => import('./pages/auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
 const AdminLoginPage = lazy(() => import('./pages/auth/AdminLoginPage'));
+const ProfileHubPage = lazy(() => import('./pages/protected/ProfileHubPage'));
 
 const AppContent: React.FC = () => {
-  const { showOnboarding } = useAuth();
   const [showWelcomeScreen, setShowWelcomeScreen] = useState(true);
 
   useEffect(() => {
@@ -256,6 +266,7 @@ const AppContent: React.FC = () => {
 
           {/* Auth Routes */}
           <Route path="/auth" element={<LoginPage />} />
+          <Route path="/auth/onboarding" element={<OnboardingPage />} />
           <Route path="/admin-login" element={<AdminLoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -308,6 +319,8 @@ const AppContent: React.FC = () => {
             <Route path="seller-resource-center" element={<SellerResourceCenterPage />} />
             <Route path="stores" element={<StoresDirectoryPage />} />
             <Route path="sellers" element={<SellerDirectoryPage />} />
+            <Route path="renters" element={<RenterDirectoryPage />} />
+            <Route path="buyers" element={<BuyerDirectoryPage />} />
             <Route path="browse" element={<BrowsePage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
             <Route path="reels" element={<ReelsPage />} />
@@ -432,13 +445,18 @@ const AppContent: React.FC = () => {
                     <Route path="orders/:bookingId" element={<OrderDetailsPage />} />
                     <Route path="messages" element={<MessagesPage />} />
                     <Route path="messages/:threadId" element={<MessagesPage />} />
+                    <Route path="workflows" element={<WorkflowHubPage />} />
                     <Route path="wishlist" element={<WishlistPage />} />
                     <Route path="reviews" element={<MyReviewsPage />} />
                     <Route path="coupons" element={<CouponsPage />} />
                     <Route path="followed-stores" element={<FollowedStoresPage />} />
                     <Route path="history" element={<BrowsingHistoryPage />} />
+                    <Route path="activity" element={<ActivityPage />} />
+                    <Route path="edit" element={<Navigate to="/profile/settings" replace />} />
                     <Route path="settings" element={<SettingsPage />}>
-                        <Route index element={<EditProfilePage />} />
+                        <Route index element={<ProfileHubPage />} />
+                        <Route path="edit" element={<Navigate to="/profile/settings" replace />} />
+                        <Route path="legacy-edit" element={<EditProfilePage />} />
                         <Route path="addresses" element={<AddressesPage />} />
                         <Route path="trust-and-verification" element={<TrustAndVerificationPage />} />
                         <Route path="privacy" element={<PrivacySettingsPage />} />
@@ -447,34 +465,58 @@ const AppContent: React.FC = () => {
                     <Route path="wallet" element={<WalletPage />} />
                     <Route path="permissions" element={<PermissionsPage />} />
                     <Route path="switch-accounts" element={<SwitchAccountsPage />} />
-                    <Route path="store" element={<MyStorePage />} />
-                    <Route path="products" element={<MyListingsPage />} />
-                    <Route path="products/new" element={<ListItemPage />} />
-                    <Route path="products/new-digital" element={<DigitalListItemPage />} />
+
+                    <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
+                        <Route path="store" element={<MyStorePage />} />
+                        <Route path="products" element={<MyListingsPage />} />
+                        <Route path="products/new" element={<ListItemPage />} />
+                        <Route path="products/new-digital" element={<DigitalListItemPage />} />
+                        <Route path="sales" element={<SalesManagementPage />} />
+                        <Route path="owner-controls" element={<OwnerControlsPage />} />
+                        <Route path="offers" element={<OffersPage />} />
+                        <Route path="promotions" element={<PromotionsManagerPage />} />
+                        <Route path="earnings" element={<EarningsPage />} />
+                    </Route>
+
+                    <Route element={<PersonaRoute requiredCapabilities={['provide_service']} requiredPersonaTypes={['provider']} mode="all" />}>
+                        <Route path="provider-dashboard" element={<ProviderDashboardPage />} />
+                        <Route path="services/new" element={<ListServicePage />} />
+                        <Route path="become-a-provider" element={<BecomeProviderPage />} />
+                    </Route>
+
+                    <Route element={<PersonaRoute requiredCapabilities={['affiliate']} requiredPersonaTypes={['affiliate']} mode="all" />}>
+                        <Route path="affiliate" element={<AffiliateProgramPage />} />
+                    </Route>
+
+                    <Route element={<PersonaRoute requiredCapabilities={['sell', 'provide_service']} requiredPersonaTypes={['seller', 'provider']} mode="any" />}>
+                        <Route path="creator-hub" element={<CreatorHubPage />} />
+                    </Route>
+
                     <Route path="collections" element={<MyCollectionsPage />} />
-                    <Route path="sales" element={<SalesManagementPage />} />
-                    <Route path="offers" element={<OffersPage />} />
-                    <Route path="creator-hub" element={<CreatorHubPage />} />
-                    <Route path="affiliate" element={<AffiliateProgramPage />} />
-                    <Route path="promotions" element={<PromotionsManagerPage />} />
-                    <Route path="provider-dashboard" element={<ProviderDashboardPage />} />
-                    <Route path="services/new" element={<ListServicePage />} />
-                    <Route path="become-a-provider" element={<BecomeProviderPage />} />
                     <Route path="go-live" element={<CreateLiveStreamPage />} />
                     <Route path="add-post" element={<CreatePostPage />} />
-                    <Route path="earnings" element={<EarningsPage />} />
                     <Route path="track-delivery/:bookingId" element={<TrackDeliveryPage />} />
                     <Route path="disputes" element={<DisputeCenterPage />} />
                     <Route path="analytics/advanced" element={<AdvancedAnalyticsPage />} />
                 </Route>
             </Route>
 
+            <Route path="activity" element={<ProtectedRoute />}>
+                <Route index element={<Navigate to="/profile/activity" replace />} />
+            </Route>
+
+            <Route path="switch-accounts" element={<ProtectedRoute />}>
+                <Route index element={<Navigate to="/profile/switch-accounts" replace />} />
+            </Route>
+
             <Route path="cart" element={<ProtectedRoute />}>
                 <Route index element={<CartPage />} />
             </Route>
-            
+
             <Route path="checkout" element={<ProtectedRoute />}>
-                 <Route index element={<CheckoutPage />} />
+                <Route element={<PersonaRoute requiredCapabilities={['buy', 'rent']} mode="any" />}>
+                    <Route index element={<CheckoutPage />} />
+                </Route>
             </Route>
 
             <Route path="order-confirmation" element={<ProtectedRoute />}>
@@ -484,23 +526,37 @@ const AppContent: React.FC = () => {
             <Route path="pixe-studio" element={<ProtectedRoute />}>
                 <Route index element={<PixeStudio />} />
             </Route>
-            
+
             <Route path="create-store" element={<ProtectedRoute />}>
-                <Route index element={<CreateStorePage />} />
+                <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
+                    <Route index element={<CreateStorePage />} />
+                </Route>
             </Route>
 
             <Route path="store/edit" element={<ProtectedRoute />}>
-                 <Route index element={<StoreEditorPage />} />
+                <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
+                    <Route index element={<StoreEditorPage />} />
+                </Route>
+            </Route>
+
+            <Route path="store/manager" element={<ProtectedRoute />}>
+                <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
+                    <Route path="analytics" element={<AdvancedAnalyticsPage />} />
+                    <Route path="analytics/traffic" element={<TrafficAnalyticsPage />} />
+                    <Route path="analytics/revenue" element={<RevenueAnalyticsPage />} />
+                    <Route path="analytics/sales-units" element={<SalesUnitsAnalyticsPage />} />
+                    <Route path="analytics/conversion" element={<ConversionAnalyticsPage />} />
+                </Route>
             </Route>
 
              <Route path="upload-game" element={<ProtectedRoute />}>
                 <Route index element={<UploadGamePage />} />
             </Route>
-            
+
             <Route path="payment-options" element={<ProtectedRoute />}>
                 <Route index element={<PaymentOptionsPage />} />
             </Route>
-            
+
             <Route path="packages" element={<ProtectedRoute />}>
                  <Route index element={<PackagesPage />} />
             </Route>
@@ -513,7 +569,7 @@ const AppContent: React.FC = () => {
           </Route>
         </Routes>
       </Suspense>
-      {showOnboarding && <OnboardingModal />}
+      <AutoDraftPersistence />
     </ContextualThemeWrapper>
   );
 };
@@ -551,3 +607,5 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+

@@ -28,7 +28,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
           <div className="max-w-md text-center space-y-4">
-            <p className="text-xs uppercase tracking-[0.35em] text-white/60">Urban Prime</p>
+            <p className="urban-prime-wordmark-tight text-xs uppercase tracking-[0.2em] text-white/70">Urban Prime</p>
             <h1 className="text-3xl font-serif font-bold">We hit a snag.</h1>
             <p className="text-sm text-white/70">
               Something went wrong while rendering this page. Try reloading or come

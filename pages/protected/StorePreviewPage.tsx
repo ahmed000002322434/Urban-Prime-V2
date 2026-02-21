@@ -1,219 +1,268 @@
-
-
-
-
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { storefrontService } from '../../services/storefrontService';
-import { userService } from '../../services/itemService';
-import { useAuth } from '../../hooks/useAuth';
-import type { Store, AIStorePage } from '../../types';
-import Spinner from '../../components/Spinner';
-import StoreAIChat from '../../components/StoreAIChat';
-import StoreHeader from '../../components/storefront/StoreHeader';
-// FIX: Changed import to a named import.
-import { StorefrontRenderer } from '../../components/storefront/StorefrontRenderer';
-import BackButton from '../../components/BackButton';
+import { motion } from 'framer-motion';
 
-const AccordionItem: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className="border-b border-border">
-            <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center p-4">
-                <span className="font-bold text-text-primary">{title}</span>
-                <svg className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-            </button>
-            {isOpen && <div className="p-4 pt-0 space-y-4">{children}</div>}
-        </div>
-    );
-};
-
-const EditorSidebar: React.FC<{ storefront: Store; onUpdate: (path: string, value: any) => void; onHover: (key: string | null) => void; }> = ({ storefront, onUpdate, onHover }) => {
-    const { brandingKit } = storefront;
-    const fonts = ['Inter', 'Poppins', 'Playfair Display', 'Roboto', 'Lato', 'Montserrat', 'Oswald', 'Raleway'];
-    const fontSizes = { sm: 'text-sm', md: 'text-base', lg: 'text-lg' };
-    const cornerRadii = { none: 'rounded-none', sm: 'rounded-sm', md: 'rounded-md', lg: 'rounded-lg', full: 'rounded-full' };
-    
-    return (
-        <aside className="w-80 bg-surface text-text-primary flex-shrink-0 flex flex-col border-r border-border h-screen">
-            <header className="p-4 border-b border-border">
-                <h2 className="text-xl font-bold">Store Editor</h2>
-            </header>
-            <div className="flex-1 overflow-y-auto">
-                <AccordionItem title="Branding" defaultOpen>
-                    <div onMouseEnter={() => onHover('brandingKit.palette.primary')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Primary Color</label>
-                        <input type="color" value={brandingKit.palette.primary} onChange={e => onUpdate('brandingKit.palette.primary', e.target.value)} className="w-full h-8 mt-1 border border-border" />
-                    </div>
-                     <div onMouseEnter={() => onHover('brandingKit.palette.secondary')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Background Color</label>
-                        <input type="color" value={brandingKit.palette.secondary} onChange={e => onUpdate('brandingKit.palette.secondary', e.target.value)} className="w-full h-8 mt-1 border border-border" />
-                    </div>
-                     <div onMouseEnter={() => onHover('brandingKit.palette.accent')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Accent Color</label>
-                        <input type="color" value={brandingKit.palette.accent} onChange={e => onUpdate('brandingKit.palette.accent', e.target.value)} className="w-full h-8 mt-1 border border-border" />
-                    </div>
-                </AccordionItem>
-                <AccordionItem title="Typography">
-                     <div onMouseEnter={() => onHover('brandingKit.fontPairing.heading')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Heading Font</label>
-                        <select value={brandingKit.fontPairing.heading} onChange={e => onUpdate('brandingKit.fontPairing.heading', e.target.value)} className="w-full p-2 mt-1 border rounded-md text-sm bg-surface-soft border-border">
-                            {fonts.map(f => <option key={f}>{f}</option>)}
-                        </select>
-                    </div>
-                     <div onMouseEnter={() => onHover('brandingKit.fontPairing.body')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Body Font</label>
-                        <select value={brandingKit.fontPairing.body} onChange={e => onUpdate('brandingKit.fontPairing.body', e.target.value)} className="w-full p-2 mt-1 border rounded-md text-sm bg-surface-soft border-border">
-                            {fonts.map(f => <option key={f}>{f}</option>)}
-                        </select>
-                    </div>
-                    <div onMouseEnter={() => onHover('brandingKit.fontSize')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Font Size</label>
-                        <div className="flex bg-surface-soft rounded-md p-1 mt-1 border border-border">
-                           {Object.keys(fontSizes).map(size => (
-                                <button key={size} onClick={() => onUpdate('brandingKit.fontSize', size)} className={`flex-1 text-xs py-1 rounded ${brandingKit.fontSize === size ? 'bg-background shadow-sm' : ''}`}>{size.toUpperCase()}</button>
-                           ))}
-                        </div>
-                    </div>
-                </AccordionItem>
-                 <AccordionItem title="Layout">
-                     <div onMouseEnter={() => onHover('brandingKit.cornerRadius')} onMouseLeave={() => onHover(null)}>
-                        <label className="text-sm font-semibold">Corner Style</label>
-                        <div className="flex bg-surface-soft rounded-md p-1 mt-1 border border-border">
-                           {Object.keys(cornerRadii).map(size => (
-                                <button key={size} onClick={() => onUpdate('brandingKit.cornerRadius', size)} className={`flex-1 text-xs py-1 rounded ${brandingKit.cornerRadius === size ? 'bg-background shadow-sm' : ''}`}>{size.toUpperCase()}</button>
-                           ))}
-                        </div>
-                    </div>
-                </AccordionItem>
-            </div>
-        </aside>
-    );
-};
-
-const StoreEditorPage: React.FC = () => {
-  const { user } = useAuth();
+const StorePreviewPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const generatedStorefront = location.state?.storefront as Store | undefined;
+  const storeData = location.state?.storeData || {};
+  const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
 
-  const [storefront, setStorefront] = useState<Store | null>(generatedStorefront || null);
-  const [activePage, setActivePage] = useState<AIStorePage | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [hoveredAnnotation, setHoveredAnnotation] = useState<string | null>(null);
-  
-  useEffect(() => {
-    if (!storefront) { navigate('/create-store'); return; }
-    if (storefront.pages && storefront.pages.length > 0) {
-      setActivePage(storefront.pages.find(p => p.slug === 'home') || storefront.pages[0]);
-    }
-  }, [storefront, navigate]);
+  const previewContent = (
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <motion.section
+        className="relative rounded-2xl overflow-hidden min-h-[400px] flex items-end p-8"
+        style={{
+          background: `linear-gradient(135deg, ${storeData.primaryColor}20 0%, ${storeData.primaryColor}05 100%)`
+        }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="z-10">
+          <div className="text-8xl mb-4">{storeData.logoEmoji}</div>
+          <h1 className="text-5xl font-black mb-3">{storeData.storeName}</h1>
+          <p className="text-2xl text-gray-600 mb-6">{storeData.tagline}</p>
+          <p className="text-lg text-gray-600 max-w-2xl mb-6">{storeData.description}</p>
+          <button
+            style={{ backgroundColor: storeData.primaryColor }}
+            className="px-8 py-4 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+          >
+            Browse Rentals
+          </button>
+        </div>
+      </motion.section>
 
-  const handleUpdate = (path: string, value: any) => {
-    setStorefront(prev => {
-        if (!prev) return null;
-        const keys = path.split('.');
-        const newStore = JSON.parse(JSON.stringify(prev));
-        let current = newStore;
-        for (let i = 0; i < keys.length - 1; i++) {
-            current = current[keys[i]];
-        }
-        current[keys[keys.length - 1]] = value;
-        return newStore;
-    });
-  };
+      {/* Featured Items */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <h2 className="text-3xl font-bold mb-6">Featured Items</h2>
+        <div className="grid md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-xl overflow-hidden bg-gray-200 h-64 flex items-center justify-center text-gray-400">
+              <div className="text-5xl">📸</div>
+            </div>
+          ))}
+        </div>
+      </motion.section>
 
-  const handleSave = async () => {
-    if (!user || !storefront) return;
-    setIsSaving(true);
-    try {
-        const savedStore = await storefrontService.saveStorefront(user.id, storefront);
-        // Fixed: Removed update to storeId as it does not exist on User type
-        navigate('/profile/store');
-    } catch (err) {
-        console.error("Failed to save storefront", err);
-        alert("Could not save your store. Please try again.");
-    } finally {
-        setIsSaving(false);
-    }
-  };
+      {/* Categories */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <h2 className="text-3xl font-bold mb-6">Shop by Category</h2>
+        <div className="grid md:grid-cols-3 gap-4">
+          {['Clothing', 'Accessories', 'Electronics'].map((cat) => (
+            <div
+              key={cat}
+              className="p-8 rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 border-2 border-gray-200 hover:border-gray-400 cursor-pointer transition-all text-center"
+            >
+              <div className="text-4xl mb-3">📦</div>
+              <p className="font-bold text-gray-900">{cat}</p>
+            </div>
+          ))}
+        </div>
+      </motion.section>
 
-  const handleAIUpdate = (newStorefront: Store) => {
-      setStorefront(newStorefront);
-      const activePageStillExists = newStorefront.pages.find(p => p.slug === activePage?.slug);
-      setActivePage(activePageStillExists || newStorefront.pages.find(p => p.slug === 'home') || newStorefront.pages[0]);
-  }
-  
-  if (!storefront) {
-    return <div className="h-screen w-full flex items-center justify-center"><Spinner size="lg" /></div>;
-  }
+      {/* Story Section */}
+      <motion.section
+        className="grid md:grid-cols-2 gap-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div className="p-8 bg-gray-50 rounded-xl">
+          <h3 className="text-2xl font-bold mb-4">Our Story</h3>
+          <p className="text-gray-700 leading-relaxed">{storeData.story}</p>
+        </div>
+        <div className="p-8 bg-gray-50 rounded-xl">
+          <h3 className="text-2xl font-bold mb-4">Our Mission</h3>
+          <p className="text-gray-700 leading-relaxed">{storeData.mission}</p>
+        </div>
+      </motion.section>
 
-  const { brandingKit } = storefront;
-  const customStyles = {
-    '--theme-primary': brandingKit?.palette?.primary || '#3a77ff',
-    '--theme-secondary': brandingKit?.palette?.secondary || '#f8f9fa',
-    '--theme-accent': brandingKit?.palette?.accent || '#ffce32',
-  } as React.CSSProperties;
+      {/* Testimonials */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <h2 className="text-3xl font-bold mb-6">Customer Reviews</h2>
+        <div className="grid md:grid-cols-3 gap-4">
+          {[
+            { name: 'Jessica M.', rating: 5, review: 'Excellent quality and fast delivery!' },
+            { name: 'Michael T.', rating: 5, review: 'Best rental service in town!' },
+            { name: 'Amanda L.', rating: 5, review: 'Highly recommended!' },
+          ].map((testimonial, i) => (
+            <div key={i} className="p-6 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="flex gap-1 mb-3">
+                {[...Array(testimonial.rating)].map((_, j) => (
+                  <span key={j} className="text-yellow-400">⭐</span>
+                ))}
+              </div>
+              <p className="text-gray-700 mb-3 italic">"{testimonial.review}"</p>
+              <p className="font-semibold text-gray-900">— {testimonial.name}</p>
+            </div>
+          ))}
+        </div>
+      </motion.section>
 
-  const handleNavClick = (slug: string) => {
-    const newPage = storefront?.pages.find(p => p.slug === slug);
-    if (newPage) setActivePage(newPage);
-  }
+      {/* Footer */}
+      <motion.section
+        className="border-t pt-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+      >
+        <div className="grid md:grid-cols-4 gap-8">
+          <div>
+            <h4 className="font-bold text-gray-900 mb-3">About</h4>
+            <ul className="space-y-2">
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">About Us</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">How it works</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">FAQ</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-900 mb-3">Policies</h4>
+            <ul className="space-y-2">
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Rental Policy</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Return Policy</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Privacy</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-900 mb-3">Contact</h4>
+            <ul className="space-y-2">
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Email</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Phone</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Address</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-900 mb-3">Follow</h4>
+            <ul className="space-y-2">
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Instagram</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">Facebook</a></li>
+              <li><a href="#" className="text-gray-600 hover:text-gray-900">TikTok</a></li>
+            </ul>
+          </div>
+        </div>
+      </motion.section>
+    </div>
+  );
 
   return (
-    <div className="flex h-screen bg-background text-text-primary overflow-hidden">
-        <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${brandingKit?.fontPairing?.heading?.replace(' ', '+') || 'Lexend'}:wght@700;900&family=${brandingKit?.fontPairing?.body?.replace(' ', '+') || 'Inter'}:wght@400;600&display=swap`}/>
-        
-        <EditorSidebar storefront={storefront} onUpdate={handleUpdate} onHover={setHoveredAnnotation} />
-
-        <div className="flex-1 flex flex-col">
-            <header className="p-3 bg-surface border-b border-border flex justify-between items-center flex-shrink-0">
-                <div className="flex items-center gap-4">
-                    <BackButton to="/create-store" />
-                    <p className="text-sm font-semibold hidden md:block">Live Editor</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => navigate(`/store/${storefront.slug}`)} className="px-4 py-2 text-sm bg-surface-soft font-semibold rounded-md hover:bg-border">
-                        Exit
-                    </button>
-                    <button onClick={handleSave} disabled={isSaving} className="px-5 py-2 bg-primary text-primary-text font-semibold rounded-md text-sm disabled:bg-gray-400 flex items-center justify-center">
-                        {isSaving ? <Spinner size="sm" /> : 'Save & Publish'}
-                    </button>
-                </div>
-            </header>
-            <main className="flex-1 overflow-y-auto" style={customStyles}>
-                <div style={{fontFamily: `'${brandingKit?.fontPairing?.body || 'Inter'}', sans-serif`}}>
-                    {storefront.banner && (
-                        <div className={`bg-[var(--theme-accent)] text-center p-2 font-semibold text-sm ${hoveredAnnotation === 'banner.text' ? 'is-annotated' : ''}`} >
-                            {storefront.banner.text}
-                        </div>
-                    )}
-
-                    <StoreHeader 
-                        brandingKit={brandingKit}
-                        pages={storefront.pages}
-                        activePageSlug={activePage?.slug || ''}
-                        onNavClick={handleNavClick}
-                        hoveredAnnotation={hoveredAnnotation}
-                        baseAnnotationPath="store"
-                    />
-                    
-                    {activePage && user && (
-                        <StorefrontRenderer 
-                            page={activePage}
-                            brandingKit={storefront.brandingKit}
-                            ownerId={user.id}
-                            hoveredAnnotation={hoveredAnnotation}
-                            baseAnnotationPath="store"
-                        />
-                    )}
-                </div>
-            </main>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      {/* Header */}
+      <motion.div
+        className="bg-white border-b border-gray-200 sticky top-0 z-50"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
+        <div className="container mx-auto max-w-7xl px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-black text-gray-900">
+                {storeData.logoEmoji} Store Preview
+              </h1>
+              <p className="text-gray-600">See how your store will look to customers</p>
+            </div>
+            <div className="flex gap-3 items-center">
+              <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as 'desktop' | 'mobile')}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              >
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
+              </select>
+              <button
+                onClick={() => navigate('/store/customize')}
+                className="px-6 py-2 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200"
+              >
+                Edit Layout
+              </button>
+            </div>
+          </div>
         </div>
-        <StoreAIChat currentStorefront={storefront} onUpdate={handleAIUpdate} />
+      </motion.div>
+
+      <div className={`container transition-all duration-300 ${viewMode === 'desktop' ? 'max-w-7xl' : 'max-w-md'} mx-auto px-4 py-8`}>
+        <motion.div
+          className={`bg-white rounded-2xl shadow-2xl overflow-hidden ${
+            viewMode === 'mobile' ? 'border-8 border-black rounded-3xl' : ''
+          }`}
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+        >
+          <div className={`bg-gradient-to-br from-white to-gray-50 ${viewMode === 'mobile' ? 'max-w-md mx-auto' : ''}`}>
+            {/* Navbar */}
+            <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{storeData.logoEmoji}</span>
+                  <span className="font-bold text-gray-900 hidden sm:inline">{storeData.storeName}</span>
+                </div>
+                <div className="flex gap-4 text-sm">
+                  <a href="#" className="text-gray-600 hover:text-gray-900">Browse</a>
+                  <a href="#" className="text-gray-600 hover:text-gray-900">About</a>
+                  <a href="#" className="text-gray-600 hover:text-gray-900">Contact</a>
+                </div>
+              </div>
+            </nav>
+
+            {/* Content */}
+            <div className="p-6 sm:p-12">
+              {previewContent}
+            </div>
+          </div>
+        </motion.div>
+
+        {viewMode === 'mobile' && (
+          <div className="text-center mt-4 text-gray-600 text-sm">
+            Mobile Preview
+          </div>
+        )}
+      </div>
+
+      {/* Footer Actions */}
+      <motion.div
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
+        <div className="container mx-auto max-w-7xl px-4 py-6 flex gap-4 justify-between">
+          <button
+            onClick={() => navigate('/store/customize')}
+            className="px-6 py-3 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200"
+          >
+            Back to Customize
+          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/store/setup')}
+              className="px-6 py-3 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200"
+            >
+              Make Changes
+            </button>
+            <button
+              onClick={() => navigate('/store/manager')}
+              className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-emerald-700"
+            >
+              Publish Store Now →
+            </button>
+          </div>
+        </div>
+      </motion.div>
+      <div className="h-24" />
     </div>
   );
 };
 
-export default StoreEditorPage;
+export default StorePreviewPage;

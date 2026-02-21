@@ -34,7 +34,7 @@ export const adminService = {
     const newQueryData = {
       userId: user?.id || 'guest',
       userName: sanitizeHTML(user?.name || name),
-      userAvatar: user?.avatar || 'https://i.ibb.co/688ds5H/blank-profile-picture-973460-960-720.png',
+      userAvatar: user?.avatar || '/icons/urbanprime.svg',
       userEmail: sanitizeHTML(user?.email || email),
       subject: sanitizeHTML(subject),
       message: sanitizeHTML(message),
@@ -288,3 +288,4 @@ export const adminService = {
     await supabaseMirror.remove('items', itemId);
   }
 };
+

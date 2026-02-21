@@ -1,9 +1,23 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../hooks/useTranslation';
 import { listerService } from '../../services/itemService';
 import type { DashboardAnalytics, Booking, DiscountCode, ItemBundle } from '../../types';
 import Spinner from '../../components/Spinner';
+
+const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: { staggerChildren: 0.06 },
+    },
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 8 },
+    show: { opacity: 1, y: 0 },
+};
 
 const BarChart: React.FC<{ data: { month: string; earnings: number }[] }> = ({ data }) => {
     const maxValue = Math.max(...data.map(d => d.earnings), 1); // Avoid division by zero
@@ -57,6 +71,7 @@ const DashboardPage: React.FC = () => {
     const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
     const [bundles, setBundles] = useState<ItemBundle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const sidebarY = 0;
 
     const fetchDashboardData = () => {
         if (!user) return;
@@ -89,71 +104,283 @@ const DashboardPage: React.FC = () => {
     if (!analytics) return <div className="text-center py-20">Could not load dashboard data.</div>;
 
     return (
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in-up">
-            <h1 className="text-3xl font-bold mb-6">Lister Dashboard</h1>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-6">Lister Dashboard</h1>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6">
                 {/* Main Content */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Analytics */}
-                    <div className="bg-white p-6 rounded-lg shadow-soft">
+                    <motion.div 
+                        variants={itemVariants}
+                        className="bg-white dark:bg-surface/80 backdrop-blur-xl p-4 sm:p-6 rounded-lg shadow-soft border border-border/50 hover:shadow-lg transition-shadow"
+                    >
                         <h2 className="text-xl font-bold mb-4">Performance Overview</h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center mb-6">
-                            <div className="p-4 bg-gray-50 rounded-lg"><p className="text-2xl font-bold text-primary">{currency.symbol}{analytics.totalEarnings.toLocaleString()}</p><p className="text-sm text-slate-500">Total Earnings</p></div>
-                            <div className="p-4 bg-gray-50 rounded-lg"><p className="text-2xl font-bold text-primary">{analytics.rentalCount}</p><p className="text-sm text-slate-500">Completed Rentals/Sales</p></div>
-                            <div className="p-4 bg-gray-50 rounded-lg"><p className="text-lg font-bold text-primary truncate">{analytics.topItem}</p><p className="text-sm text-slate-500">Top Performing Item</p></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-center mb-6">
+                            <motion.div 
+                                whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.1)" }}
+                                className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg border border-blue-200/50 dark:border-blue-/20"
+                            >
+                                <motion.p 
+                                    className="text-2xl font-bold text-primary"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.3 }}
+                                >
+                                    {currency.symbol}{analytics.totalEarnings.toLocaleString()}
+                                </motion.p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Total Earnings</p>
+                            </motion.div>
+
+                            <motion.div 
+                                whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.1)" }}
+                                className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg border border-green-200/50 dark:border-green-/20"
+                            >
+                                <motion.p 
+                                    className="text-2xl font-bold text-green-600 dark:text-green-400"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.4 }}
+                                >
+                                    {analytics.rentalCount}
+                                </motion.p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Completed Rentals/Sales</p>
+                            </motion.div>
+
+                            <motion.div 
+                                whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.1)" }}
+                                className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg border border-purple-200/50 dark:border-purple-/20"
+                            >
+                                <motion.p 
+                                    className="text-lg font-bold text-purple-600 dark:text-purple-400 truncate"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.5 }}
+                                >
+                                    {analytics.topItem}
+                                </motion.p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Top Performing Item</p>
+                            </motion.div>
                         </div>
                         <h3 className="text-lg font-semibold mb-2">Monthly Earnings</h3>
-                        <BarChart data={analytics.earningsByMonth} />
-                    </div>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.6 }}
+                        >
+                            <BarChart data={analytics.earningsByMonth} />
+                        </motion.div>
+                    </motion.div>
+
                     {/* Booking Management */}
-                    <div className="bg-white p-6 rounded-lg shadow-soft">
+                    <motion.div 
+                        variants={itemVariants}
+                        className="bg-white dark:bg-surface/80 backdrop-blur-xl p-6 rounded-lg shadow-soft border border-border/50 hover:shadow-lg transition-shadow"
+                    >
                         <h2 className="text-xl font-bold mb-4">Manage Bookings</h2>
                         <div className="space-y-4">
-                            {bookings.length > 0 ? bookings.map(booking => (
-                                <div key={booking.id} className="p-3 bg-slate-50 rounded-md flex flex-col sm:flex-row justify-between items-center gap-4">
-                                    <div>
-                                        <p className="font-bold">{booking.itemTitle}</p>
-                                        <p className="text-sm text-slate-500">Renter: {booking.renterName}</p>
-                                        <p className="text-sm text-slate-500">Dates: {new Date(booking.startDate).toLocaleDateString()} to {new Date(booking.endDate).toLocaleDateString()}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[booking.status]}`}>{booking.status.toUpperCase()}</span>
-                                        {booking.status === 'pending' && (
-                                            <>
-                                                <button onClick={() => handleUpdateBooking(booking.id, 'confirmed')} className="px-3 py-1 text-xs bg-green-500 text-white rounded-md hover:bg-green-600">Approve</button>
-                                                <button onClick={() => handleUpdateBooking(booking.id, 'cancelled')} className="px-3 py-1 text-xs bg-red-500 text-white rounded-md hover:bg-red-600">Deny</button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            )) : <p className="text-center text-slate-500 py-4">No bookings found.</p>}
+                            {bookings.length > 0 ? (
+                                <motion.div 
+                                    variants={containerVariants}
+                                    initial="hidden"
+                                    animate="show"
+                                    className="space-y-4"
+                                >
+                                    {bookings.map((booking, index) => (
+                                        <motion.div
+                                            key={booking.id}
+                                            variants={itemVariants}
+                                            whileHover={{ x: 5, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
+                                            className="p-3 sm:p-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900/30 dark:to-slate-800/30 rounded-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border border-slate-200/50 dark:border-slate-700/50 cursor-pointer transition-all"
+                                        >
+                                            <motion.div
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                transition={{ delay: 0.7 + index * 0.1 }}
+                                            >
+                                                <p className="font-bold text-text-primary">{booking.itemTitle}</p>
+                                                <p className="text-sm text-slate-500 dark:text-slate-400">Renter: {booking.renterName}</p>
+                                                <p className="text-sm text-slate-500 dark:text-slate-400">Dates: {new Date(booking.startDate).toLocaleDateString()} to {new Date(booking.endDate).toLocaleDateString()}</p>
+                                            </motion.div>
+                                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                                <motion.span 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[booking.status]} transition-all`}
+                                                >
+                                                    {booking.status.toUpperCase()}
+                                                </motion.span>
+                                                {booking.status === 'pending' && (
+                                                    <motion.div className="flex items-center gap-2">
+                                                        <motion.button 
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            onClick={() => handleUpdateBooking(booking.id, 'confirmed')} 
+                                                            className="px-3 py-1 text-xs bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                                                        >
+                                                            Approve
+                                                        </motion.button>
+                                                        <motion.button 
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            onClick={() => handleUpdateBooking(booking.id, 'cancelled')} 
+                                                            className="px-3 py-1 text-xs bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                                                        >
+                                                            Deny
+                                                        </motion.button>
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </motion.div>
+                            ) : (
+                                <motion.p 
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="text-center text-slate-500 dark:text-slate-400 py-4"
+                                >
+                                    No bookings found.
+                                </motion.p>
+                            )}
                         </div>
-                    </div>
+                    </motion.div>
                 </div>
 
                 {/* Sidebar */}
-                <div className="space-y-6">
-                     <div className="bg-white p-6 rounded-lg shadow-soft">
+                <motion.div 
+                    style={{ y: sidebarY }}
+                    className="space-y-6 sticky top-6 max-h-[calc(100vh-32px)] overflow-y-auto"
+                >
+                    {/* Renter Insights */}
+                    <motion.div 
+                        variants={itemVariants}
+                        className="bg-white dark:bg-surface/80 backdrop-blur-xl p-6 rounded-lg shadow-soft border border-border/50 hover:shadow-lg transition-shadow"
+                    >
                         <h2 className="text-xl font-bold mb-4">Renter Insights</h2>
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-baseline"><span className="text-sm text-slate-500">Repeat Renters</span><span className="font-bold text-lg">{analytics.repeatRenters}%</span></div>
-                            <div className="flex justify-between items-baseline"><span className="text-sm text-slate-500">Avg. Rental Duration</span><span className="font-bold text-lg">{analytics.avgRentalDuration} days</span></div>
-                        </div>
-                    </div>
+                        <motion.div 
+                            variants={containerVariants}
+                            initial="hidden"
+                            animate="show"
+                            className="space-y-4"
+                        >
+                            <motion.div 
+                                variants={itemVariants}
+                                className="flex justify-between items-baseline p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200/50 dark:border-blue-/20"
+                            >
+                                <span className="text-sm text-slate-500 dark:text-slate-400">Repeat Renters</span>
+                                <motion.span 
+                                    className="font-bold text-lg text-blue-600 dark:text-blue-400"
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: "spring", stiffness: 200 }}
+                                >
+                                    {analytics.repeatRenters}%
+                                </motion.span>
+                            </motion.div>
+
+                            <motion.div 
+                                variants={itemVariants}
+                                className="flex justify-between items-baseline p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200/50 dark:border-green-/20"
+                            >
+                                <span className="text-sm text-slate-500 dark:text-slate-400">Avg. Rental Duration</span>
+                                <motion.span 
+                                    className="font-bold text-lg text-green-600 dark:text-green-400"
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+                                >
+                                    {analytics.avgRentalDuration} days
+                                </motion.span>
+                            </motion.div>
+                        </motion.div>
+                    </motion.div>
+
                     {/* Discount Codes */}
-                    <div className="bg-white p-6 rounded-lg shadow-soft">
+                    <motion.div 
+                        variants={itemVariants}
+                        className="bg-white dark:bg-surface/80 backdrop-blur-xl p-6 rounded-lg shadow-soft border border-border/50 hover:shadow-lg transition-shadow"
+                    >
                         <h2 className="text-xl font-bold mb-4">Discount Codes</h2>
-                        {discounts.map(d => <div key={d.id} className="text-sm flex justify-between items-center"><span className="font-mono bg-slate-200 px-2 py-1 rounded">{d.code}</span><span>{d.percentage}% Off</span><span className={`text-xs font-bold ${d.isActive ? 'text-green-500' : 'text-slate-400'}`}>{d.isActive ? 'ACTIVE' : 'INACTIVE'}</span></div>)}
-                        <button className="mt-4 w-full text-sm py-2 bg-primary/20 text-primary rounded-md hover:bg-primary/30">Create New Code</button>
-                    </div>
+                        <motion.div 
+                            variants={containerVariants}
+                            initial="hidden"
+                            animate="show"
+                            className="space-y-3"
+                        >
+                            {discounts.map((d, index) => (
+                                <motion.div 
+                                    key={d.id} 
+                                    variants={itemVariants}
+                                    whileHover={{ x: 5 }}
+                                    className="text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-slate-50 dark:bg-slate-900/30 rounded-md border border-slate-200/50 dark:border-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-900/50 transition-colors"
+                                >
+                                    <motion.span 
+                                        className="font-mono bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded text-slate-900 dark:text-slate-100"
+                                        whileHover={{ scale: 1.05 }}
+                                    >
+                                        {d.code}
+                                    </motion.span>
+                                    <span className="text-slate-700 dark:text-slate-300">{d.percentage}% Off</span>
+                                    <motion.span 
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{ delay: 1 + index * 0.1 }}
+                                        className={`text-xs font-bold ${d.isActive ? 'text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded' : 'text-slate-400'}`}
+                                    >
+                                        {d.isActive ? '✓ ACTIVE' : '○ INACTIVE'}
+                                    </motion.span>
+                                </motion.div>
+                            ))}
+                        </motion.div>
+                        <motion.button 
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="mt-4 w-full text-sm py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md hover:from-blue-600 hover:to-blue-700 transition-all font-semibold"
+                        >
+                            Create New Code
+                        </motion.button>
+                    </motion.div>
+
                     {/* Item Bundles */}
-                    <div className="bg-white p-6 rounded-lg shadow-soft">
+                    <motion.div 
+                        variants={itemVariants}
+                        className="bg-white dark:bg-surface/80 backdrop-blur-xl p-6 rounded-lg shadow-soft border border-border/50 hover:shadow-lg transition-shadow"
+                    >
                         <h2 className="text-xl font-bold mb-4">Item Bundles</h2>
-                        {bundles.map(b => <div key={b.id} className="p-2 border-b"><p className="font-semibold text-sm">{b.name}</p><p className="text-xs text-slate-500">{b.itemTitles.join(', ')}</p></div>)}
-                        <button className="mt-4 w-full text-sm py-2 bg-primary/20 text-primary rounded-md hover:bg-primary/30">Create New Bundle</button>
-                    </div>
-                </div>
+                        <motion.div 
+                            variants={containerVariants}
+                            initial="hidden"
+                            animate="show"
+                            className="space-y-3"
+                        >
+                            {bundles.map((b, index) => (
+                                <motion.div 
+                                    key={b.id} 
+                                    variants={itemVariants}
+                                    whileHover={{ x: 5, backgroundColor: "rgba(0,0,0,0.02)" }}
+                                    className="p-3 border-l-4 border-purple-500 bg-slate-50 dark:bg-slate-900/30 rounded-r-md hover:bg-slate-100 dark:hover:bg-slate-900/50 transition-colors"
+                                >
+                                    <p className="font-semibold text-sm text-text-primary">{b.name}</p>
+                                    <motion.p 
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: 1.2 + index * 0.1 }}
+                                        className="text-xs text-slate-500 dark:text-slate-400 mt-1"
+                                    >
+                                        {b.itemTitles.join(', ')}
+                                    </motion.p>
+                                </motion.div>
+                            ))}
+                        </motion.div>
+                        <motion.button 
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="mt-4 w-full text-sm py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-md hover:from-purple-600 hover:to-purple-700 transition-all font-semibold"
+                        >
+                            Create New Bundle
+                        </motion.button>
+                    </motion.div>
+                </motion.div>
             </div>
         </div>
     );

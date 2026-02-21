@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
 import { itemService, userService } from '../../services/itemService';
+import analyticsService from '../../services/analyticsService';
 import type { PaymentMethod, Address } from '../../types';
 import Spinner from '../../components/Spinner';
 import BackButton from '../../components/BackButton';
@@ -19,7 +20,7 @@ const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height
 
 const CheckoutPage: React.FC = () => {
     const { cartItems, cartGroups, clearCart } = useCart();
-    const { user } = useAuth();
+    const { user, activePersona } = useAuth();
     const navigate = useNavigate();
     const { showNotification } = useNotification();
     
@@ -137,10 +138,29 @@ const CheckoutPage: React.FC = () => {
                 user.id,
                 cartItems,
                 selectedAddress,
-                finalPaymentMethodId
+                finalPaymentMethodId,
+                {
+                    actorPersonaId: activePersona?.id || null,
+                    actorName: user.name || selectedAddress?.name || 'Customer'
+                }
             );
 
-            // 3. Clear Cart & Navigate
+            // 3. Track checkout analytics for each item
+            for (const item of cartItems) {
+                if (item.ownerPersonaId) {
+                    const itemTotal = item.salePrice * (item.quantity || 1);
+                    analyticsService.recordCheckout(
+                        item.id,
+                        user.id,
+                        user.name || selectedAddress?.name || 'Customer',
+                        orderId,
+                        itemTotal,
+                        'completed'
+                    ).catch(error => console.warn('Analytics checkout tracking failed:', error));
+                }
+            }
+
+            // 4. Clear Cart & Navigate
             clearCart();
             navigate('/order-confirmation', { state: { orderId } });
 
@@ -156,12 +176,12 @@ const CheckoutPage: React.FC = () => {
         <div className="bg-background min-h-screen pb-20">
             {isAddressModalOpen && <AddressesModal onClose={() => setIsAddressModalOpen(false)} />}
             
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
                 <div className="mb-6 flex items-center gap-4">
                     <BackButton to="/cart" alwaysShowText />
-                    <h1 className="text-3xl font-bold font-display text-text-primary">Checkout</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold font-display text-text-primary">Checkout</h1>
                 </div>
-                <div className="mb-8 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] sm:text-xs">
                     {[
                         { label: 'Address', complete: isAddressReady },
                         { label: 'Delivery', complete: cartGroups.length > 0 },
@@ -178,10 +198,10 @@ const CheckoutPage: React.FC = () => {
                     ))}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 items-start">
                     {/* LEFT COLUMN: Checkout Form */}
                     <div className="lg:col-span-2 space-y-8">
-                        <div className="bg-surface p-6 rounded-xl shadow-soft border border-border flex items-center gap-4">
+                        <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-soft border border-border flex items-center gap-4">
                             <div className="p-3 rounded-full bg-primary/10 text-primary">
                                 <CheckIcon />
                             </div>
@@ -192,12 +212,12 @@ const CheckoutPage: React.FC = () => {
                         </div>
                         
                         {/* 1. Shipping Address */}
-                        <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                        <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-soft border border-border">
                             <div className="flex justify-between items-center mb-4">
                                 <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
                                     <MapPinIcon /> Shipping Address
                                 </h2>
-                                <button onClick={() => setIsAddressModalOpen(true)} className="text-primary text-sm font-bold hover:underline">Change</button>
+                                <button onClick={() => setIsAddressModalOpen(true)} className="text-primary text-xs sm:text-sm font-bold hover:underline">Change</button>
                             </div>
                             
                             {selectedAddress ? (

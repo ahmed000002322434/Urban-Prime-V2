@@ -15,6 +15,7 @@ import { useCart } from '../../hooks/useCart';
 import { useNotification } from '../../context/NotificationContext';
 import { useTheme } from '../../hooks/useTheme';
 import { itemService } from '../../services/itemService';
+import { isBackendConfigured } from '../../services/backendClient';
 import Spinner from '../Spinner';
 import CameraCapture from './CameraCapture';
 
@@ -37,9 +38,17 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
   const [activeActionLabel, setActiveActionLabel] = useState('');
   
   useEffect(() => {
+    if (isBackendConfigured()) {
+      setLiveLogs([]);
+      return;
+    }
+
     const q = query(collection(db, 'live_logs'), orderBy('timestamp', 'desc'), limit(12));
     return onSnapshot(q, (snapshot) => {
       setLiveLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any);
+    }, (error) => {
+      console.warn('Omni dashboard live log listener failed:', error);
+      setLiveLogs([]);
     });
   }, []);
 

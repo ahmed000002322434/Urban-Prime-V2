@@ -1,114 +1,419 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
 import { useAuth } from '../../hooks/useAuth';
-import { listerService } from '../../services/itemService';
-import type { SellerPerformanceStats } from '../../types';
-import Spinner from '../../components/Spinner';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
-import { useNotification } from '../../context/NotificationContext';
+import dashboardService from '../../services/dashboardService';
+import analyticsService from '../../services/analyticsService';
+import type { SellerDashboardSnapshot } from '../../types';
+import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
+
+const COLORS = ['#0fb9b1', '#3b82f6', '#f39c12', '#ec4899', '#8b5cf6', '#22c55e'];
+
+const defaultSnapshot: SellerDashboardSnapshot = {
+  generatedAt: new Date().toISOString(),
+  summary: {
+    totalRevenue: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
+    totalSalesUnits: 0,
+    totalViews: 0,
+    conversionRate: 0,
+    lowStockCount: 0,
+    unreadMessages: 0
+  },
+  earningsByMonth: [],
+  categorySales: [],
+  recentOrders: [],
+  lowStockItems: [],
+  insights: [],
+  setup: {
+    hasStore: false,
+    hasProducts: false,
+    hasContent: false,
+    hasApps: false
+  }
+};
+
+const MetricCard: React.FC<{ label: string; value: string | number; helper: string; onClick?: () => void }> = ({ label, value, helper, onClick }) => (
+  <div 
+    onClick={onClick}
+    className="rounded-xl border border-[#d8d8d8] bg-white p-4 cursor-pointer hover:shadow-lg transition-all hover:border-[#0fb9b1]"
+  >
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">{label}</p>
+    <p className="mt-2 text-[22px] font-semibold leading-none text-[#1f1f1f] sm:text-[28px]">{value}</p>
+    <p className="mt-1 text-xs text-[#727272]">{helper}</p>
+  </div>
+);
+
+const EmptyPanel: React.FC<{ title: string; body: string; actionLabel: string; actionTo: string }> = ({
+  title,
+  body,
+  actionLabel,
+  actionTo
+}) => (
+  <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-[#d8d8d8] bg-[#fafafa] p-6 text-center">
+    <p className="text-base font-semibold text-[#1f1f1f]">{title}</p>
+    <p className="mt-2 text-sm text-[#666]">{body}</p>
+    <Link
+      to={actionTo}
+      className="mt-4 inline-flex h-9 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]"
+    >
+      {actionLabel}
+    </Link>
+  </div>
+);
 
 const AdvancedAnalyticsPage: React.FC = () => {
-    const { user } = useAuth();
-    const { showNotification } = useNotification();
-    const [stats, setStats] = useState<SellerPerformanceStats | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+  const { activePersona, hasCapability } = useAuth();
+  const navigate = useNavigate();
+  const [snapshot, setSnapshot] = useState<SellerDashboardSnapshot>(defaultSnapshot);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (user) {
-            listerService.getSellerPerformanceStats(user.id)
-                .then(setStats)
-                .finally(() => setIsLoading(false));
+  const isSellerWorkspace = activePersona?.type === 'seller' || hasCapability('sell');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSnapshot = async () => {
+      if (!isSellerWorkspace || !activePersona?.id) {
+        setSnapshot(defaultSnapshot);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        // Try to get real analytics data first
+        const analyticsData = await analyticsService.getSellerAnalytics(activePersona.id, 30);
+        
+        if (analyticsData && !cancelled) {
+          // Transform analytics data into snapshot format
+          const transformedSnapshot: SellerDashboardSnapshot = {
+            generatedAt: new Date().toISOString(),
+            summary: {
+              totalRevenue: analyticsData.totalRevenue,
+              pendingOrders: analyticsData.pendingOrders,
+              completedOrders: analyticsData.completedOrders,
+              totalSalesUnits: analyticsData.completedCheckouts,
+              totalViews: analyticsData.totalViews,
+              conversionRate: analyticsData.conversionRate,
+              lowStockCount: 0,
+              unreadMessages: 0
+            },
+            earningsByMonth: analyticsData.revenueTrend.map((trend) => ({
+              month: trend.label,
+              earnings: trend.value
+            })),
+            categorySales: [],
+            recentOrders: [],
+            lowStockItems: [],
+            insights: [],
+            setup: {
+              hasStore: true,
+              hasProducts: true,
+              hasContent: true,
+              hasApps: false
+            }
+          };
+          
+          setSnapshot(transformedSnapshot);
+        } else if (!cancelled) {
+          // Fallback to dashboard service if analytics service fails
+          const response = await dashboardService.getSellerDashboardSnapshot(20);
+          setSnapshot(response);
         }
-    }, [user]);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('Analytics loading error:', error);
+          // Fallback to dashboard service
+          try {
+            const response = await dashboardService.getSellerDashboardSnapshot(20);
+            setSnapshot(response);
+          } catch (fallbackError) {
+            setLoadError(fallbackError instanceof Error ? fallbackError.message : 'Unable to load analytics.');
+            setSnapshot(defaultSnapshot);
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
 
-    if (isLoading) return <div className="flex justify-center items-center h-screen"><Spinner size="lg" /></div>;
-    if (!stats) return <div className="text-center py-20">No data available.</div>;
+    loadSnapshot();
 
-    const earningsSeries = Array.isArray(stats.earnings) ? stats.earnings : [];
-    const categorySales = Array.isArray(stats.categorySales) ? stats.categorySales : [];
+    return () => {
+      cancelled = true;
+    };
+  }, [isSellerWorkspace, activePersona?.id]);
 
-    // Dummy data for extended analytics since we only aggregated basic stats in service
-    const viewsData = [
-        { day: 'Mon', views: 120, clicks: 45 },
-        { day: 'Tue', views: 150, clicks: 55 },
-        { day: 'Wed', views: 180, clicks: 70 },
-        { day: 'Thu', views: 140, clicks: 50 },
-        { day: 'Fri', views: 200, clicks: 85 },
-        { day: 'Sat', views: 250, clicks: 110 },
-        { day: 'Sun', views: 220, clicks: 95 },
-    ];
+  const summary = snapshot.summary;
 
+  const ordersByStatus = useMemo(
+    () => [
+      { status: 'Pending', value: summary.pendingOrders },
+      { status: 'Completed', value: summary.completedOrders }
+    ],
+    [summary.completedOrders, summary.pendingOrders]
+  );
+
+  const handleExportCsv = () => {
+    const header = ['order_id', 'status', 'currency', 'total', 'quantity_total', 'created_at'];
+    const rows = snapshot.recentOrders.map((order) => [
+      order.id,
+      order.status,
+      order.currency,
+      String(order.total),
+      String(order.quantityTotal),
+      order.createdAt
+    ]);
+
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `seller-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) {
+    return <DashboardPageLoader title="Loading advanced analytics..." />;
+  }
+
+  if (!isSellerWorkspace) {
     return (
-        <div className="space-y-8 animate-fade-in-up">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h1 className="text-3xl font-bold font-display text-text-primary">Advanced Analytics</h1>
-                <button
-                    onClick={() => showNotification('Export queued. Your report will download shortly.')}
-                    className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg"
-                >
-                    Export CSV
-                </button>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Traffic Chart */}
-                <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-xl shadow-soft border border-border">
-                    <h3 className="text-lg font-bold text-text-primary mb-6">Traffic & Engagement</h3>
-                    <div className="h-[300px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={viewsData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.3} />
-                                <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                                <YAxis axisLine={false} tickLine={false} />
-                                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                                <Legend />
-                                <Bar dataKey="views" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Page Views" />
-                                <Bar dataKey="clicks" fill="#f39c12" radius={[4, 4, 0, 0]} name="Product Clicks" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                {/* Sales Trend Line */}
-                 <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-xl shadow-soft border border-border">
-                    <h3 className="text-lg font-bold text-text-primary mb-6">Revenue Trend (6 Months)</h3>
-                    <div className="h-[300px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={earningsSeries}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.3} />
-                                <XAxis dataKey="date" axisLine={false} tickLine={false} />
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
-                                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(value) => [`$${value}`, 'Revenue']} />
-                                <Line type="monotone" dataKey="amount" stroke="#0fb9b1" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-xl shadow-soft border border-border">
-                <h3 className="text-lg font-bold text-text-primary mb-4">Detailed Performance Stats</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                    <div className="p-4 bg-surface-soft rounded-lg">
-                        <p className="text-sm text-text-secondary">Avg. Order Value</p>
-                        <p className="text-2xl font-bold text-text-primary">$85.50</p>
-                    </div>
-                    <div className="p-4 bg-surface-soft rounded-lg">
-                        <p className="text-sm text-text-secondary">Conversion Rate</p>
-                        <p className="text-2xl font-bold text-text-primary">{stats.conversionRate.toFixed(2)}%</p>
-                    </div>
-                    <div className="p-4 bg-surface-soft rounded-lg">
-                        <p className="text-sm text-text-secondary">Return Customer Rate</p>
-                        <p className="text-2xl font-bold text-text-primary">24%</p>
-                    </div>
-                    <div className="p-4 bg-surface-soft rounded-lg">
-                        <p className="text-sm text-text-secondary">Total Products Sold</p>
-                        <p className="text-2xl font-bold text-text-primary">{categorySales.reduce((a, b) => a + b.value, 0)}</p>
-                    </div>
-                </div>
-            </div>
+      <div className="dashboard-page space-y-4">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
+          <h1 className="text-2xl font-semibold text-[#1f1f1f]">Advanced analytics</h1>
+          <p className="mt-2 text-sm text-[#666]">Analytics is available in seller workspace after you enable selling and set up your store.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link to="/profile/switch-accounts" className="inline-flex h-9 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]">
+              Switch workspace
+            </Link>
+            <Link to="/profile/store" className="inline-flex h-9 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]">
+              Store setup
+            </Link>
+          </div>
         </div>
+      </div>
     );
+  }
+
+  return (
+    <div className="dashboard-page space-y-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-[#d8d8d8] bg-white p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#1f1f1f]">Advanced analytics</h1>
+          <p className="mt-1 text-sm text-[#666]">Real-time metrics sourced from your store, products, and order activity.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="inline-flex h-9 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-sm font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]"
+        >
+          Export recent orders CSV
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard 
+          label="Revenue" 
+          value={`$${summary.totalRevenue.toLocaleString()}`} 
+          helper="All-time seller revenue"
+          onClick={() => navigate('/store/manager/analytics/revenue')}
+        />
+        <MetricCard 
+          label="Sales Units" 
+          value={summary.totalSalesUnits} 
+          helper="Units sold across all orders"
+          onClick={() => navigate('/store/manager/analytics/sales-units')}
+        />
+        <MetricCard 
+          label="Conversion" 
+          value={`${summary.conversionRate.toFixed(1)}%`} 
+          helper="Orders completed vs product views"
+          onClick={() => navigate('/store/manager/analytics/conversion')}
+        />
+        <MetricCard 
+          label="Traffic" 
+          value={summary.totalViews} 
+          helper="Total listing and store views"
+          onClick={() => navigate('/store/manager/analytics/traffic')}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.8fr_1fr]">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Revenue trend</h3>
+          <div className="mt-4 h-[300px] w-full">
+            {snapshot.earningsByMonth.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={snapshot.earningsByMonth}>
+                  <defs>
+                    <linearGradient id="analyticsRevenueGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.26} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} />
+                  <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
+                  <Tooltip formatter={(value) => [`$${value}`, 'Revenue']} />
+                  <Area type="monotone" dataKey="earnings" stroke="#10b981" strokeWidth={2} fill="url(#analyticsRevenueGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyPanel
+                title="No revenue data"
+                body="Complete orders to populate monthly revenue trend."
+                actionLabel="Manage products"
+                actionTo="/profile/products"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Order status</h3>
+          <div className="mt-4 h-[300px] w-full">
+            {(summary.pendingOrders > 0 || summary.completedOrders > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={ordersByStatus}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />
+                  <XAxis dataKey="status" axisLine={false} tickLine={false} />
+                  <YAxis axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#3b82f6" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyPanel
+                title="No order volume yet"
+                body="Orders will appear here after the first successful checkout."
+                actionLabel="Open store"
+                actionTo="/profile/store"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Category performance</h3>
+          <div className="mt-4 h-[300px] w-full">
+            {snapshot.categorySales.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={snapshot.categorySales} dataKey="value" nameKey="category" innerRadius={58} outerRadius={90} paddingAngle={3}>
+                    {snapshot.categorySales.map((entry, index) => (
+                      <Cell key={`category-${entry.category}-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyPanel
+                title="No category data"
+                body="Category split appears once your products receive completed sales."
+                actionLabel="Add product"
+                actionTo="/profile/products/new"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Operational alerts</h3>
+          <div className="mt-3 space-y-2">
+            <Link to="/profile/sales" className="flex items-center justify-between rounded-lg border border-[#dddddd] bg-[#f7f7f7] px-3 py-3 hover:bg-white">
+              <div>
+                <p className="text-sm font-semibold text-[#1f1f1f]">Pending orders</p>
+                <p className="text-xs text-[#666]">Fulfillment required</p>
+              </div>
+              <span className="rounded-full bg-[#111111] px-2 py-1 text-xs font-semibold text-white">{summary.pendingOrders}</span>
+            </Link>
+            <Link to="/profile/products" className="flex items-center justify-between rounded-lg border border-[#dddddd] bg-[#f7f7f7] px-3 py-3 hover:bg-white">
+              <div>
+                <p className="text-sm font-semibold text-[#1f1f1f]">Low stock items</p>
+                <p className="text-xs text-[#666]">Restock products</p>
+              </div>
+              <span className="rounded-full bg-[#111111] px-2 py-1 text-xs font-semibold text-white">{summary.lowStockCount}</span>
+            </Link>
+            <Link to="/profile/messages" className="flex items-center justify-between rounded-lg border border-[#dddddd] bg-[#f7f7f7] px-3 py-3 hover:bg-white">
+              <div>
+                <p className="text-sm font-semibold text-[#1f1f1f]">Unread messages</p>
+                <p className="text-xs text-[#666]">Buyer and lead inbox</p>
+              </div>
+              <span className="rounded-full bg-[#111111] px-2 py-1 text-xs font-semibold text-white">{summary.unreadMessages}</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+        <h3 className="text-[20px] font-semibold text-[#1f1f1f]">Recent orders</h3>
+        <div className="mt-3 overflow-x-auto">
+          {snapshot.recentOrders.length > 0 ? (
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#e3e3e3] text-xs uppercase tracking-[0.1em] text-[#6a6a6a]">
+                  <th className="px-2 py-2">Order</th>
+                  <th className="px-2 py-2">Status</th>
+                  <th className="px-2 py-2">Qty</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.recentOrders.map((order) => (
+                  <tr key={order.id} className="border-b border-[#f0f0f0]">
+                    <td className="px-2 py-2 font-medium text-[#1f1f1f]">#{order.id.slice(0, 8)}</td>
+                    <td className="px-2 py-2 text-[#555]">{order.status}</td>
+                    <td className="px-2 py-2 text-[#555]">{order.quantityTotal}</td>
+                    <td className="px-2 py-2 text-[#555]">{order.currency} {order.total.toFixed(2)}</td>
+                    <td className="px-2 py-2 text-[#555]">{new Date(order.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <EmptyPanel
+              title="No recent orders"
+              body="Recent order analytics will appear here once sales begin."
+              actionLabel="Go to products"
+              actionTo="/profile/products"
+            />
+          )}
+        </div>
+      </div>
+
+      {loadError ? <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
+    </div>
+  );
 };
 
 export default AdvancedAnalyticsPage;

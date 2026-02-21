@@ -296,7 +296,7 @@ const ExploreMenu: React.FC<{ onClose: () => void; onOpenOmni?: () => void }> = 
 
 // --- MAIN HEADER ---
 const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
-    const { isAuthenticated, user, openAuthModal, logout } = useAuth();
+    const { isAuthenticated, user, activePersona, openAuthModal, logout } = useAuth();
     const { cartCount } = useCart();
     const navigate = useNavigate();
     const location = useLocation();
@@ -340,22 +340,52 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     }, []);
 
     const fetchNotifications = useCallback(async () => {
-        if (user) {
-            const userNotifs = await userService.getNotificationsForUser(user.id);
-            setNotifications(userNotifs);
+        if (!user) return;
+        try {
+            if (typeof userService.getNotificationsForUser !== 'function') {
+                setNotifications([]);
+                return;
+            }
+            const userNotifs = await userService.getNotificationsForUser(user.id, {
+                personaId: activePersona?.id,
+                includePersona: Boolean(activePersona?.id),
+                limit: 50
+            });
+            setNotifications(Array.isArray(userNotifs) ? userNotifs : []);
+        } catch (error) {
+            console.warn('Notification fetch failed:', error);
+            setNotifications([]);
         }
-    }, [user]);
+    }, [user, activePersona?.id]);
 
     useEffect(() => {
         if (isAuthenticated) {
             fetchNotifications();
+        } else {
+            setNotifications([]);
         }
     }, [isAuthenticated, fetchNotifications]);
 
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const intervalId = window.setInterval(() => {
+            fetchNotifications();
+        }, 25000);
+
+        return () => window.clearInterval(intervalId);
+    }, [isAuthenticated, fetchNotifications]);
+
     const handleMarkAsRead = async () => {
-        if (user) {
-            await userService.markNotificationsAsRead(user.id);
-            fetchNotifications(); // Refetch to update UI
+        if (!user) return;
+        try {
+            if (typeof userService.markNotificationsAsRead !== 'function') return;
+            await userService.markNotificationsAsRead(user.id, {
+                personaId: activePersona?.id,
+                includePersona: Boolean(activePersona?.id)
+            });
+            fetchNotifications();
+        } catch (error) {
+            console.warn('Mark notifications as read failed:', error);
         }
     };
     
@@ -537,6 +567,16 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         }
     `;
 
+    const mobilePillClasses = `
+        ${pillClasses}
+        bg-surface/80
+    `;
+    const getMobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+        `px-2.5 py-1.5 text-[11px] font-semibold transition-colors duration-300 rounded-full ${
+            isActive ? 'text-primary bg-primary/10' : 'text-text-secondary hover:text-text-primary'
+        }`;
+    const mobileIconBtnClass = 'p-1.5 rounded-full hover:bg-surface-soft text-text-primary';
+
     const searchVariants = {
         hidden: { opacity: 0, y: -10, scale: 0.95 },
         visible: { opacity: 1, y: 0, scale: 1 },
@@ -561,13 +601,15 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
                     {/* Left Pill: Logo */}
                     <div className={`flex-shrink-0 px-4 py-2 rounded-full ${pillClasses}`}>
-                        <Link to="/" className="text-xl font-extrabold font-display">
-                           <span className="text-text-primary">Urban</span><span className="text-primary">Prime</span>
+                        <Link to="/" className="text-xl font-extrabold font-display flex items-center gap-2">
+                           
+                           <img src="/icons/urbanprime.svg" alt="Urban Prime" className="w-10 h-10" />
+                           <span className="urban-prime-wordmark text-[0.82rem]">Urban Prime</span>
                         </Link>
                     </div>
                     
                     {/* Center Pill: Navigation + Search */}
-                    <nav ref={navContainerRef} className={`flex items-center gap-1 p-1 rounded-full ${pillClasses}`}>
+                    <nav ref={navContainerRef} className={`flex items-center gap-1 p-0.5 rounded-full ${pillClasses}`}>
                         <NavLink to="/deals" className={getNavLinkClass}>{t('header.deals')}</NavLink>
                         <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
                              <span className="text-purple-500"><GenieIcon /></span> Genie
@@ -587,7 +629,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     </nav>
                     
                     {/* Right Pill: User Actions */}
-                    <div className={`flex items-center gap-1 p-1 rounded-full ${pillClasses}`} onMouseLeave={handleMenuLeave}>
+                    <div className={`flex items-center gap-1 p-0.5 rounded-full ${pillClasses}`} onMouseLeave={handleMenuLeave}>
                         <div className="relative" onMouseEnter={() => handleMenuEnter('account')}>
                             {isAuthenticated && user ? (
                                 <button className="flex items-center gap-2 p-1 rounded-full hover:bg-surface-soft text-text-primary">
@@ -613,7 +655,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
 
                         <div className="relative" onMouseEnter={() => handleMenuEnter('language')}>
                             <button className="p-2 rounded-full hover:bg-surface-soft text-text-primary">
-                                {isTranslating ? <Spinner size="sm" className="w-6 h-6"/> : <PakistanFlagIcon />}
+                                {isTranslating ? <Spinner size="sm" className="w-8 h-8"/> : <PakistanFlagIcon />}
                             </button>
                              {activeMenu === 'language' && <LanguageMenu />}
                         </div>
@@ -627,9 +669,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
             </header>
 
             {/* Mobile Header */}
-             <header 
+            <header 
                 className={`
-                    fixed top-0 left-0 right-0 z-50 h-[72px]
+                    fixed top-0 left-0 right-0 z-50
                     md:hidden transition-colors duration-300
                     ${isScrolled || !isHomePage
                         ? 'bg-surface/80 backdrop-blur-md border-b border-border/80'
@@ -637,36 +679,67 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     }
                 `}
             >
-                <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-full relative">
-                    {isHomePage ? (
-                        <Link to="/" className="text-2xl font-extrabold font-display"><span className="text-text-primary">Urban</span><span className="text-primary">Prime</span></Link>
-                    ) : (
-                        <BackButton />
-                    )}
-                     {!isHomePage && (
-                        <Link to="/" className="absolute left-1/2 -translate-x-1/2">
-                            <span className="text-2xl font-extrabold font-display"><span className="text-text-primary">UB</span><span className="text-primary">P</span></span>
-                        </Link>
-                    )}
-                    <div className="flex items-center gap-2">
-                        <NavLink to="/battles" className="p-2 rounded-full hover:bg-surface-soft"><BattleIcon /></NavLink>
-                        <NavLink to="/reels" className="p-2 rounded-full hover:bg-surface-soft"><ReelsIcon /></NavLink>
-                        <button onClick={() => setIsMobileSearchOpen(true)} className="p-2 rounded-full hover:bg-surface-soft"><SearchIcon /></button>
-                        {isAuthenticated && user ? (
-                            <div 
-                                className="relative" 
-                                onMouseEnter={() => handleMenuEnter('account')} 
-                                onMouseLeave={handleMenuLeave}
-                            >
-                                <button
-                                    onClick={() => setActiveMenu(activeMenu === 'account' ? null : 'account')}
-                                    aria-label="Account menu"
-                                >
-                                    <img src={user.avatar} alt={user.name} className="w-9 h-9 rounded-full" />
+                <div className="container mx-auto px-3 sm:px-6 lg:px-8 py-1.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full ${mobilePillClasses}`}>
+                            {!isHomePage && (
+                                <button onClick={() => navigate(-1)} className="p-1 rounded-full hover:bg-surface-soft" aria-label="Go back">
+                                    <span className="inline-flex scale-90"><BackIcon /></span>
                                 </button>
-                                {activeMenu === 'account' && <AccountMenu user={user} onLogout={() => setIsLogoutModalOpen(true)} />}
+                            )}
+                            <Link to="/" className="text-[13px] font-extrabold font-display tracking-tight flex items-center gap-1.5">
+                                
+                                <img src="/icons/urbanprime.svg" alt="Urban Prime" className="w-8 h-8" />
+                                <span className="urban-prime-wordmark text-[0.72rem]">Urban Prime</span>
+                            </Link>
+                        </div>
+                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses}`}>
+                            <button onClick={() => setIsMobileSearchOpen(true)} className={mobileIconBtnClass} aria-label="Search">
+                                <SearchIcon />
+                            </button>
+                            <NavLink to="/cart" className={`${mobileIconBtnClass} relative`} aria-label="Cart">
+                                <CartIcon />
+                                {cartCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center font-bold">
+                                        {cartCount}
+                                    </span>
+                                )}
+                            </NavLink>
+                            {isAuthenticated && user ? (
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setActiveMenu(activeMenu === 'account' ? null : 'account')}
+                                        className="p-0.5 rounded-full hover:bg-surface-soft"
+                                        aria-label="Account menu"
+                                    >
+                                        <img src={user.avatar || "/icons/urbanprime.svg"} alt={user.name} className="w-8 h-8 rounded-full" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/icons/urbanprime.svg"; }} />
+                                    </button>
+                                    {activeMenu === 'account' && <AccountMenu user={user} onLogout={() => setIsLogoutModalOpen(true)} />}
+                                </div>
+                            ) : (
+                                <button onClick={() => openAuthModal('login')} className="px-2.5 py-1.5 bg-primary text-white font-bold rounded-full text-[11px]">Login</button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} overflow-x-auto overflow-y-visible no-scrollbar`}>
+                            <NavLink to="/deals" className={getMobileNavLinkClass}>{t('header.deals')}</NavLink>
+                            <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
+                                <span className="text-purple-500"><GenieIcon /></span> Genie
+                            </NavLink>
+                            <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
+                                <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
+                            </NavLink>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setActiveMenu(activeMenu === 'explore' ? null : 'explore')}
+                                    className={`${getMobileNavLinkClass({ isActive: activeMenu === 'explore' })} whitespace-nowrap`}
+                                >
+                                    {t('header.explore')}
+                                </button>
+                                {activeMenu === 'explore' && <ExploreMenu onClose={() => setActiveMenu(null)} onOpenOmni={handleOpenOmni} />}
                             </div>
-                        ) : (<button onClick={() => openAuthModal('login')} className="px-4 py-2 bg-primary text-white font-bold rounded-full text-sm">Login</button>)}
+                        </div>
                     </div>
                 </div>
             </header>
@@ -838,3 +911,5 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
 };
 
 export default Header;
+
+

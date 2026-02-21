@@ -170,7 +170,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             <img src={imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
             {discountPercentage > 0 && <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">-{discountPercentage}%</div>}
             <WishlistButton itemId={item.id} className="text-white hover:text-red-500" />
-             <div className="absolute bottom-2 left-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+             <div className="absolute bottom-2 left-2 flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300">
                 <button onClick={handleCompareClick} className={`p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-black/80 transition-colors ${isComparing(item.id) ? 'bg-primary text-white' : ''}`} aria-label="Compare">
                   <CompareIcon/>
                 </button>
@@ -181,10 +181,10 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             <ListingTypeBadge listingType={item.listingType} />
           </div>
         </Link>
-        <div className="p-4 flex flex-col flex-grow bg-surface">
+        <div className="p-3 sm:p-4 flex flex-col flex-grow bg-surface">
           <div className="flex-grow">
             {item.brand && <p className="text-[10px] font-bold text-text-secondary mb-1 uppercase tracking-widest">{item.brand}</p>}
-            <h3 className="font-bold text-sm text-text-primary line-clamp-2 leading-snug font-display">
+            <h3 className="font-bold text-[13px] sm:text-sm text-text-primary line-clamp-2 leading-snug font-display">
               {isLoadingTranslation ? (
                 <div className="space-y-1.5">
                   <div className="h-4 bg-gray-200 rounded w-full animate-pulse"></div>
@@ -200,16 +200,16 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             <span className="text-[10px] text-text-secondary font-medium">({item.reviews.length})</span>
           </div>
           <div 
-            className="flex justify-between items-end border-t pt-3 border-gray-100 dark:border-gray-700"
+            className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 border-t pt-3 border-gray-100 dark:border-gray-700"
             onMouseEnter={handleMouseEnterLower}
             onMouseLeave={handleMouseLeaveLower}
           >
             <div>
               {translatedItem.compareAtPrice && <p className="text-[10px] text-text-secondary/70 line-through font-medium">{currency.symbol}{translatedItem.compareAtPrice.toFixed(2)}</p>}
-              <p className="font-extrabold text-lg text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-[10px] font-normal text-text-secondary capitalize ml-0.5">{priceLabel}</span></p>
+              <p className="font-extrabold text-base sm:text-lg text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-[10px] font-normal text-text-secondary capitalize ml-0.5">{priceLabel}</span></p>
               {displayDueDate && <p className="text-[10px] font-bold text-red-500 mt-0.5">Due: {displayDueDate}</p>}
             </div>
-            <button onClick={handleAddToCartClick} className={`p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-colors shadow-md ${isAnimatingCart ? 'animate-add-to-cart' : ''}`} aria-label="Add to cart">
+            <button onClick={handleAddToCartClick} className={`p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-colors shadow-md self-start sm:self-auto ${isAnimatingCart ? 'animate-add-to-cart' : ''}`} aria-label="Add to cart">
               <CartIcon />
             </button>
           </div>
@@ -229,9 +229,9 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
         <img src={imageUrl} alt={item.title} className="w-full h-full object-cover aspect-[4/3] sm:aspect-auto" />
         <ListingTypeBadge listingType={item.listingType} />
       </Link>
-      <div className="flex-grow flex flex-col p-5">
+      <div className="flex-grow flex flex-col p-4 sm:p-5">
         {item.brand && <p className="text-xs font-bold text-text-secondary mb-1 uppercase tracking-widest">{item.brand}</p>}
-        <h3 className="font-bold text-lg mb-2 text-text-primary font-display">
+        <h3 className="font-bold text-base sm:text-lg mb-2 text-text-primary font-display">
             {isLoadingTranslation ? (
               <div className="h-6 bg-surface-soft rounded animate-pulse w-3/4"></div>
             ) : (
@@ -257,7 +257,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
                     <span className="text-xs text-text-secondary font-medium">({item.reviews.length})</span>
                 </div>
                 {translatedItem.compareAtPrice && <p className="text-xs text-text-secondary/70 line-through font-medium">{currency.symbol}{translatedItem.compareAtPrice.toFixed(2)}</p>}
-                <p className="font-extrabold text-xl text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-sm font-normal text-text-secondary capitalize ml-1">{priceLabel}</span></p>
+                <p className="font-extrabold text-lg sm:text-xl text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-sm font-normal text-text-secondary capitalize ml-1">{priceLabel}</span></p>
             </div>
             <div className="flex gap-2">
                  <button onClick={() => onQuickView(item)} className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-bold text-sm">

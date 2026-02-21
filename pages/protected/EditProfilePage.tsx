@@ -28,7 +28,7 @@ const FormField: React.FC<{label: string, children: React.ReactNode, helpText?: 
 );
 
 const EditProfilePage: React.FC = () => {
-    const { user, ...auth } = useAuth();
+    const { user, updateUser } = useAuth();
     const { storefront } = useUserData(); // Access store data context
     const { showNotification } = useNotification();
     const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +76,24 @@ const EditProfilePage: React.FC = () => {
             setShippingSettings(storefront.shippingSettings);
         }
     }, [storefront]);
+
+    useEffect(() => {
+        if (!user) return;
+        setFormData(prev => ({
+            ...prev,
+            name: user.name || '',
+            dob: user.dob || '',
+            gender: user.gender || 'prefer_not_to_say',
+            about: user.about || '',
+            businessName: user.businessName || '',
+            businessDescription: user.businessDescription || '',
+            phone: user.phone || '',
+            email: user.email || '',
+            avatar: user.avatar || '',
+            city: user.city || '',
+            country: user.country || ''
+        }));
+    }, [user]);
 
     if (!user) return null;
 
@@ -131,20 +149,30 @@ const EditProfilePage: React.FC = () => {
     };
 
     const handleSave = async () => {
+        if (!user) return;
+
         setIsLoading(true);
+
+        if (storefront && storeSettings.slug !== storefront.slug && slugAvailable === false) {
+            showNotification('Store URL is unavailable.');
+            setIsLoading(false);
+            return;
+        }
+
+        let profileSaved = false;
+        let storeSaved = !storefront;
+
         try {
-            // Update User Profile
             const { email, ...profileUpdates } = formData;
-            await userService.updateUserProfile(user.id, profileUpdates);
+            const updatedProfile = await userService.updateUserProfile(user.id, profileUpdates);
+            updateUser?.(updatedProfile);
+            profileSaved = true;
+        } catch (error) {
+            console.error('Profile update failed:', error);
+        }
 
-            // Update Store Settings if user has a store
-            if (storefront) {
-                if (storeSettings.slug !== storefront.slug && slugAvailable === false) {
-                     showNotification("Store URL is unavailable.");
-                     setIsLoading(false);
-                     return;
-                }
-
+        if (storefront) {
+            try {
                 await storefrontService.updateStoreBranding(storefront.id, {
                     slug: storeSettings.slug,
                     storeBannerUrl: storeSettings.storeBannerUrl,
@@ -154,17 +182,25 @@ const EditProfilePage: React.FC = () => {
                         twitter: storeSettings.twitter,
                         website: storeSettings.website
                     },
-                    shippingSettings: shippingSettings
+                    shippingSettings
                 });
+                storeSaved = true;
+            } catch (error) {
+                console.error('Store update failed:', error);
             }
-
-            showNotification("Profile and Store updated successfully!");
-        } catch(e) {
-            console.error(e);
-            showNotification("Failed to update settings.");
-        } finally {
-            setIsLoading(false);
         }
+
+        if (profileSaved && storeSaved) {
+            showNotification('Profile and store updated successfully!');
+        } else if (profileSaved) {
+            showNotification('Profile updated, but store settings could not be saved.');
+        } else if (storeSaved) {
+            showNotification('Store settings updated, but profile could not be saved.');
+        } else {
+            showNotification('Failed to update settings.');
+        }
+
+        setIsLoading(false);
     };
 
     return (
@@ -321,3 +357,4 @@ const EditProfilePage: React.FC = () => {
 };
 
 export default EditProfilePage;
+

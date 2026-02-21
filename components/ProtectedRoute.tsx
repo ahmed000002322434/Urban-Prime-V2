@@ -3,6 +3,7 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import Spinner from './Spinner';
+import ProfileCompletionGate from './ProfileCompletionGate';
 
 const ProtectedRoute: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -20,7 +21,11 @@ const ProtectedRoute: React.FC = () => {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  return <Outlet />;
+  return (
+    <ProfileCompletionGate>
+      <Outlet />
+    </ProfileCompletionGate>
+  );
 };
 
 export default ProtectedRoute;

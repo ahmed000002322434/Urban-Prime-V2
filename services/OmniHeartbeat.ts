@@ -1,6 +1,7 @@
 
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { isBackendConfigured } from './backendClient';
 
 type HeartbeatListener = () => void;
 
@@ -15,6 +16,8 @@ class OmniHeartbeatController {
         if (this.isInitialized) return;
         this.isInitialized = true;
 
+        if (isBackendConfigured()) return;
+
         // Listen for the absolute latest booking added to the system
         const q = query(collection(db, 'bookings'), orderBy('startDate', 'desc'), limit(1));
         
@@ -23,6 +26,8 @@ class OmniHeartbeatController {
             if (!snapshot.empty && !snapshot.metadata.hasPendingWrites) {
                 this.trigger();
             }
+        }, (error) => {
+            console.warn('Omni heartbeat listener failed:', error);
         });
     }
 

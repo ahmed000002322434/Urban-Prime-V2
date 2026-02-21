@@ -36,10 +36,11 @@ const Layout: React.FC = () => {
   const isListItemPage = location.pathname.includes('/profile/products/new');
   const isReelsPage = location.pathname === '/reels';
   const isInspirationPage = location.pathname.startsWith('/inspiration');
+  const isDashboardRoute = location.pathname.startsWith('/profile');
   
   const isHomePage = location.pathname === '/';
-  const showHeader = !isReelsPage && !isInspirationPage;
-  const showFooter = !isReelsPage && !isInspirationPage;
+  const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute;
+  const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
   
   const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';
@@ -47,10 +48,10 @@ const Layout: React.FC = () => {
   const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
 
   return (
-    <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative`}>
+    <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative overflow-x-hidden`}>
       {isBannerActive && showBanner && <SiteBanner message={siteSettings.siteBanner.message} onClose={() => setShowBanner(false)} />}
       {showHeader && <Header onOpenOmni={() => setIsOmniOpen(true)} />}
-      <main className={`flex-grow relative z-10 ${mainBgClass} ${showHeader && !isHomePage ? 'pt-24' : ''}`}>
+      <main className={`flex-grow relative z-10 ${mainBgClass} ${showHeader && !isHomePage ? 'pt-20 md:pt-24' : ''}`}>
         <div>
           <Outlet />
         </div>
@@ -59,11 +60,11 @@ const Layout: React.FC = () => {
       {/* Omni Interface */}
       <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
 
-      <ComparisonBar />
-      {!isStoreCreationFlow && !isListItemPage && <FloatingWidget />}
+      {!isDashboardRoute && <ComparisonBar />}
+      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && <FloatingWidget />}
       {showFooter && <Footer />}
-      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && <AIChatBot />}
-      {!isReelsPage && <PixeFloatingButton />}
+      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && <AIChatBot />}
+      {!isReelsPage && !isDashboardRoute && <PixeFloatingButton />}
       <BackToTopButton />
     </div>
   );

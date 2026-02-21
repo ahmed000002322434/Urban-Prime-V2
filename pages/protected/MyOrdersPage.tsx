@@ -61,7 +61,7 @@ const MyOrdersPage: React.FC = () => {
     const TabButton: React.FC<{tab: 'rentals' | 'purchases', children: React.ReactNode}> = ({ tab, children }) => (
         <button
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 font-semibold text-sm rounded-t-lg border-b-2 transition-colors ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'}`}
+            className={`px-3 sm:px-4 py-2 font-semibold text-xs sm:text-sm whitespace-nowrap rounded-t-lg border-b-2 transition-colors ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'}`}
         >
             {children}
         </button>
@@ -71,8 +71,8 @@ const MyOrdersPage: React.FC = () => {
     const purchases = history.filter(item => item.type === 'sale');
 
     return (
-        <main className="flex-1 bg-surface p-6 rounded-xl shadow-soft border border-border">
-            <div className="border-b border-border mb-6">
+        <main className="flex-1 bg-surface p-4 sm:p-6 rounded-xl shadow-soft border border-border">
+            <div className="border-b border-border mb-6 flex gap-2 overflow-x-auto no-scrollbar">
                 <TabButton tab="rentals">My Rentals</TabButton>
                 <TabButton tab="purchases">My Purchases</TabButton>
             </div>
@@ -97,9 +97,9 @@ const MyOrdersPage: React.FC = () => {
                                     <div className="flex items-center gap-4">
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[item.status]}`}>{item.status.toUpperCase()}</span>
                                         {item.status === 'pending' ? (
-                                            <button onClick={() => handleCancelBooking(item.id)} className="px-4 py-2 text-sm bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">Cancel</button>
+                                            <button onClick={() => handleCancelBooking(item.id)} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">Cancel</button>
                                         ) : (
-                                            <Link to={`/profile/orders/${item.id}`} className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md hover:opacity-80">Details</Link>
+                                            <Link to={`/profile/orders/${item.id}`} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md hover:opacity-80">Details</Link>
                                         )}
                                     </div>
                                 </li>
@@ -137,11 +137,11 @@ const MyOrdersPage: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         {item.itemType === 'digital' ? (
-                                            <a href={item.digitalFileUrl} download className="px-4 py-2 text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">
+                                            <a href={item.digitalFileUrl} download className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">
                                                 Download
                                             </a>
                                         ) : (
-                                            <button onClick={() => handleBuyAgain(item.itemId)} className="px-4 py-2 text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">Buy Again</button>
+                                            <button onClick={() => handleBuyAgain(item.itemId)} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">Buy Again</button>
                                         )}
                                         <Link to={`/profile/orders/${item.id}`} className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md hover:opacity-80">Details</Link>
                                     </div>

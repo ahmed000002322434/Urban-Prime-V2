@@ -3,7 +3,7 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, setLogLevel as setFirestoreLogLevel } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
@@ -26,6 +26,12 @@ try {
   }
 } catch (error) {
   console.warn('Firebase analytics disabled:', error);
+}
+
+try {
+  setFirestoreLogLevel('silent');
+} catch (error) {
+  console.warn('Failed to configure Firestore log level:', error);
 }
 
 // Export services

@@ -41,6 +41,10 @@ const ListServicePage: React.FC = () => {
         category: '',
         imageUrls: [],
         pricingModels: [{ type: 'hourly', price: 50, description: 'Standard hourly rate' }],
+        mode: 'hybrid',
+        fulfillmentKind: 'hybrid',
+        currency: 'USD',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingBio, setIsGeneratingBio] = useState(false);
@@ -135,6 +139,25 @@ const ListServicePage: React.FC = () => {
                                 ))}
                             </Select>
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-text-primary">Engagement Mode</label>
+                                <Select name="mode" value={formData.mode} onChange={handleChange}>
+                                    <option value="instant">Instant Packages</option>
+                                    <option value="proposal">Proposal Only</option>
+                                    <option value="hybrid">Hybrid (Instant + Proposal)</option>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-text-primary">Fulfillment</label>
+                                <Select name="fulfillmentKind" value={formData.fulfillmentKind} onChange={handleChange}>
+                                    <option value="local">Local</option>
+                                    <option value="remote">Remote</option>
+                                    <option value="onsite">On-site</option>
+                                    <option value="hybrid">Hybrid</option>
+                                </Select>
+                            </div>
+                        </div>
                          <div className="relative">
                              <label className="block text-sm font-bold mb-2 text-text-primary">Description</label>
                              <Textarea name="description" placeholder="Describe your experience and what's included..." value={formData.description} onChange={handleChange} rows={6} />
@@ -155,6 +178,16 @@ const ListServicePage: React.FC = () => {
                              <h2 className="text-2xl font-bold font-display text-text-primary">Pricing & Packages</h2>
                              <p className="text-text-secondary">How do you want to charge?</p>
                         </div>
+                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold uppercase mb-1">Currency</label>
+                                <Input name="currency" value={formData.currency || 'USD'} onChange={handleChange} placeholder="USD" maxLength={3} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase mb-1">Timezone</label>
+                                <Input name="timezone" value={formData.timezone || ''} onChange={handleChange} placeholder="UTC" />
+                            </div>
+                         </div>
                          {formData.pricingModels?.map((model, index) => (
                                 <div key={index} className="p-6 bg-surface-soft rounded-xl border border-border relative">
                                     {formData.pricingModels && formData.pricingModels.length > 1 && (

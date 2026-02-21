@@ -14,7 +14,7 @@ const MegaMenu: React.FC<MegaMenuProps> = ({ onClose }) => {
 
   return (
     <div className="absolute top-full left-0 w-full bg-white dark:bg-dark-surface shadow-lg border-t dark:border-gray-700 animate-fade-in-up" onMouseLeave={onClose}>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-5 gap-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8">
         {mainCategories.map(category => (
           <div key={category.id}>
             <Link to={`/browse?category=${category.id}`} onClick={onClose} className="flex items-center gap-2 font-bold text-sm text-light-text dark:text-dark-text mb-3 hover:text-primary">

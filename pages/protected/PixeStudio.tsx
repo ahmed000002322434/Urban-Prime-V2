@@ -23,7 +23,7 @@ type PixeStudioView = 'dashboard' | 'upload' | 'content' | 'analytics' | 'moneti
 // --- START OF UPLOAD VIEW & SUB-COMPONENTS ---
 const LiveMobilePreview: React.FC<{ videoUrl: string | null; coverImageUrl: string | null; caption: string; creator: User | null }> = ({ videoUrl, coverImageUrl, caption, creator }) => {
     return (
-        <div className="w-full max-w-[280px] aspect-[9/16] bg-black rounded-3xl shadow-2xl p-2.5 mx-auto">
+        <div className="w-full max-w-[240px] sm:max-w-[280px] aspect-[9/16] bg-black rounded-3xl shadow-2xl p-2.5 mx-auto">
             <div className="w-full h-full bg-gray-800 rounded-[1.25rem] overflow-hidden relative">
                 {videoUrl ? (
                     <video key={videoUrl} src={videoUrl} autoPlay loop muted className="w-full h-full object-cover" />
@@ -59,8 +59,8 @@ const AIHelperButton: React.FC<{ onClick: () => void; isLoading: boolean; childr
 );
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="bg-white dark:bg-dark-surface p-6 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700">
-        <h3 className="font-bold text-lg mb-4">{title}</h3>
+    <div className="bg-white dark:bg-dark-surface p-4 sm:p-6 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700">
+        <h3 className="font-bold text-base sm:text-lg mb-4">{title}</h3>
         {children}
     </div>
 );

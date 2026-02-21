@@ -1,12 +1,13 @@
-
-import React, { createContext, useState, useMemo, useCallback } from 'react';
+import React, { createContext, useState, useMemo, useCallback, useEffect } from 'react';
 import type { Item, SubscriptionDetails, CartGroup, CartItem } from '../types';
 import { useNotification } from './NotificationContext';
+import { useAuth } from '../hooks/useAuth';
+import { itemService } from '../services/itemService';
 
 interface CartContextType {
   cartGroups: CartGroup[];
   savedItems: CartItem[];
-  addItemToCart: (item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string, endDate: string }) => void;
+  addItemToCart: (item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string; endDate: string }) => void;
   updateItemQuantity: (itemId: string, quantity: number) => void;
   removeItemFromCart: (itemId: string) => void;
   saveForLater: (itemId: string) => void;
@@ -21,52 +22,187 @@ interface CartContextType {
   cartItems: CartItem[];
 }
 
+type StoredCartState = {
+  cartItems: CartItem[];
+  savedItems: CartItem[];
+  couponCode: string | null;
+  discountPercent: number;
+};
+
+const CART_STORAGE_PREFIX = 'urbanprime_cart_v2_';
+const CART_GUEST_KEY = `${CART_STORAGE_PREFIX}guest`;
+
+const readStoredState = (key: string): StoredCartState | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      cartItems: Array.isArray(parsed.cartItems) ? parsed.cartItems : [],
+      savedItems: Array.isArray(parsed.savedItems) ? parsed.savedItems : [],
+      couponCode: typeof parsed.couponCode === 'string' ? parsed.couponCode : null,
+      discountPercent: typeof parsed.discountPercent === 'number' ? parsed.discountPercent : 0
+    };
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredState = (key: string, state: StoredCartState) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch {
+    // no-op
+  }
+};
+
+const removeStoredState = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // no-op
+  }
+};
+
+const cartItemKey = (item: CartItem) => {
+  if (item.listingType === 'rent' && item.rentalPeriod) {
+    return `${item.id}::${item.rentalPeriod.startDate}::${item.rentalPeriod.endDate}`;
+  }
+  return item.id;
+};
+
+const mergeCartLists = (base: CartItem[], incoming: CartItem[]): CartItem[] => {
+  const map = new Map<string, CartItem>();
+  [...base, ...incoming].forEach((item) => {
+    const key = cartItemKey(item);
+    if (!map.has(key)) {
+      map.set(key, item);
+      return;
+    }
+    const existing = map.get(key)!;
+    map.set(key, { ...existing, quantity: Math.max(existing.quantity || 1, item.quantity || 1) });
+  });
+  return Array.from(map.values());
+};
+
 export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // We now maintain a flat list of items and derive groups dynamically
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [savedItems, setSavedItems] = useState<CartItem[]>([]);
   const [couponCode, setCouponCode] = useState<string | null>(null);
   const [discountPercent, setDiscountPercent] = useState(0);
-  
+  const [storageReady, setStorageReady] = useState(false);
+
   const { showNotification } = useNotification();
+  const { user, activePersona } = useAuth();
 
-  // --- Cart Actions ---
+  const storageKey = useMemo(() => {
+    if (!user?.id) return CART_GUEST_KEY;
+    const personaSuffix = activePersona?.id ? `_${activePersona.id}` : '';
+    return `${CART_STORAGE_PREFIX}user_${user.id}${personaSuffix}`;
+  }, [user?.id, activePersona?.id]);
 
-  const addItemToCart = useCallback((item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string, endDate: string }) => {
-    setCartItems(prev => {
-        // If it's a rental, treat items with different dates as different line items (complex)
-        // For simplicity in this demo, if item ID matches, we block adding again if it's rental
-        const existingItem = prev.find(i => i.id === item.id);
-        
-        if (existingItem) {
-            if (item.listingType === 'rent') {
-                showNotification("This item is already in your cart.");
-                return prev;
-            }
-            showNotification("Item quantity updated!");
-            return prev.map(i => i.id === item.id ? { ...i, quantity: Math.min(i.quantity + quantity, item.stock || 99) } : i);
+  useEffect(() => {
+    const currentState = readStoredState(storageKey) || {
+      cartItems: [],
+      savedItems: [],
+      couponCode: null,
+      discountPercent: 0
+    };
+
+    if (user?.id) {
+      const guestState = readStoredState(CART_GUEST_KEY);
+      if (guestState) {
+        currentState.cartItems = mergeCartLists(currentState.cartItems, guestState.cartItems);
+        currentState.savedItems = mergeCartLists(currentState.savedItems, guestState.savedItems);
+        if (!currentState.couponCode && guestState.couponCode) {
+          currentState.couponCode = guestState.couponCode;
+          currentState.discountPercent = guestState.discountPercent;
         }
-        
-        showNotification("Item added to cart!");
-        return [...prev, { ...item, quantity, subscription, rentalPeriod }];
+        removeStoredState(CART_GUEST_KEY);
+      }
+    }
+
+    setCartItems(currentState.cartItems);
+    setSavedItems(currentState.savedItems);
+    setCouponCode(currentState.couponCode);
+    setDiscountPercent(currentState.discountPercent);
+    setStorageReady(true);
+  }, [storageKey, user?.id]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    writeStoredState(storageKey, {
+      cartItems,
+      savedItems,
+      couponCode,
+      discountPercent
     });
-  }, [showNotification]);
+  }, [storageReady, storageKey, cartItems, savedItems, couponCode, discountPercent]);
+
+  const addItemToCart = useCallback(
+    (item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string; endDate: string }) => {
+      const alreadyInCart = cartItems.some((i) => i.id === item.id);
+      setCartItems((prev) => {
+        const existingItem = prev.find((i) => i.id === item.id);
+
+        if (existingItem) {
+          if (item.listingType === 'rent') {
+            showNotification('This item is already in your cart.');
+            return prev;
+          }
+          showNotification('Item quantity updated!');
+          return prev.map((i) =>
+            i.id === item.id
+              ? { ...i, quantity: Math.min((i.quantity || 1) + quantity, item.stock || 99) }
+              : i
+          );
+        }
+
+        showNotification('Item added to cart!');
+        return [...prev, { ...item, quantity, subscription, rentalPeriod }];
+      });
+
+      if (!alreadyInCart && item.owner?.id && item.owner.id !== user?.id) {
+        itemService
+          .logItemEvent({
+            action: 'cart_add',
+            ownerId: item.owner.id,
+            ownerPersonaId: item.ownerPersonaId || null,
+            itemId: item.id,
+            itemTitle: item.title,
+            listingType: item.listingType,
+            actorId: user?.id || null,
+            actorPersonaId: activePersona?.id || null,
+            actorName: user?.name || user?.email || 'Visitor',
+            quantity
+          })
+          .catch(() => {});
+      }
+    },
+    [showNotification, cartItems, user, activePersona]
+  );
 
   const updateItemQuantity = useCallback((itemId: string, quantity: number) => {
-    setCartItems(prev => prev.map(item => {
+    setCartItems((prev) =>
+      prev.map((item) => {
         if (item.id === itemId) {
-            return { ...item, quantity: Math.max(1, Math.min(quantity, item.stock || 99)) };
+          return { ...item, quantity: Math.max(1, Math.min(quantity, item.stock || 99)) };
         }
         return item;
-    }));
+      })
+    );
   }, []);
 
-  const removeItemFromCart = useCallback((itemId: string) => {
-    setCartItems(prev => prev.filter(i => i.id !== itemId));
-    showNotification("Item removed from cart.");
-  }, [showNotification]);
+  const removeItemFromCart = useCallback(
+    (itemId: string) => {
+      setCartItems((prev) => prev.filter((i) => i.id !== itemId));
+      showNotification('Item removed from cart.');
+    },
+    [showNotification]
+  );
 
   const clearCart = useCallback(() => {
     setCartItems([]);
@@ -74,112 +210,125 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDiscountPercent(0);
   }, []);
 
-  // --- Saved for Later Actions ---
-
-  const saveForLater = useCallback((itemId: string) => {
-      const itemToSave = cartItems.find(i => i.id === itemId);
+  const saveForLater = useCallback(
+    (itemId: string) => {
+      const itemToSave = cartItems.find((i) => i.id === itemId);
       if (itemToSave) {
-          setCartItems(prev => prev.filter(i => i.id !== itemId));
-          setSavedItems(prev => [...prev, itemToSave]);
-          showNotification("Saved for later.");
+        setCartItems((prev) => prev.filter((i) => i.id !== itemId));
+        setSavedItems((prev) => [...prev, itemToSave]);
+        showNotification('Saved for later.');
       }
-  }, [cartItems, showNotification]);
+    },
+    [cartItems, showNotification]
+  );
 
-  const moveToCart = useCallback((itemId: string) => {
-      const itemToMove = savedItems.find(i => i.id === itemId);
+  const moveToCart = useCallback(
+    (itemId: string) => {
+      const itemToMove = savedItems.find((i) => i.id === itemId);
       if (itemToMove) {
-          setSavedItems(prev => prev.filter(i => i.id !== itemId));
-          setCartItems(prev => [...prev, itemToMove]);
-          showNotification("Moved back to cart.");
+        setSavedItems((prev) => prev.filter((i) => i.id !== itemId));
+        setCartItems((prev) => [...prev, itemToMove]);
+        showNotification('Moved back to cart.');
       }
-  }, [savedItems, showNotification]);
+    },
+    [savedItems, showNotification]
+  );
 
   const removeSavedItem = useCallback((itemId: string) => {
-      setSavedItems(prev => prev.filter(i => i.id !== itemId));
+    setSavedItems((prev) => prev.filter((i) => i.id !== itemId));
   }, []);
 
-  // --- Coupon Logic ---
-
-  const applyCoupon = useCallback((code: string) => {
+  const applyCoupon = useCallback(
+    (code: string) => {
       if (code.toUpperCase() === 'WELCOME10') {
-          setCouponCode('WELCOME10');
-          setDiscountPercent(0.10);
-          showNotification("Coupon applied: 10% Off!");
-          return true;
+        setCouponCode('WELCOME10');
+        setDiscountPercent(0.1);
+        showNotification('Coupon applied: 10% Off!');
+        return true;
       }
       setCouponCode(null);
       setDiscountPercent(0);
-      showNotification("Invalid coupon code.");
+      showNotification('Invalid coupon code.');
       return false;
-  }, [showNotification]);
-
-  // --- Derived State ---
+    },
+    [showNotification]
+  );
 
   const cartGroups = useMemo(() => {
-      const groups: Record<string, CartGroup> = {};
-      
-      cartItems.forEach(item => {
-          const ownerId = item.owner.id;
-          if (!groups[ownerId]) {
-              groups[ownerId] = {
-                  id: ownerId,
-                  name: item.owner.businessName || item.owner.name || 'Unknown Seller',
-                  items: []
-              };
-          }
-          groups[ownerId].items.push(item);
-      });
+    const groups: Record<string, CartGroup> = {};
 
-      return Object.values(groups);
+    cartItems.forEach((item) => {
+      const ownerId = item.owner?.id || 'unknown-owner';
+      if (!groups[ownerId]) {
+        groups[ownerId] = {
+          id: ownerId,
+          name: item.owner?.businessName || item.owner?.name || 'Unknown Seller',
+          items: []
+        };
+      }
+      groups[ownerId].items.push(item);
+    });
+
+    return Object.values(groups);
   }, [cartItems]);
 
   const { cartCount, cartTotal, discountAmount } = useMemo(() => {
-    const count = cartItems.reduce((acc, item) => acc + item.quantity, 0);
+    const count = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
     const subtotal = cartItems.reduce((acc, item) => {
-        let price = item.salePrice || item.rentalPrice || 0;
-        
-        // If rental, re-calculate based on dates if available
-        if (item.listingType === 'rent' && item.rentalPeriod && item.rentalRates?.daily) {
-             const start = new Date(item.rentalPeriod.startDate);
-             const end = new Date(item.rentalPeriod.endDate);
-             const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-             price = item.rentalRates.daily * Math.max(1, days);
-        }
+      let price = item.salePrice || item.rentalPrice || 0;
 
-        return acc + (price * item.quantity);
+      if (item.listingType === 'rent' && item.rentalPeriod && item.rentalRates?.daily) {
+        const start = new Date(item.rentalPeriod.startDate);
+        const end = new Date(item.rentalPeriod.endDate);
+        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        price = item.rentalRates.daily * Math.max(1, days);
+      }
+
+      return acc + price * (item.quantity || 1);
     }, 0);
-    
+
     const discount = subtotal * discountPercent;
-    const total = subtotal; // Note: We return raw total here, final calculation with tax/shipping happens in OrderSummary
+    const total = subtotal;
 
     return { cartCount: count, cartTotal: total, discountAmount: discount };
   }, [cartItems, discountPercent]);
 
-  const value = useMemo(() => ({
-    cartGroups,
-    cartItems,
-    savedItems,
-    addItemToCart,
-    updateItemQuantity,
-    removeItemFromCart,
-    saveForLater,
-    moveToCart,
-    removeSavedItem,
-    clearCart,
-    applyCoupon,
-    couponCode,
-    discountAmount,
-    cartCount,
-    cartTotal
-  }), [
-      cartGroups, cartItems, savedItems, addItemToCart, updateItemQuantity, removeItemFromCart, 
-      saveForLater, moveToCart, removeSavedItem, clearCart, applyCoupon, 
-      couponCode, discountAmount, cartCount, cartTotal
-  ]);
-
-  return (
-    <CartContext.Provider value={value}>
-      {children}
-    </CartContext.Provider>
+  const value = useMemo(
+    () => ({
+      cartGroups,
+      cartItems,
+      savedItems,
+      addItemToCart,
+      updateItemQuantity,
+      removeItemFromCart,
+      saveForLater,
+      moveToCart,
+      removeSavedItem,
+      clearCart,
+      applyCoupon,
+      couponCode,
+      discountAmount,
+      cartCount,
+      cartTotal
+    }),
+    [
+      cartGroups,
+      cartItems,
+      savedItems,
+      addItemToCart,
+      updateItemQuantity,
+      removeItemFromCart,
+      saveForLater,
+      moveToCart,
+      removeSavedItem,
+      clearCart,
+      applyCoupon,
+      couponCode,
+      discountAmount,
+      cartCount,
+      cartTotal
+    ]
   );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };

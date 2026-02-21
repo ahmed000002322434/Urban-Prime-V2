@@ -4,6 +4,9 @@ export interface User {
   name: string;
   email: string;
   avatar: string;
+  accountLifecycle?: AccountLifecycle;
+  activePersonaId?: string;
+  capabilities?: PersonaCapabilities;
   isAdmin?: boolean;
   isServiceProvider?: boolean;
   isAffiliate?: boolean;
@@ -13,6 +16,7 @@ export interface User {
   wishlist: string[]; // Item IDs
   cart: string[]; // Item IDs
   themePreference?: Theme;
+  purpose?: 'rent' | 'list' | 'both';
   interests?: string[];
   country?: string;
   currencyPreference?: string;
@@ -41,6 +45,176 @@ export interface User {
   likedReels?: string[];
   dailyUsage?: { date: string; videos: number; images: number };
   rating?: number; // Added rating to fix usage in directories
+}
+
+
+export type AccountLifecycle = 'guest' | 'member' | 'restricted';
+export type PersonaType = 'consumer' | 'seller' | 'provider' | 'affiliate';
+export type PersonaStatus = 'active' | 'pending' | 'suspended' | 'archived';
+export type Capability = 'buy' | 'rent' | 'sell' | 'provide_service' | 'affiliate' | 'admin';
+export type CapabilityState = 'inactive' | 'pending' | 'active' | 'suspended';
+
+export type PersonaCapabilities = Record<Capability, CapabilityState>;
+
+export interface AccountPersona {
+  id: string;
+  userId: string;
+  type: PersonaType;
+  status: PersonaStatus;
+  displayName: string;
+  avatar?: string;
+  handle?: string;
+  bio?: string;
+  settings?: Record<string, any>;
+  verification?: Record<string, any>;
+  capabilities: PersonaCapabilities;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActiveSessionContext {
+  userId: string;
+  activePersonaId: string;
+  activePersonaType: PersonaType;
+}
+
+export interface PersonaLedgerEntry {
+  id: string;
+  userId: string;
+  personaId: string;
+  direction: 'credit' | 'debit';
+  amount: number;
+  currency: string;
+  sourceType: string;
+  sourceId: string;
+  createdAt: string;
+}
+
+export interface OwnerActivitySummary {
+  totalEvents: number;
+  views: number;
+  cartAdds: number;
+  purchases: number;
+  rentals: number;
+  auctionWins: number;
+}
+
+export interface UploadAsset {
+  id: string;
+  ownerUserId: string;
+  ownerPersonaId?: string;
+  assetType: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  publicUrl?: string;
+  resourceId?: string;
+  status: 'active' | 'deleted';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ProfileUpdatePayload {
+  name?: string;
+  email?: string;
+  avatar?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+  about?: string;
+  businessName?: string;
+  businessDescription?: string;
+  themePreference?: Theme;
+}
+
+export interface DataModeConfig {
+  mode: 'supabase' | 'firebase' | 'hybrid';
+  requireBackend: boolean;
+  enableFirestoreFallback: boolean;
+  enableLocalMockFallback: boolean;
+}
+
+export type OnboardingIntent = 'buy' | 'rent' | 'sell' | 'provide' | 'affiliate';
+export type OnboardingStepId = 'intent' | 'identity' | 'preferences' | 'role_setup' | 'review' | 'completed';
+
+export interface RoleSetupDraft {
+  displayName?: string;
+  handle?: string;
+  businessName?: string;
+  businessDescription?: string;
+  website?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+  industry?: string;
+  experienceYears?: string;
+  teamSize?: string;
+  monthlyVolume?: string;
+  about?: string;
+  goals?: string;
+  channelType?: string;
+  sellerHandle?: string;
+  providerHandle?: string;
+  affiliateHandle?: string;
+  handles?: Partial<Record<PersonaType, string>>;
+}
+
+export interface OnboardingDraft {
+  intent?: {
+    selectedIntents?: OnboardingIntent[];
+  };
+  identity?: {
+    name?: string;
+    phone?: string;
+    country?: string;
+    city?: string;
+    currencyPreference?: string;
+    avatarUrl?: string;
+  };
+  preferences?: {
+    interests?: string[];
+  };
+  roleSetup?: RoleSetupDraft;
+  review?: {
+    acceptedTerms?: boolean;
+  };
+}
+
+export interface OnboardingValidationError {
+  field: string;
+  step: OnboardingStepId;
+  message: string;
+}
+
+export interface ProfileCompletion {
+  isComplete: boolean;
+  missingRequiredFields: string[];
+  nextStep: OnboardingStepId;
+}
+
+export interface FeatureFlags {
+  profileOnboardingV2: boolean;
+}
+
+export interface UserOnboardingState {
+  userId: string;
+  currentStep: OnboardingStepId;
+  flowVersion: number;
+  selectedIntents: OnboardingIntent[];
+  draft: OnboardingDraft;
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface UnifiedProfile {
+  user: User;
+  profile: Record<string, any>;
+  personas: AccountPersona[];
+  activePersona: AccountPersona | null;
+  completion: ProfileCompletion;
+  featureFlags: FeatureFlags;
+  onboardingState?: UserOnboardingState | null;
 }
 
 // Added ThemePreference to fix context error
@@ -215,6 +389,7 @@ export interface SubscriptionDetails {
 
 export interface Booking {
     id: string;
+    engagementId?: string;
     orderId?: string; // New field to link back to main order
     itemId: string;
     itemTitle: string;
@@ -229,6 +404,11 @@ export interface Booking {
     trackingNumber?: string;
     paymentStatus?: 'escrow' | 'released' | 'refunded';
     type?: 'rent' | 'sale';
+    mode?: WorkMode;
+    fulfillmentKind?: WorkFulfillmentKind;
+    currency?: string;
+    timezone?: string;
+    riskScore?: number;
     securityDeposit?: number; // Amount held
     depositStatus?: 'held' | 'released' | 'claimed';
     claimDetails?: {
@@ -236,6 +416,8 @@ export interface Booking {
         reason: string;
         proofImage: string;
     }
+    renterPersonaId?: string;
+    providerPersonaId?: string;
 }
 
 export interface Item {
@@ -259,6 +441,8 @@ export interface Item {
   images: string[]; 
   imageUrls: string[];
   owner: { id: string; name: string; avatar: string; businessName?: string };
+  ownerPersonaId?: string;
+  activityPreferences?: ListingActivityPreferences;
   avgRating: number;
   reviews: Review[];
   isFeatured?: boolean;
@@ -323,6 +507,17 @@ export interface Item {
   battleAppearances?: number;
   createdAt: string;
   version?: string;
+}
+
+
+export interface ListingActivityPreferences {
+  itemView: boolean;
+  cartAdd: boolean;
+  purchase: boolean;
+  rent: boolean;
+  auctionWin: boolean;
+  instantAlert: boolean;
+  dailyDigest: boolean;
 }
 
 export interface Category {
@@ -663,6 +858,102 @@ export interface SellerPerformanceStats {
     conversionRate: number;
 }
 
+export interface BuyerDashboardSummary {
+    totalOrders: number;
+    pendingOrders: number;
+    completedOrders: number;
+    activeRentals: number;
+    upcomingReturns: number;
+    totalPurchases: number;
+    wishlistItems: number;
+    unreadNotifications: number;
+    conversations: number;
+}
+
+export interface BuyerDashboardOrder {
+    id: string;
+    status: string;
+    total: number;
+    currency: string;
+    createdAt: string;
+    itemCount: number;
+    quantityTotal: number;
+    rentalItems: number;
+    saleItems: number;
+}
+
+export interface BuyerDashboardUpcomingReturn {
+    orderId: string;
+    orderItemId: string;
+    itemId: string | null;
+    itemTitle: string;
+    rentalEnd: string;
+    quantity: number;
+}
+
+export interface BuyerDashboardSnapshot {
+    generatedAt: string;
+    summary: BuyerDashboardSummary;
+    recentOrders: BuyerDashboardOrder[];
+    upcomingReturns: BuyerDashboardUpcomingReturn[];
+}
+
+export interface SellerDashboardSummary {
+    totalRevenue: number;
+    pendingOrders: number;
+    completedOrders: number;
+    totalSalesUnits: number;
+    totalViews: number;
+    conversionRate: number;
+    lowStockCount: number;
+    unreadMessages: number;
+}
+
+export interface SellerDashboardEarningsPoint {
+    month: string;
+    earnings: number;
+}
+
+export interface SellerDashboardCategoryPoint {
+    category: string;
+    value: number;
+}
+
+export interface SellerDashboardRecentOrder {
+    id: string;
+    status: string;
+    total: number;
+    currency: string;
+    createdAt: string;
+    itemCount: number;
+    quantityTotal: number;
+}
+
+export interface SellerLowStockItem {
+    id: string;
+    title: string;
+    stock: number;
+    status: string;
+}
+
+export interface SellerDashboardSetup {
+    hasStore: boolean;
+    hasProducts: boolean;
+    hasContent: boolean;
+    hasApps: boolean;
+}
+
+export interface SellerDashboardSnapshot {
+    generatedAt: string;
+    summary: SellerDashboardSummary;
+    earningsByMonth: SellerDashboardEarningsPoint[];
+    categorySales: SellerDashboardCategoryPoint[];
+    recentOrders: SellerDashboardRecentOrder[];
+    lowStockItems: SellerLowStockItem[];
+    insights: GrowthInsight[];
+    setup: SellerDashboardSetup;
+}
+
 export interface GrowthInsight {
     id: string;
     type: 'pricing' | 'inventory' | 'marketing';
@@ -868,6 +1159,7 @@ export interface RentalHistoryItem {
 
 export interface Offer {
     id: string;
+    engagementId?: string;
     itemId: string;
     itemTitle: string;
     itemImageUrl: string;
@@ -875,24 +1167,37 @@ export interface Offer {
     seller: { id: string; name: string };
     offerPrice: number;
     status: 'pending' | 'accepted' | 'declined';
+    mode?: WorkMode;
+    fulfillmentKind?: WorkFulfillmentKind;
+    currency?: string;
+    timezone?: string;
+    riskScore?: number;
     createdAt: string;
 }
 
 export interface CustomOffer {
     id: string;
+    engagementId?: string;
     title: string;
     description: string;
     price: number;
     duration: number;
     status: 'pending' | 'accepted' | 'declined';
+    currency?: string;
+    mode?: WorkMode;
+    fulfillmentKind?: WorkFulfillmentKind;
+    riskScore?: number;
     createdAt?: string;
 }
 
 export interface ChatThread {
     id: string;
+    engagementId?: string;
     itemId: string;
     buyerId: string;
     sellerId: string;
+    buyerPersonaId?: string;
+    sellerPersonaId?: string;
     lastMessage: string;
     lastUpdated: string;
     messages: ChatMessage[];
@@ -904,13 +1209,235 @@ export interface ChatMessage {
     sender?: string;
     text?: string;
     content?: any; 
-    type?: 'text' | 'image' | 'video' | 'listing-draft';
+    type?: 'text' | 'image' | 'video' | 'listing-draft' | 'offer' | 'contract' | 'milestone';
     timestamp: string | Date;
     imageUrl?: string;
     videoUrl?: string;
     isRead?: boolean;
     offer?: CustomOffer;
     sources?: any[];
+}
+
+export type WorkMode = 'instant' | 'proposal' | 'hybrid';
+export type WorkFulfillmentKind = 'local' | 'remote' | 'onsite' | 'hybrid';
+export type WorkListingStatus = 'draft' | 'published' | 'archived' | 'paused';
+export type WorkRequestStatus = 'open' | 'in_review' | 'matched' | 'cancelled' | 'closed';
+export type WorkProposalStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn' | 'expired';
+export type WorkContractStatus = 'draft' | 'pending' | 'active' | 'completed' | 'cancelled' | 'disputed';
+export type MilestoneStatus = 'pending' | 'submitted' | 'approved' | 'released' | 'rejected';
+export type EscrowAction = 'hold' | 'release' | 'refund' | 'adjustment';
+export type EngagementStatus = 'created' | 'active' | 'completed' | 'cancelled' | 'disputed';
+export type EngagementSourceType = 'order' | 'booking' | 'contract' | 'service_request';
+
+export interface WorkLocation {
+    city?: string;
+    region?: string;
+    country?: string;
+    latitude?: number;
+    longitude?: number;
+    addressLine1?: string;
+}
+
+export interface WorkPackage {
+    id: string;
+    name: string;
+    description?: string;
+    price: number;
+    currency?: string;
+    deliveryDays?: number;
+    revisions?: number;
+    type?: 'hourly' | 'fixed' | 'custom_offer';
+}
+
+export interface WorkListing {
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+    mode: WorkMode;
+    fulfillmentKind: WorkFulfillmentKind;
+    sellerId: string;
+    sellerPersonaId?: string;
+    providerSnapshot?: { id: string; name: string; avatar?: string; rating?: number; reviews?: any[] };
+    currency: string;
+    timezone?: string;
+    basePrice?: number;
+    packages: WorkPackage[];
+    skills?: string[];
+    media?: string[];
+    availability?: Record<string, any>;
+    riskScore?: number;
+    status: WorkListingStatus;
+    visibility?: 'public' | 'private' | 'unlisted';
+    publishedAt?: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface WorkRequest {
+    id: string;
+    requesterId: string;
+    requesterPersonaId?: string;
+    requesterSnapshot?: { id: string; name: string; avatar?: string };
+    title: string;
+    brief: string;
+    listingId?: string;
+    targetProviderId?: string;
+    category: string;
+    mode: WorkMode;
+    fulfillmentKind: WorkFulfillmentKind;
+    budgetMin?: number;
+    budgetMax?: number;
+    currency: string;
+    timezone?: string;
+    location?: WorkLocation;
+    requirements?: string[];
+    attachments?: string[];
+    riskScore?: number;
+    status: WorkRequestStatus;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface Proposal {
+    id: string;
+    requestId?: string;
+    listingId?: string;
+    providerId: string;
+    providerPersonaId?: string;
+    providerSnapshot?: { id: string; name: string; avatar?: string; rating?: number };
+    clientId: string;
+    clientPersonaId?: string;
+    clientSnapshot?: { id: string; name: string; avatar?: string };
+    title: string;
+    coverLetter?: string;
+    priceTotal: number;
+    currency: string;
+    deliveryDays?: number;
+    milestones?: Array<{ title: string; amount: number; dueAt?: string; description?: string }>;
+    terms?: Record<string, any>;
+    revisionLimit?: number;
+    riskScore?: number;
+    status: WorkProposalStatus;
+    createdAt: string;
+    respondedAt?: string;
+    updatedAt?: string;
+}
+
+export interface Milestone {
+    id: string;
+    contractId: string;
+    title: string;
+    description?: string;
+    amount: number;
+    currency: string;
+    dueAt?: string;
+    sortOrder: number;
+    deliverables?: string[];
+    status: MilestoneStatus;
+    submittedAt?: string;
+    approvedAt?: string;
+    releasedAt?: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface Contract {
+    id: string;
+    engagementId?: string;
+    proposalId?: string;
+    requestId?: string;
+    listingId?: string;
+    clientId: string;
+    clientPersonaId?: string;
+    providerId: string;
+    providerPersonaId?: string;
+    scope: string;
+    mode: WorkMode;
+    fulfillmentKind: WorkFulfillmentKind;
+    currency: string;
+    timezone?: string;
+    totalAmount: number;
+    escrowHeld?: number;
+    riskScore?: number;
+    status: WorkContractStatus;
+    terms?: Record<string, any>;
+    startAt?: string;
+    dueAt?: string;
+    completedAt?: string;
+    milestones?: Milestone[];
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface EscrowTransaction {
+    id: string;
+    engagementId: string;
+    contractId?: string;
+    milestoneId?: string;
+    payerId?: string;
+    payeeId?: string;
+    action: EscrowAction;
+    amount: number;
+    currency: string;
+    status: 'pending' | 'succeeded' | 'failed';
+    providerRef?: string;
+    metadata?: Record<string, any>;
+    createdAt: string;
+}
+
+export interface Engagement {
+    id: string;
+    sourceType: EngagementSourceType;
+    sourceId: string;
+    mode: WorkMode;
+    fulfillmentKind: WorkFulfillmentKind;
+    buyerId: string;
+    buyerPersonaId?: string;
+    providerId?: string;
+    providerPersonaId?: string;
+    currency: string;
+    timezone?: string;
+    grossAmount?: number;
+    escrowStatus?: 'none' | 'held' | 'partial' | 'released' | 'refunded';
+    riskScore?: number;
+    status: EngagementStatus;
+    metadata?: Record<string, any>;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface ReputationPassport {
+    id: string;
+    userId: string;
+    personaId?: string;
+    score: number;
+    jobsCompleted: number;
+    completionRate: number;
+    disputeRate: number;
+    onTimeRate: number;
+    responseSlaMinutes: number;
+    repeatClientRate: number;
+    badges?: string[];
+    snapshot?: Record<string, any>;
+    updatedAt: string;
+    createdAt?: string;
+}
+
+export interface AutopilotRun {
+    id: string;
+    runType: 'scope' | 'pricing' | 'match' | 'delivery' | 'dispute' | 'health';
+    actorUserId?: string;
+    actorPersonaId?: string;
+    requestId?: string;
+    listingId?: string;
+    contractId?: string;
+    inputPayload: Record<string, any>;
+    outputPayload: Record<string, any>;
+    model?: string;
+    status: 'pending' | 'succeeded' | 'failed';
+    latencyMs?: number;
+    createdAt: string;
 }
 
 export interface Service {
@@ -923,12 +1450,24 @@ export interface Service {
     pricingModels: ServicePricingModel[];
     avgRating: number;
     reviews: any[];
+    engagementId?: string;
+    mode?: WorkMode;
+    fulfillmentKind?: WorkFulfillmentKind;
+    riskScore?: number;
+    currency?: string;
+    timezone?: string;
+    providerPersonaId?: string;
+    buyerPersonaId?: string;
+    listingSource?: 'legacy' | 'omniwork';
 }
 
 export interface ServicePricingModel {
     type: 'hourly' | 'fixed' | 'custom_offer';
     price: number;
     description?: string;
+    currency?: string;
+    deliveryDays?: number;
+    revisions?: number;
 }
 
 // Fixed missing AffiliateProfile
@@ -960,6 +1499,14 @@ export interface Job {
     price: number;
     scheduledTime: string;
     status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+    engagementId?: string;
+    mode?: WorkMode;
+    fulfillmentKind?: WorkFulfillmentKind;
+    riskScore?: number;
+    currency?: string;
+    timezone?: string;
+    providerPersonaId?: string;
+    buyerPersonaId?: string;
 }
 
 export interface LiveStream {
@@ -1086,3 +1633,4 @@ export interface ContentReviewSubmission {
     url: string;
     status: 'pending' | 'approved' | 'rejected';
 }
+

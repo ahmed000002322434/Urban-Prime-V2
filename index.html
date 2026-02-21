@@ -3,8 +3,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icons/urbanprime.svg" />
-    <link rel="apple-touch-icon" href="/icons/urbanprime.svg" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/favicon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Urban Prime - Global Marketplace</title>
     
@@ -27,59 +32,9 @@
 }
 </script>
     
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              primary: 'var(--color-primary)',
-              secondary: 'var(--color-secondary)',
-              background: 'var(--color-background)',
-              surface: 'var(--color-surface)',
-              'surface-soft': 'var(--color-surface-soft)',
-              border: 'var(--color-border)',
-              'text-primary': 'var(--color-text-primary)',
-              'text-secondary': 'var(--color-text-secondary)',
-              'primary-text': 'var(--color-primary-text)',
-              'footer-background': 'var(--color-footer-background)',
-              'footer-text': 'var(--color-footer-text)',
-              'footer-text-secondary': 'var(--color-footer-text-secondary)',
-              'luxury-gold': '#D4AF37',
-              'luxury-black': '#0a0a0a',
-            },
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              display: ['Poppins', 'sans-serif'],
-              serif: ['Playfair Display', 'serif'],
-            },
-            boxShadow: {
-              soft: '0 4px 20px rgba(0, 0, 0, 0.08)',
-              glow: '0 0 15px rgba(15, 185, 177, 0.3)',
-              luxury: '0 20px 40px -10px rgba(0, 0, 0, 0.3)',
-            },
-            borderRadius: {
-              '2xl': '1rem',
-              '4xl': '2rem',
-            },
-            animation: {
-              'slow-spin': 'spin 10s linear infinite',
-              'marquee': 'marquee 25s linear infinite',
-            },
-            keyframes: {
-              marquee: {
-                '0%': { transform: 'translateX(0%)' },
-                '100%': { transform: 'translateX(-100%)' },
-              }
-            }
-          }
-        }
-      }
-    </script>
     <style>
       /* --- THEME DEFINITIONS --- */
       :root, .theme-light {
@@ -424,6 +379,7 @@
         -webkit-text-size-adjust: 100%;
       }
       #root { min-height: 100vh; }
+
       
       /* Obsidian Theme - Updated Footer Transparency */
       html.theme-obsidian {
@@ -595,7 +551,25 @@
         scrollbar-width: none;
       }
       
-      /* Custom Animations */
+      
+      @media (max-width: 480px) {
+        .container {
+          padding-left: 1rem;
+          padding-right: 1rem;
+        }
+        .grid-cols-2 {
+          grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
+        .grid-cols-3 {
+          grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
+        .grid-cols-4,
+        .grid-cols-5 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+/* Custom Animations */
       @keyframes fade-in-up {
         from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
@@ -1086,6 +1060,48 @@
           margin: 15px 0 20px;
         }
       }
+
+      @media (max-width: 640px) {
+        .auth-body {
+          padding: 1.5rem 1rem;
+          min-height: 100svh;
+        }
+        .auth-container {
+          max-width: 360px;
+          min-height: 560px;
+        }
+        .auth-form {
+          padding: 0 1.5rem;
+        }
+        .social-container a {
+          height: 36px;
+          width: 36px;
+        }
+        .form-container {
+          width: 100%;
+        }
+        .sign-in-container,
+        .sign-up-container {
+          width: 100%;
+        }
+        .sign-up-container {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        .auth-container.right-panel-active .sign-in-container {
+          transform: translateX(-100%);
+        }
+        .auth-container.right-panel-active .sign-up-container {
+          transform: translateX(0);
+          opacity: 1;
+          z-index: 5;
+        }
+        .overlay-container {
+          display: none;
+        }
+      }
+
+
       
       /* Reels styles */
       .reels-container { height: 100vh; width: 100vw; overflow-y: scroll; scroll-snap-type: y mandatory; background-color: black; }
@@ -1145,10 +1161,11 @@
         border-radius: 4px; /* Optional: adds a slight radius to the outline */
       }
     </style>
-  <link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
+
+

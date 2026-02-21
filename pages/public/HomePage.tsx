@@ -44,7 +44,7 @@ const HeroSection: React.FC = () => {
 
     return (
         <section 
-            className="relative min-h-[90vh] w-full overflow-hidden flex items-center justify-center bg-transparent pt-20 pb-20 transition-colors duration-700"
+            className="relative min-h-[85vh] sm:min-h-[90vh] w-full overflow-hidden flex items-center justify-center bg-transparent pt-16 pb-16 md:pt-20 md:pb-20 transition-colors duration-700"
         >
              {/* Optimized Background Gradients - Reduced blur radius for performance */}
              <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -63,7 +63,7 @@ const HeroSection: React.FC = () => {
              </div>
 
             <div
-                className="relative z-10 w-[94%] max-w-[1100px] aspect-[16/10] md:aspect-[2.4/1] min-h-[500px] flex items-center justify-center"
+                className="relative z-10 w-[94%] max-w-[1100px] aspect-[4/3] sm:aspect-[16/10] md:aspect-[2.4/1] min-h-[420px] sm:min-h-[480px] flex items-center justify-center"
             >
                 <div className={`absolute inset-0 rounded-[2.5rem] overflow-hidden transition-all duration-700 ${glassClass}`}>
                     <div className="absolute inset-0 opacity-[0.03] bg-black mix-blend-overlay"></div>
@@ -92,7 +92,7 @@ const HeroSection: React.FC = () => {
                     </motion.div>
 
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.1 }} className="mb-6 relative">
-                         <h1 className="text-5xl md:text-7xl lg:text-9xl font-serif font-black tracking-tighter leading-[0.9] drop-shadow-2xl">
+                         <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-9xl font-serif font-black tracking-tighter leading-[0.9] drop-shadow-2xl">
                             <span className={`block bg-clip-text text-transparent bg-gradient-to-b transition-all duration-700
                                 ${theme === 'sandstone' 
                                     ? 'from-[#3E2723] via-[#5D4037] to-[#8D6E63]' 
@@ -118,7 +118,7 @@ const HeroSection: React.FC = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.8, delay: 0.3 }}
-                        className={`max-w-lg mx-auto text-base md:text-lg font-medium leading-relaxed mb-10 drop-shadow-md tracking-wide transition-colors duration-700
+                        className={`max-w-lg mx-auto text-sm sm:text-base md:text-lg font-medium leading-relaxed mb-10 drop-shadow-md tracking-wide transition-colors duration-700
                             ${theme === 'sandstone' ? 'text-[#4E342E]' 
                             : theme === 'icy' ? 'text-[#022B3A]' 
                             : theme === 'hydra' ? 'text-[#B2EBF2]'
@@ -129,7 +129,7 @@ const HeroSection: React.FC = () => {
                     
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5 }} className="flex flex-col sm:flex-row gap-5 items-center">
                         <Magnetic strength={20} rotateStrength={2}>
-                            <Link to="/browse" className={`group relative px-8 py-4 font-bold text-sm uppercase tracking-widest rounded-full overflow-hidden transition-all duration-300
+                            <Link to="/browse" className={`group relative px-6 sm:px-8 py-3 sm:py-4 font-bold text-xs sm:text-sm uppercase tracking-widest rounded-full overflow-hidden transition-all duration-300
                                 ${theme === 'sandstone' 
                                     ? 'bg-[#3E2723] text-[#E6DCC8] shadow-lg hover:shadow-xl' 
                                     : theme === 'icy'
@@ -145,7 +145,7 @@ const HeroSection: React.FC = () => {
                         </Magnetic>
 
                         <Magnetic strength={15} rotateStrength={1}>
-                            <Link to="/reels" className={`group flex items-center gap-3 px-8 py-4 rounded-full font-bold text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
+                            <Link to="/reels" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
                                 ${theme === 'sandstone'
                                     ? 'bg-[rgba(230,220,200,0.5)] border border-[rgba(78,52,46,0.1)] text-[#3E2723] hover:bg-[rgba(230,220,200,0.8)]'
                                     : theme === 'icy'
@@ -188,7 +188,7 @@ const HeroSection: React.FC = () => {
 
 // --- 2. INFINITY RIBBON MARQUEE ---
 const Marquee: React.FC = () => (
-  <div className="relative z-20 -mt-10 mb-20 rotate-[-1deg] scale-105 origin-center pointer-events-none select-none">
+  <div className="relative z-20 -mt-10 mb-12 md:mb-20 rotate-[-1deg] scale-105 origin-center pointer-events-none select-none">
     {/* Glass Strip */}
     <div className="absolute inset-0 bg-white/70 dark:bg-[#111]/80 backdrop-blur-xl border-y border-white/20 dark:border-white/10 shadow-xl"></div>
     
@@ -224,19 +224,19 @@ const Marquee: React.FC = () => (
 // --- 3. BENTO VAULT (CATEGORIES) ---
 const BentoVault: React.FC = () => {
     return (
-        <section className="py-24 relative z-10">
+        <section className="py-16 md:py-24 relative z-10">
             <div className="container mx-auto px-4 md:px-8">
-                <div className="flex justify-between items-end mb-16">
+                <div className="flex justify-between items-end mb-10 md:mb-16">
                     <div>
                         <span className="text-primary text-xs font-bold uppercase tracking-[0.3em] pl-1">The Vault</span>
-                        <h2 className="text-4xl md:text-6xl font-serif font-bold text-text-primary mt-2 drop-shadow-sm">Curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600">Collections</span></h2>
+                        <h2 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-text-primary mt-2 drop-shadow-sm">Curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600">Collections</span></h2>
                     </div>
                     <Link to="/browse" className="hidden md:flex items-center gap-3 text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors border border-border px-6 py-3 rounded-full hover:bg-surface-soft">
                         View All <ArrowRight />
                     </Link>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-[700px] md:h-[600px]">
+                <div className="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-auto md:h-[600px]">
                     {CATEGORIES_SHOWCASE.map((cat, index) => {
                          const isLarge = cat.size === 'large';
                          const isTall = cat.size === 'tall';
@@ -266,11 +266,11 @@ const BentoVault: React.FC = () => {
                                 </div>
 
                                 {/* Content */}
-                                <div className="absolute inset-0 p-8 flex flex-col justify-end">
+                                <div className="absolute inset-0 p-5 sm:p-8 flex flex-col justify-end">
                                     <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
                                         <span className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 block">{cat.subtitle}</span>
                                         <div className="flex items-center justify-between">
-                                            <h3 className="text-2xl md:text-3xl text-white font-serif italic">{cat.title}</h3>
+                                            <h3 className="text-xl sm:text-2xl md:text-3xl text-white font-serif italic">{cat.title}</h3>
                                             <div className="w-10 h-10 rounded-full border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 bg-white/10 backdrop-blur-md">
                                                 <ArrowRight />
                                             </div>
@@ -302,7 +302,7 @@ const FeaturedRunway: React.FC<{
 
     return (
         // FIX: Removed bg-gray-50/dark:bg-[#080808] so global texture shows
-        <section className="py-32 relative overflow-hidden bg-transparent">
+        <section className="py-20 md:py-32 relative overflow-hidden bg-transparent">
              {/* Moving Background Typography */}
              <div className="absolute inset-0 flex flex-col justify-center items-center pointer-events-none opacity-[0.03] dark:opacity-[0.05] select-none overflow-hidden">
                 <motion.div style={{ x: x1 }} className="whitespace-nowrap text-[15vw] font-black uppercase text-text-primary leading-none">
@@ -316,14 +316,14 @@ const FeaturedRunway: React.FC<{
             <div className="container mx-auto px-4 md:px-8 relative z-10">
                 <div className="flex flex-col items-center mb-20">
                      <span className="text-primary text-xs font-bold uppercase tracking-[0.3em] mb-4">The Runway</span>
-                     <h2 className="text-4xl md:text-6xl font-serif font-bold text-text-primary text-center">New Arrivals</h2>
+                     <h2 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-text-primary text-center">New Arrivals</h2>
                      <div className="w-24 h-1 bg-gradient-to-r from-primary to-purple-600 mt-6 rounded-full"></div>
                 </div>
                 
                 {isLoading && products.length === 0 ? (
                     <div className="h-96 flex items-center justify-center"><Spinner size="lg" /></div>
                 ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 gap-y-12">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 sm:gap-8 gap-y-10 sm:gap-y-12">
                         {products.map((item, index) => (
                             <motion.div
                                 key={item.id}
@@ -340,7 +340,7 @@ const FeaturedRunway: React.FC<{
                 )}
                 
                 {!hasMore && products.length > 0 && (
-                    <div className="mt-20 flex flex-col items-center gap-4 text-center">
+                    <div className="mt-12 md:mt-20 flex flex-col items-center gap-4 text-center">
                         <div className="w-px h-16 bg-gradient-to-b from-transparent via-text-secondary to-transparent"></div>
                         <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">End of Collection</p>
                     </div>

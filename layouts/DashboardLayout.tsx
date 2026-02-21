@@ -1,148 +1,806 @@
-
-import React from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
-import { useTheme } from '../hooks/useTheme';
-import BackButton from '../components/BackButton';
-import Header from '../components/Header';
-import { motion, AnimatePresence } from 'framer-motion';
+import dashboardService from '../services/dashboardService';
+import { SearchSuggestionsDropdown } from '../components/dashboard/SearchSuggestionsDropdown';
+import type { SellerDashboardSetup } from '../types';
 
-// Icons
-const HomeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>;
-const OrdersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>;
-const WishlistIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>;
-const MessagesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
-const StoreIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
-const EarningsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
-const ProductsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>;
-const OffersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>;
-const CreatorHubIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 1-6 2-6-2-6 2v20l6-2 6 2 6-2V1z"/><path d="m12 3 6 2"/><path d="M6 3v20"/></svg>;
-const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
-const LogoutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>;
-const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M4 6v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M18 12a2 2 0 0 0-2 2h-2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2h-2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2H4"/></svg>;
-const AffiliateIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>;
-const CollectionsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v4"/><rect x="2" y="10" width="20" height="12" rx="2"/></svg>;
-const ReviewIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/><path d="m15 5 3 3"/></svg>;
-const CouponIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 8v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a2 2 0 1 0-4 0v1.83c0 .54-.23.95-.5.95s-.5-.41-.5-.95V8a4 4 0 1 1 8 0Z"/><path d="M2 16.22V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-1.78c0-1.07-1.28-1.74-2.22-1.21-.52.29-1.04.53-1.58.7-1.12.35-2.28 0-3.2-1a4 4 0 0 0-4 0c-.92 1-2.08 1.35-3.2 1-.54-.17-1.06-.4-1.58-.7C3.28 14.48 2 15.15 2 16.22Z"/></svg>;
-const FollowedStoreIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17h8v-4.5Z"/><path d="m8 12.5-5 5"/><path d="m14 4-1.5 1.5"/></svg>;
-const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
-const PermissionsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><path d="m10 10 2 2 4-4"/></svg>;
-const SwitchAccountsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>;
-const ServiceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.9 13.1L3.5 19.5 2 22l2.5-1.5 6.4-6.4" /><path d="m12.5 11.5 4-4 2.5 2.5-4 4" /><path d="M14 8.5 7.5 2 2 7.5 8.5 14" /><path d="M16.5 12.5 10 19" /></svg>;
+const TOP_BAR_HEIGHT = 52;
+const DESKTOP_SIDEBAR_WIDTH = 248;
 
+type IconProps = { className?: string };
+type NavItem = { to: string; label: string; icon: React.FC<IconProps>; end?: boolean; trailingDot?: boolean };
+type NavSection = { title?: string; items: NavItem[]; headingArrow?: boolean };
+
+const HomeIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+  </svg>
+);
+
+const OrdersIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10M7 12h10M7 17h6" />
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+  </svg>
+);
+
+const ProductIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5V16.5L12 21l9-4.5V7.5" />
+  </svg>
+);
+
+const PeopleIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 21a8 8 0 0 1 16 0" />
+  </svg>
+);
+
+const MarketingIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4l2-6 4 12 2-6h6" />
+  </svg>
+);
+
+const DiscountIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20 10.5 13.5 4H4v9.5L10.5 20a2 2 0 0 0 2.8 0L20 13.3a2 2 0 0 0 0-2.8z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </svg>
+);
+
+const ContentIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </svg>
+);
+
+const MarketIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2 12h20" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2a15 15 0 0 1 0 20" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2a15 15 0 0 0 0 20" />
+  </svg>
+);
+
+const AnalyticsIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 19h16" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16v-7" />
+  </svg>
+);
+
+const StoreIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16l-1.5 13H5.5L4 7z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7l2-4h14l2 4" />
+  </svg>
+);
+
+const AppsIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <rect x="3" y="3" width="8" height="8" rx="2" />
+    <rect x="13" y="3" width="8" height="8" rx="2" />
+    <rect x="3" y="13" width="8" height="8" rx="2" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 14v7M14 17h7" />
+  </svg>
+);
+
+const InboxIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h16v12H4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m4 8 8 6 8-6" />
+  </svg>
+);
+
+const SettingsIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.8 1.8 0 0 0 .36 2l.03.03a2 2 0 1 1-2.83 2.83l-.03-.03a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.09 1.64V22a2 2 0 1 1-4 0v-.05a1.8 1.8 0 0 0-1.09-1.64 1.8 1.8 0 0 0-2 .36l-.03.03a2 2 0 0 1-2.83-2.83l.03-.03a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.64-1.09H2a2 2 0 1 1 0-4h.05a1.8 1.8 0 0 0 1.64-1.09 1.8 1.8 0 0 0-.36-2l-.03-.03a2 2 0 1 1 2.83-2.83l.03.03a1.8 1.8 0 0 0 2 .36 1.8 1.8 0 0 0 1.09-1.64V2a2 2 0 1 1 4 0v.05a1.8 1.8 0 0 0 1.09 1.64 1.8 1.8 0 0 0 2-.36l.03-.03a2 2 0 1 1 2.83 2.83l-.03.03a1.8 1.8 0 0 0-.36 2 1.8 1.8 0 0 0 1.64 1.09H22a2 2 0 1 1 0 4h-.05a1.8 1.8 0 0 0-1.64 1.09z" />
+  </svg>
+);
+
+const WorkflowIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7" />
+    <circle cx="18" cy="12" r="2" />
+    <circle cx="13" cy="18" r="2" />
+  </svg>
+);
+
+const CompassIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m9.5 14.5 1.8-4.8 4.8-1.8-1.8 4.8z" />
+  </svg>
+);
+
+const LogoutIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17l5-5-5-5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 21H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5" />
+  </svg>
+);
+
+const SearchIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <circle cx="11" cy="11" r="7" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m20 20-3-3" />
+  </svg>
+);
+
+const BellIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const LifeBuoyIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5.6 5.6 9.9 9.9M14.1 14.1l4.3 4.3M18.4 5.6 14.1 9.9M9.9 14.1l-4.3 4.3" />
+  </svg>
+);
+
+const MenuIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+);
+
+const WishlistIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+  </svg>
+);
+
+const ReviewIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <polygon points="12 2 15.09 10.26 24 10.27 17.18 16.63 20.27 24.79 12 18.43 3.73 24.79 6.82 16.63 0 10.27 8.91 10.26 12 2" />
+  </svg>
+);
+
+const EarningsIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4.22 4.22l1.41 1.41m10.74 10.74l1.41 1.41" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h2m14 0h2" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4.22 19.78l1.41-1.41m10.74-10.74l1.41-1.41" />
+  </svg>
+);
+
+const TrendIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 19h16" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16v-7" />
+  </svg>
+);
+
+const MapPinIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+const CreditCardIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+    <line x1="1" y1="10" x2="23" y2="10" />
+  </svg>
+);
+
+const ChevronDown: React.FC<IconProps> = ({ className = 'h-3 w-3' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+const ChevronRight: React.FC<IconProps> = ({ className = 'h-3 w-3' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+  </svg>
+);
+
+const defaultSetup: SellerDashboardSetup = {
+  hasStore: false,
+  hasProducts: false,
+  hasContent: false,
+  hasApps: false
+};
 
 const DashboardLayout: React.FC = () => {
-    const { user, logout } = useAuth();
-    const { resolvedTheme } = useTheme();
-    const location = useLocation();
+  const { user, logout, personas, activePersona, setActivePersona, hasCapability } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
-    // Use theme-aware classes instead of hardcoded bg-primary/10
-    const getNavLinkClass = ({ isActive }: { isActive: boolean }) =>
-        `flex items-center gap-4 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-            isActive ? 'bg-primary/20 text-primary' : 'text-text-secondary hover:bg-surface-soft'
-        }`;
-    
-    const NavGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-        <div>
-            <h3 className="px-4 text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">{title}</h3>
-            <ul className="space-y-1">{children}</ul>
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSearchSuggestionsOpen, setIsSearchSuggestionsOpen] = useState(false);
+  const [sellerSetup, setSellerSetup] = useState<SellerDashboardSetup>(defaultSetup);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+    setIsProfileMenuOpen(false);
+    setSearchQuery('');
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const personaTypeLabel: Record<string, string> = {
+    consumer: 'Consumer',
+    seller: 'Seller',
+    provider: 'Provider',
+    affiliate: 'Affiliate'
+  };
+
+  const isSellerWorkspace = useMemo(() => {
+    const activeType = activePersona?.type;
+    if (activeType === 'seller') return true;
+    return hasCapability('sell');
+  }, [activePersona?.type, hasCapability]);
+
+  const isProviderWorkspace = useMemo(() => {
+    const activeType = activePersona?.type;
+    if (activeType === 'provider') return true;
+    return hasCapability('provide_service');
+  }, [activePersona?.type, hasCapability]);
+
+  const isAffiliateWorkspace = useMemo(() => {
+    const activeType = activePersona?.type;
+    if (activeType === 'affiliate') return true;
+    return hasCapability('affiliate');
+  }, [activePersona?.type, hasCapability]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSetup = async () => {
+      if (!user || !isSellerWorkspace) {
+        setSellerSetup(defaultSetup);
+        return;
+      }
+
+      try {
+        const snapshot = await dashboardService.getSellerDashboardSnapshot(6);
+        if (!cancelled) {
+          setSellerSetup(snapshot.setup || defaultSetup);
+        }
+      } catch {
+        if (!cancelled) {
+          setSellerSetup({
+            hasStore: Boolean(user.businessName),
+            hasProducts: false,
+            hasContent: false,
+            hasApps: false
+          });
+        }
+      }
+    };
+
+    loadSetup();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isSellerWorkspace]);
+
+  const runSearch = useCallback(() => {
+    const raw = searchQuery.trim();
+    if (!raw) return;
+    const term = raw.toLowerCase();
+
+    const go = (to: string) => {
+      navigate(to);
+      setSearchQuery('');
+    };
+
+    if (term.includes('home') || term.includes('dashboard')) {
+      go('/profile');
+      return;
+    }
+    if (term.includes('workflow')) {
+      go('/profile/workflows');
+      return;
+    }
+    if (term.includes('order') || term.includes('shipment')) {
+      go(isSellerWorkspace ? '/profile/sales' : '/profile/orders');
+      return;
+    }
+    if (term.includes('message') || term.includes('chat') || term.includes('inbox')) {
+      go('/profile/messages');
+      return;
+    }
+    if (term.includes('store') || term.includes('shop')) {
+      go(isSellerWorkspace ? '/profile/store' : '/');
+      return;
+    }
+    if (term.includes('product') || term.includes('listing') || term.includes('catalog')) {
+      go(isSellerWorkspace ? '/profile/products' : `/browse?q=${encodeURIComponent(raw)}`);
+      return;
+    }
+    if (term.includes('setting') || term.includes('profile')) {
+      go('/profile/settings');
+      return;
+    }
+    if (term.includes('analytics') || term.includes('report')) {
+      go(isSellerWorkspace ? '/profile/analytics/advanced' : '/profile');
+      return;
+    }
+    if (term.includes('support') || term.includes('help')) {
+      go('/help');
+      return;
+    }
+    if (term.includes('marketplace') || term.includes('browse')) {
+      go(`/browse?q=${encodeURIComponent(raw)}`);
+      return;
+    }
+
+    go(`/browse?q=${encodeURIComponent(raw)}`);
+  }, [isSellerWorkspace, navigate, searchQuery]);
+
+  const navSections = useMemo<NavSection[]>(() => {
+    const sections: NavSection[] = [
+      {
+        items: [
+          { to: '/profile', label: 'Home', icon: HomeIcon, end: true },
+          { to: '/profile/workflows', label: 'Workflows', icon: WorkflowIcon },
+          { to: '/profile/orders', label: 'Orders', icon: OrdersIcon },
+          { to: '/profile/messages', label: 'Inbox', icon: InboxIcon, trailingDot: true },
+          { to: '/profile/wishlist', label: 'Wishlist', icon: WishlistIcon },
+          { to: '/profile/reviews', label: 'My Reviews', icon: ReviewIcon }
+        ]
+      }
+    ];
+
+    if (isSellerWorkspace) {
+      const sellerItems: NavItem[] = [];
+      if (sellerSetup.hasProducts) {
+        sellerItems.push(
+          { to: '/profile/products', label: 'Products', icon: ProductIcon },
+          { to: '/profile/followed-stores', label: 'Customers', icon: PeopleIcon },
+          { to: '/profile/promotions', label: 'Marketing', icon: MarketingIcon },
+          { to: '/profile/coupons', label: 'Discounts', icon: DiscountIcon }
+        );
+      }
+      if (sellerSetup.hasStore) {
+        sellerItems.push({ to: '/profile/activity', label: 'Markets', icon: MarketIcon });
+      }
+
+      // Always show analytics section for sellers
+      sellerItems.push(
+        { to: '/profile/analytics/traffic', label: 'Traffic', icon: AnalyticsIcon },
+        { to: '/profile/analytics/revenue', label: 'Revenue', icon: EarningsIcon },
+        { to: '/profile/analytics/conversion', label: 'Conversions', icon: TrendIcon },
+        { to: '/profile/analytics/sales-units', label: 'Units Sold', icon: OrdersIcon }
+      );
+
+      // Show earnings
+      sellerItems.push({ to: '/profile/earnings', label: 'Earnings', icon: EarningsIcon });
+
+      if (sellerItems.length > 0) {
+        sections.push({ items: sellerItems });
+      }
+
+      sections.push({
+        title: 'Sales channels',
+        headingArrow: true,
+        items: [
+          {
+            to: '/profile/store',
+            label: sellerSetup.hasStore ? 'Online Store' : 'Set up Store',
+            icon: StoreIcon
+          }
+        ]
+      });
+
+      if (sellerSetup.hasApps) {
+        sections.push({
+          title: 'Apps',
+          headingArrow: true,
+          items: [{ to: '/profile/messages', label: 'Urban Prime AI', icon: AppsIcon }]
+        });
+      }
+    }
+
+    if ((isSellerWorkspace || isProviderWorkspace) && sellerSetup.hasContent) {
+      sections.push({
+        title: 'Content',
+        headingArrow: true,
+        items: [{ to: '/profile/creator-hub', label: 'Creator Hub', icon: ContentIcon }]
+      });
+    }
+
+    if (isProviderWorkspace) {
+      sections.push({
+        title: 'Service workspace',
+        headingArrow: true,
+        items: [
+          { to: '/profile/provider-dashboard', label: 'Provider dashboard', icon: HomeIcon },
+          { to: '/profile/services/new', label: 'List a service', icon: ProductIcon }
+        ]
+      });
+    }
+
+    if (isAffiliateWorkspace) {
+      sections.push({
+        title: 'Affiliate',
+        headingArrow: true,
+        items: [{ to: '/profile/affiliate', label: 'Affiliate dashboard', icon: AnalyticsIcon }]
+      });
+    }
+
+    // Account & Settings section
+    sections.push({
+      title: 'Account & Settings',
+      headingArrow: true,
+      items: [
+        { to: '/profile/addresses', label: 'Addresses', icon: MapPinIcon },
+        { to: '/profile/payment-options', label: 'Payment Methods', icon: CreditCardIcon },
+        { to: '/profile/notifications-settings', label: 'Notifications', icon: BellIcon },
+        { to: '/profile/settings', label: 'Settings', icon: SettingsIcon }
+      ]
+    });
+
+    sections.push({
+      items: [
+        { to: '/', label: 'Marketplace Home', icon: CompassIcon },
+        { to: '/profile/switch-accounts', label: 'Switch workspace', icon: PeopleIcon }
+      ]
+    });
+
+    return sections;
+  }, [isAffiliateWorkspace, isProviderWorkspace, isSellerWorkspace, sellerSetup]);
+
+  const userInitials = useMemo(() => {
+    const base = user?.name?.trim() || 'User';
+    const parts = base.split(/\s+/).slice(0, 2);
+    return parts.map((part) => part.charAt(0).toUpperCase()).join('');
+  }, [user?.name]);
+
+  const navLinkClass = (isActive: boolean) =>
+    [
+      'group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[14px] font-medium transition-all duration-150',
+      isActive
+        ? 'bg-[#ffffff] text-[#111111] shadow-[inset_0_0_0_1px_rgba(17,17,17,0.07)]'
+        : 'text-[#3f3f3f] hover:bg-[#ffffff] hover:text-[#111111]'
+    ].join(' ');
+
+  const renderNavigation = () => (
+    <div className="flex h-full flex-col">
+      <nav className="flex-1 px-2 py-2">
+        {navSections.map((section, sectionIndex) => (
+          <div key={`${section.title || 'default'}-${sectionIndex}`} className={sectionIndex === 0 ? '' : 'mt-2'}>
+            {section.title ? (
+              <p className="mb-1 flex items-center px-2.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#666]">
+                {section.title}
+                {section.headingArrow ? <ChevronRight className="ml-1 h-3 w-3" /> : null}
+              </p>
+            ) : null}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.to}>
+                    <NavLink to={item.to} end={item.end} className={({ isActive }) => navLinkClass(isActive)}>
+                      <Icon className="h-[16px] w-[16px] text-current" />
+                      <span className="truncate">{item.label}</span>
+                      {item.trailingDot ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#2d2d2d]" /> : null}
+                    </NavLink>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+
+  const renderMobileNavigation = () => (
+    <div className="flex h-full flex-col">
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {navSections.map((section, sectionIndex) => (
+          <div key={`${section.title || 'default'}-${sectionIndex}`} className={sectionIndex === 0 ? '' : 'mt-2'}>
+            {section.title ? (
+              <p className="mb-1 flex items-center px-2.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#666]">
+                {section.title}
+                {section.headingArrow ? <ChevronRight className="ml-1 h-3 w-3" /> : null}
+              </p>
+            ) : null}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.to}>
+                    <NavLink to={item.to} end={item.end} className={({ isActive }) => navLinkClass(isActive)}>
+                      <Icon className="h-[16px] w-[16px] text-current" />
+                      <span className="truncate">{item.label}</span>
+                      {item.trailingDot ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#2d2d2d]" /> : null}
+                    </NavLink>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+    </div>
+  );
+
+  return (
+    <div className="dashboard-shell min-h-screen bg-[#ececec] text-[#1f1f1f]">
+      <header
+        className="sticky top-0 z-40 grid h-[52px] grid-cols-[1fr_auto] items-center border-b border-black/35 bg-[#101113] text-white md:grid-cols-[248px_1fr_auto]"
+        style={{ height: TOP_BAR_HEIGHT }}
+      >
+        <div className="hidden h-full items-center border-r border-white/10 px-4 md:flex">
+          <Link to="/profile" className="inline-flex items-center gap-2">
+            <img src="/icons/urbanprime.svg" alt="Urban Prime" className="h-4 w-4" />
+            <span className="urban-prime-wordmark text-[0.78rem]">Urban Prime</span>
+          </Link>
         </div>
-    );
-    
-    // Ensure container is transparent for 'obsidian' theme
-    const bgClass = (resolvedTheme === 'obsidian' || resolvedTheme === 'hydra') ? 'bg-transparent' : 'bg-background';
 
-    return (
-        <div className={`${bgClass} min-h-screen`}>
-            {/* Added Global Header visibility */}
-            <div className="sticky top-0 z-40 w-full">
-                <Header />
-            </div>
+        <div className="flex items-center gap-3 px-3 md:px-5">
+          <button
+            onClick={() => setIsMobileNavOpen(true)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-white/5 text-white md:hidden"
+            aria-label="Open navigation"
+          >
+            <MenuIcon />
+          </button>
+          <p className="text-sm font-semibold tracking-wide text-white md:hidden">Dashboard</p>
+          <div className="hidden items-center gap-2 md:flex">
+            <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}>
+              <Link
+                to="/"
+                className="inline-flex h-8 items-center rounded-md border border-white/20 bg-white/10 px-2.5 text-[11px] font-semibold text-white/90 hover:bg-white/20"
+              >
+                <span className="mr-1 text-xs">{'<'}</span>
+                Back to homepage
+              </Link>
+            </motion.div>
+            <p className="text-sm font-semibold tracking-wide text-white/90">Dashboard</p>
+          </div>
+          <div className="relative flex h-9 w-full max-w-[700px] md:ml-auto">
+            <form
+              className="flex w-full items-center rounded-xl border border-white/15 bg-white/10 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                runSearch();
+              }}
+            >
+              <SearchIcon className="h-4 w-4 text-white/70" />
+              <input
+                type="text"
+                placeholder="Search products, orders, workflows..."
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setIsSearchSuggestionsOpen(true);
+                }}
+                onFocus={() => setIsSearchSuggestionsOpen(true)}
+                className="ml-2 h-full w-full bg-transparent text-sm text-white placeholder:text-white/60 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="hidden rounded-md border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold text-white/80 sm:inline-flex"
+              >
+                Search
+              </button>
+            </form>
+            <SearchSuggestionsDropdown
+              query={searchQuery}
+              isOpen={isSearchSuggestionsOpen}
+              onNavigate={(path) => {
+                navigate(path);
+                setSearchQuery('');
+                setIsSearchSuggestionsOpen(false);
+              }}
+              onClose={() => setIsSearchSuggestionsOpen(false)}
+            />
+          </div>
+        </div>
 
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 pt-20">
-                <div className="flex flex-col md:flex-row gap-8 items-start">
-                    <motion.aside 
-                        initial={{ opacity: 0, x: -50 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="w-full md:w-64 flex-shrink-0 bg-surface/80 backdrop-blur-xl p-4 rounded-xl shadow-soft border border-border sticky top-24"
-                    >
-                        <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-                            <img src={user?.avatar} alt={user?.name} className="w-12 h-12 rounded-full border border-border" />
-                            <div>
-                                <p className="font-bold text-text-primary">{user?.name}</p>
-                                <p className="text-xs text-text-secondary truncate max-w-[150px]">{user?.email}</p>
-                            </div>
-                        </div>
+        <div className="flex items-center gap-2 px-3 md:px-4">
+          {personas.length > 0 && (
+            <select
+              value={activePersona?.id || ''}
+              onChange={(event) => setActivePersona(event.target.value)}
+              className="hidden h-8 min-w-[152px] rounded-lg border border-white/15 bg-white/10 px-2 text-xs text-white/95 lg:block"
+            >
+              {personas.map((persona) => (
+                <option key={persona.id} value={persona.id} className="text-black">
+                  {personaTypeLabel[persona.type] || persona.type} - {persona.status}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/90 hover:bg-white/20"
+            aria-label="Support"
+            onClick={() => {
+              window.location.hash = '#/help';
+            }}
+          >
+            <LifeBuoyIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white/90 hover:bg-white/20"
+            aria-label="Notifications"
+            onClick={() => {
+              window.location.hash = '#/profile/messages';
+            }}
+          >
+            <BellIcon className="h-4 w-4" />
+          </button>
 
-                        <nav className="space-y-6">
-                            <NavGroup title="Dashboard">
-                                <li><NavLink to="/profile" end className={getNavLinkClass}><HomeIcon /> Overview</NavLink></li>
-                                <li><NavLink to="/profile/orders" className={getNavLinkClass}><OrdersIcon /> My Orders</NavLink></li>
-                                <li><NavLink to="/profile/messages" className={getNavLinkClass}><MessagesIcon /> Messages</NavLink></li>
-                            </NavGroup>
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsProfileMenuOpen((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-full bg-white/10 py-1 pl-1 pr-2.5"
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#f15bb5] text-xs font-bold text-white">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={user?.name || 'User'} className="h-full w-full object-cover" />
+                ) : (
+                  userInitials
+                )}
+              </span>
+              <span className="max-w-[110px] truncate text-xs font-semibold text-white/90">{user?.name || 'User'}</span>
+              <ChevronDown className="h-3 w-3 text-white/70" />
+            </button>
 
-                            <NavGroup title="Provider">
-                                {user?.isServiceProvider && user.providerProfile?.status === 'approved' ? (
-                                    <>
-                                        <li><NavLink to="/profile/provider-dashboard" className={getNavLinkClass}><HomeIcon /> Provider Dashboard</NavLink></li>
-                                        <li><NavLink to="/profile/services/new" className={getNavLinkClass}><ServiceIcon /> List a Service</NavLink></li>
-                                    </>
-                                ) : user?.isServiceProvider && user.providerProfile?.status === 'pending_approval' ? (
-                                    <li><div className="flex items-center gap-4 px-4 py-2.5 text-sm font-medium text-text-secondary"><ServiceIcon /> Application Pending</div></li>
-                                ) : (
-                                    <li><NavLink to="/profile/become-a-provider" className={getNavLinkClass}><ServiceIcon /> Become a Provider</NavLink></li>
-                                )}
-                            </NavGroup>
+            <AnimatePresence>
+              {isProfileMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 z-50 mt-2 w-[220px] rounded-xl border border-[#d8d8d8] bg-white p-1.5 shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+                >
+                  <Link to="/profile" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Dashboard</Link>
+                  <Link to="/profile/workflows" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Workflows</Link>
+                  <Link to="/profile/orders" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Orders</Link>
+                  <Link to="/profile/messages" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Inbox</Link>
+                  <Link to="/profile/wishlist" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Wishlist</Link>
+                  <Link to="/profile/reviews" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">My Reviews</Link>
+                  {isSellerWorkspace ? (
+                    <>
+                      <div className="my-1 border-t border-[#e5e5e5]" />
+                      <Link to="/profile/products" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Products</Link>
+                      <Link to="/profile/analytics/traffic" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Traffic Analytics</Link>
+                      <Link to="/profile/analytics/revenue" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Revenue Analytics</Link>
+                      <Link to="/profile/earnings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Earnings</Link>
+                      <Link to="/profile/store" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">
+                        {sellerSetup.hasStore ? 'Online Store' : 'Set up Store'}
+                      </Link>
+                    </>
+                  ) : null}
+                  {(isSellerWorkspace || isProviderWorkspace) && sellerSetup.hasContent ? (
+                    <Link to="/profile/creator-hub" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">
+                      Creator Hub
+                    </Link>
+                  ) : null}
+                  {isProviderWorkspace ? (
+                    <Link to="/profile/provider-dashboard" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">
+                      Provider dashboard
+                    </Link>
+                  ) : null}
+                  {isAffiliateWorkspace ? (
+                    <Link to="/profile/affiliate" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">
+                      Affiliate dashboard
+                    </Link>
+                  ) : null}
+                  <div className="my-1 border-t border-[#e5e5e5]" />
+                  <Link to="/profile/addresses" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Addresses</Link>
+                  <Link to="/profile/payment-options" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Payment Methods</Link>
+                  <Link to="/profile/notifications-settings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Notifications</Link>
+                  <Link to="/profile/settings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Settings</Link>
+                  <div className="my-1 border-t border-[#e5e5e5]" />
+                  <Link to="/" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Marketplace home</Link>
+                  <Link to="/profile/switch-accounts" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Switch workspace</Link>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#7f1d1d] hover:bg-[#fff5f5]"
+                  >
+                    Log out
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </header>
 
-                             <NavGroup title="My Activity">
-                                <li><NavLink to="/profile/wishlist" className={getNavLinkClass}><WishlistIcon /> Wishlist</NavLink></li>
-                                <li><NavLink to="/profile/reviews" className={getNavLinkClass}><ReviewIcon /> My Reviews</NavLink></li>
-                                <li><NavLink to="/profile/coupons" className={getNavLinkClass}><CouponIcon /> Coupons & Offers</NavLink></li>
-                                <li><NavLink to="/profile/followed-stores" className={getNavLinkClass}><FollowedStoreIcon /> Followed Stores</NavLink></li>
-                                <li><NavLink to="/profile/history" className={getNavLinkClass}><ClockIcon /> Browsing History</NavLink></li>
-                            </NavGroup>
+      <div className="flex" style={{ minHeight: `calc(100vh - ${TOP_BAR_HEIGHT}px)` }}>
+        <aside
+          className="hidden self-start overflow-hidden border-r border-[#d8d8d8] bg-[#efefef] md:sticky md:top-[52px] md:block md:h-[calc(100vh-52px)]"
+          style={{ width: DESKTOP_SIDEBAR_WIDTH }}
+        >
+          {renderNavigation()}
+        </aside>
 
-                            <NavGroup title="Selling">
-                                <li><NavLink to="/profile/store" className={getNavLinkClass}><StoreIcon /> My Store</NavLink></li>
-                                <li><NavLink to="/profile/products" className={getNavLinkClass}><ProductsIcon /> My Products</NavLink></li>
-                                <li><NavLink to="/profile/collections" className={getNavLinkClass}><CollectionsIcon /> My Collections</NavLink></li>
-                                <li><NavLink to="/profile/sales" className={getNavLinkClass}><EarningsIcon /> Sales Management</NavLink></li>
-                                <li><NavLink to="/profile/offers" className={getNavLinkClass}><OffersIcon /> Offers</NavLink></li>
-                                <li><NavLink to="/profile/creator-hub" className={getNavLinkClass}><CreatorHubIcon /> Creator Hub</NavLink></li>
-                                <li><NavLink to="/profile/affiliate" className={getNavLinkClass}><AffiliateIcon /> Affiliate Program</NavLink></li>
-                            </NavGroup>
+        <main className="min-w-0 flex-1 bg-[#ececec] px-3 py-3 sm:px-4 sm:py-4 md:px-5 md:py-5 lg:px-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.16 }}
+              className="dashboard-content mx-auto w-full max-w-[1200px]"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
 
-                             <NavGroup title="Account">
-                                <li><NavLink to="/profile/wallet" className={getNavLinkClass}><WalletIcon/> Wallet</NavLink></li>
-                                <li><NavLink to="/profile/permissions" className={getNavLinkClass}><PermissionsIcon /> Permissions</NavLink></li>
-                                <li><NavLink to="/profile/switch-accounts" className={getNavLinkClass}><SwitchAccountsIcon /> Switch Accounts</NavLink></li>
-                                <li><NavLink to="/profile/settings" className={getNavLinkClass}><SettingsIcon /> Settings</NavLink></li>
-                                <li><button onClick={logout} className="flex items-center gap-4 px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-500/10 w-full"><LogoutIcon /> Logout</button></li>
-                            </NavGroup>
-                        </nav>
-                    </motion.aside>
-                    <main className="flex-1 w-full min-w-0">
-                         <div className="mb-4">
-                            <BackButton />
-                        </div>
-                        <AnimatePresence mode='wait'>
-                            <motion.div
-                                key={location.pathname}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                            >
-                                <Outlet />
-                            </motion.div>
-                        </AnimatePresence>
-                    </main>
+      <AnimatePresence>
+        {isMobileNavOpen && (
+          <motion.div className="fixed inset-0 z-50 md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <button
+              className="absolute inset-0 bg-black/45"
+              onClick={() => setIsMobileNavOpen(false)}
+              aria-label="Close navigation"
+            />
+            <motion.aside
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+              className="absolute left-0 top-0 h-full w-[86vw] max-w-[320px] border-r border-[#d6d6d6] bg-[#efefef]"
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-[#d7d7d7] px-4 py-3">
+                  <p className="text-sm font-semibold text-[#1f1f1f]">Dashboard</p>
+                  <button
+                    onClick={() => setIsMobileNavOpen(false)}
+                    className="inline-flex h-8 items-center rounded-md border border-[#d0d0d0] bg-white px-3 text-xs font-semibold text-[#2a2a2a]"
+                  >
+                    Close
+                  </button>
                 </div>
-            </div>
-        </div>
-    );
+                {renderMobileNavigation()}
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 };
 
 export default DashboardLayout;
-
