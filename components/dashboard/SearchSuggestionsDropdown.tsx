@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
+import LottieAnimation from '../LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 interface Suggestion {
   id: string;
@@ -102,10 +104,10 @@ const suggestions: Suggestion[] = [
   // Pages - Seller only
   { id: 'products', label: 'Products', category: 'page', icon: ProductIcon, path: '/profile/products', keywords: ['product', 'products', 'catalog', 'items', 'listings'], description: 'Manage your products', requiresSeller: true },
   { id: 'sales', label: 'Sales', category: 'page', icon: OrdersIcon, path: '/profile/sales', keywords: ['sale', 'sales', 'sell', 'seller orders'], description: 'View sales', requiresSeller: true },
-  { id: 'analytics-traffic', label: 'Traffic Analytics', category: 'page', icon: TrendIcon, path: '/profile/analytics/traffic', keywords: ['traffic', 'view', 'visitor', 'analytics', 'traffic analytics'], description: 'View traffic and visitors', requiresSeller: true },
-  { id: 'analytics-revenue', label: 'Revenue Analytics', category: 'page', icon: TrendIcon, path: '/profile/analytics/revenue', keywords: ['revenue', 'earning', 'income', 'revenue analytics', 'money'], description: 'Check revenue', requiresSeller: true },
-  { id: 'analytics-conversion', label: 'Conversion Analytics', category: 'page', icon: TrendIcon, path: '/profile/analytics/conversion', keywords: ['conversion', 'convert', 'funnel', 'conversion analytics', 'rate'], description: 'Conversion rates', requiresSeller: true },
-  { id: 'analytics-sales-units', label: 'Sales Units', category: 'page', icon: TrendIcon, path: '/profile/analytics/sales-units', keywords: ['sales', 'units', 'quantity', 'sales units', 'sold'], description: 'Units sold', requiresSeller: true },
+  { id: 'analytics-traffic', label: 'Traffic Analytics', category: 'page', icon: TrendIcon, path: '/store/manager/analytics/traffic', keywords: ['traffic', 'view', 'visitor', 'analytics', 'traffic analytics'], description: 'View traffic and visitors', requiresSeller: true },
+  { id: 'analytics-revenue', label: 'Revenue Analytics', category: 'page', icon: TrendIcon, path: '/store/manager/analytics/revenue', keywords: ['revenue', 'earning', 'income', 'revenue analytics', 'money'], description: 'Check revenue', requiresSeller: true },
+  { id: 'analytics-conversion', label: 'Conversion Analytics', category: 'page', icon: TrendIcon, path: '/store/manager/analytics/conversion', keywords: ['conversion', 'convert', 'funnel', 'conversion analytics', 'rate'], description: 'Conversion rates', requiresSeller: true },
+  { id: 'analytics-sales-units', label: 'Sales Units', category: 'page', icon: TrendIcon, path: '/store/manager/analytics/sales-units', keywords: ['sales', 'units', 'quantity', 'sales units', 'sold'], description: 'Units sold', requiresSeller: true },
   { id: 'store', label: 'Online Store', category: 'page', icon: ProductIcon, path: '/profile/store', keywords: ['store', 'shop', 'online store', 'storefront', 'business'], description: 'Manage your store', requiresSeller: true },
   { id: 'coupons', label: 'Coupons & Discounts', category: 'page', icon: SearchIcon, path: '/profile/coupons', keywords: ['coupon', 'coupon', 'discount', 'promo', 'promotion', 'deal'], description: 'Create discounts', requiresSeller: true },
   { id: 'promotions', label: 'Promotions', category: 'page', icon: TrendIcon, path: '/profile/promotions', keywords: ['promotion', 'promotional', 'campaign', 'marketing', 'advertise'], description: 'Manage promotions', requiresSeller: true },
@@ -117,9 +119,9 @@ const suggestions: Suggestion[] = [
 
   // Pages - General
   { id: 'reviews', label: 'My Reviews', category: 'page', icon: StarIcon, path: '/profile/reviews', keywords: ['review', 'reviews', 'rating', 'feedback', 'rate'], description: 'Your reviews' },
-  { id: 'addresses', label: 'Addresses', category: 'page', icon: MapPinIcon, path: '/profile/addresses', keywords: ['address', 'addresses', 'shipping', 'delivery', 'location'], description: 'Delivery addresses' },
-  { id: 'payments', label: 'Payment Methods', category: 'page', icon: CreditCardIcon, path: '/profile/payment-options', keywords: ['payment', 'payment method', 'card', 'billing', 'credit'], description: 'Payment options' },
-  { id: 'notifications', label: 'Notifications', category: 'page', icon: BellIcon, path: '/profile/notifications-settings', keywords: ['notification', 'notifications', 'alert', 'alert settings'], description: 'Notification preferences' },
+  { id: 'addresses', label: 'Addresses', category: 'page', icon: MapPinIcon, path: '/profile/settings/addresses', keywords: ['address', 'addresses', 'shipping', 'delivery', 'location'], description: 'Delivery addresses' },
+  { id: 'payments', label: 'Payment Methods', category: 'page', icon: CreditCardIcon, path: '/payment-options', keywords: ['payment', 'payment method', 'card', 'billing', 'credit'], description: 'Payment options' },
+  { id: 'notifications', label: 'Notifications', category: 'page', icon: BellIcon, path: '/profile/settings/notifications', keywords: ['notification', 'notifications', 'alert', 'alert settings'], description: 'Notification preferences' },
   { id: 'settings', label: 'Settings', category: 'page', icon: SettingsIcon, path: '/profile/settings', keywords: ['setting', 'settings', 'preference', 'config', 'configuration'], description: 'Account settings' },
 
   // Features/Actions
@@ -228,6 +230,7 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
       >
         {filteredSuggestions.length === 0 ? (
           <div className="px-4 py-8 text-center text-white/60">
+            <LottieAnimation src={uiLottieAnimations.noResults} className="h-20 w-20 mx-auto" loop autoplay />
             <p className="text-sm">No results found for "{query}"</p>
             <p className="text-xs mt-2">Try searching for pages, products, or features</p>
           </div>

@@ -12,6 +12,7 @@ import type { SiteSettings } from '../types';
 import PixeFloatingButton from './PixeFloatingButton';
 import { useTheme } from '../hooks/useTheme';
 import OmniDashboard from './omni/OmniDashboard';
+import MobileAppChrome from './MobileAppChrome';
 
 const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ message, onClose }) => (
     <div className="bg-primary text-white text-center p-2 text-sm font-semibold relative z-[60]">
@@ -37,21 +38,41 @@ const Layout: React.FC = () => {
   const isReelsPage = location.pathname === '/reels';
   const isInspirationPage = location.pathname.startsWith('/inspiration');
   const isDashboardRoute = location.pathname.startsWith('/profile');
+  const isAuthRoute =
+    location.pathname.startsWith('/auth') ||
+    location.pathname.startsWith('/register') ||
+    location.pathname.startsWith('/forgot-password') ||
+    location.pathname.startsWith('/reset-password') ||
+    location.pathname.startsWith('/admin-login');
+  const isAdminRoute = location.pathname.startsWith('/admin');
   
   const isHomePage = location.pathname === '/';
   const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute;
   const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute;
+  const showMobileChrome =
+    !isReelsPage &&
+    !isInspirationPage &&
+    !isDashboardRoute &&
+    !isStoreCreationFlow &&
+    !isAuthRoute &&
+    !isAdminRoute;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
   
   const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';
   const layoutClasses = isDarkGlass ? 'bg-transparent text-text-primary' : 'bg-background text-text-primary';
   const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
+  const headerSpacing = showHeader && !isHomePage ? 'md:pt-24' : '';
+  const mobileChromeSpacing = showMobileChrome ? 'pb-[6.25rem]' : '';
 
   return (
     <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative overflow-x-hidden`}>
       {isBannerActive && showBanner && <SiteBanner message={siteSettings.siteBanner.message} onClose={() => setShowBanner(false)} />}
-      {showHeader && <Header onOpenOmni={() => setIsOmniOpen(true)} />}
-      <main className={`flex-grow relative z-10 ${mainBgClass} ${showHeader && !isHomePage ? 'pt-20 md:pt-24' : ''}`}>
+      {showHeader ? (
+        <div className="hidden md:block">
+          <Header onOpenOmni={() => setIsOmniOpen(true)} />
+        </div>
+      ) : null}
+      <main className={`flex-grow relative z-10 ${mainBgClass} ${headerSpacing} ${mobileChromeSpacing}`}>
         <div>
           <Outlet />
         </div>
@@ -60,11 +81,36 @@ const Layout: React.FC = () => {
       {/* Omni Interface */}
       <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
 
-      {!isDashboardRoute && <ComparisonBar />}
-      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && <FloatingWidget />}
-      {showFooter && <Footer />}
-      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && <AIChatBot />}
-      {!isReelsPage && !isDashboardRoute && <PixeFloatingButton />}
+      {!isDashboardRoute ? (
+        <div className="hidden md:block">
+          <ComparisonBar />
+        </div>
+      ) : null}
+      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute ? (
+        <div className="hidden md:block">
+          <FloatingWidget />
+        </div>
+      ) : null}
+      {showFooter ? (
+        showMobileChrome ? (
+          <div className="hidden md:block">
+            <Footer />
+          </div>
+        ) : (
+          <Footer />
+        )
+      ) : null}
+      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute ? (
+        <div className="hidden md:block">
+          <AIChatBot />
+        </div>
+      ) : null}
+      {!isReelsPage && !isDashboardRoute ? (
+        <div className="hidden md:block">
+          <PixeFloatingButton />
+        </div>
+      ) : null}
+      {showMobileChrome ? <MobileAppChrome /> : null}
       <BackToTopButton />
     </div>
   );

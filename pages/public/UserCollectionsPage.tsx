@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { userService } from '../../services/itemService';
 import type { ItemCollection, User } from '../../types';
 import Spinner from '../../components/Spinner';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const CollectionCard: React.FC<{ collection: ItemCollection }> = ({ collection }) => (
     <div className="bg-white dark:bg-dark-surface rounded-lg shadow-soft border border-gray-200 dark:border-gray-700 p-6">
@@ -43,7 +45,12 @@ const UserCollectionsPage: React.FC = () => {
     }
 
     if (!user) {
-        return <div className="text-center py-20">User not found.</div>;
+        return (
+            <div className="text-center py-20">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-44 w-44 mx-auto" loop autoplay />
+                <p>User not found.</p>
+            </div>
+        );
     }
 
     return (
@@ -66,6 +73,7 @@ const UserCollectionsPage: React.FC = () => {
                     </div>
                 ) : (
                      <div className="text-center py-20 bg-white dark:bg-dark-surface rounded-lg shadow-sm border">
+                        <LottieAnimation src={uiLottieAnimations.nothing} className="h-32 w-32 mx-auto" loop autoplay />
                         <p className="text-gray-500 dark:text-gray-400">{user.name} has not created any public collections yet.</p>
                     </div>
                 )}

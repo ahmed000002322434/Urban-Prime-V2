@@ -3,6 +3,8 @@ import { useParams, Link, Outlet } from 'react-router-dom';
 import { storefrontService } from '../services/storefrontService';
 import type { Store } from '../types';
 import Spinner from '../components/Spinner';
+import LottieAnimation from '../components/LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 // Context to provide store data to child pages
 const StoreContext = createContext<Store | null>(null);
@@ -55,7 +57,8 @@ const StoreLayout: React.FC = () => {
             <div className="container mx-auto text-center py-20">
                 <h2 className="text-2xl text-red-500">Error</h2>
                 <p className="mt-2 text-gray-500">{error || 'Store data could not be loaded.'}</p>
-                <Link to="/" className="mt-4 inline-block px-6 py-2 bg-black text-white rounded-md">
+                <Link to="/" className="mt-4 inline-flex items-center gap-2 px-6 py-2 bg-black text-white rounded-md">
+                    <LottieAnimation src={uiLottieAnimations.home} alt="Home icon" className="h-5 w-5 object-contain" loop autoplay />
                     Back to Home
                 </Link>
             </div>

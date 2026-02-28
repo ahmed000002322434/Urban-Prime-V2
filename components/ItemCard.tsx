@@ -9,6 +9,8 @@ import WishlistButton from './WishlistButton';
 import { useComparison } from '../hooks/useComparison';
 import { useCart } from '../hooks/useCart';
 import { useTranslatedItem, useTranslation } from '../hooks/useTranslation';
+import LottieAnimation from './LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 const CompareIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
 const EyeIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.432 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
@@ -41,9 +43,13 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const { currency } = useTranslation();
   const { translatedItem, isLoadingTranslation } = useTranslatedItem(item);
   const { isComparing, toggleCompare } = useComparison();
-  const { addItemToCart } = useCart();
+  const { addItemToCart, cartCount } = useCart();
   const navigate = useNavigate();
-  const [isAnimatingCart, setIsAnimatingCart] = useState(false);
+  const [cartAnimationType, setCartAnimationType] = useState<'single' | 'multiple' | null>(null);
+  const isAnimatingCart = cartAnimationType !== null;
+  const cartAnimationClass = cartAnimationType === 'multiple' ? 'animate-add-to-cart-multi' : 'animate-add-to-cart-single';
+  const cartAnimationSrc =
+    cartAnimationType === 'multiple' ? uiLottieAnimations.addToCartMultiple : uiLottieAnimations.addToCartSingle;
 
   // State and refs for thinking bubble
   const [bubble, setBubble] = useState<{ visible: boolean; x: number; y: number }>({ visible: false, x: 0, y: 0 });
@@ -88,8 +94,8 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
         return;
       }
       addItemToCart(item, 1);
-      setIsAnimatingCart(true);
-      setTimeout(() => setIsAnimatingCart(false), 400); // Animation duration
+      setCartAnimationType(cartCount + 1 > 1 ? 'multiple' : 'single');
+      setTimeout(() => setCartAnimationType(null), 900);
   };
   
   const handleBuyNowClick = (e: React.MouseEvent) => {
@@ -151,8 +157,21 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
         onMouseLeave={scheduleHide}
     >
         <div className="flex flex-col gap-2">
-            <button onClick={handleAddToCartClick} className={`w-full text-left px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-bold ${isAnimatingCart ? 'animate-add-to-cart' : ''}`}>
-                Add to Cart
+            <button onClick={handleAddToCartClick} className={`relative overflow-hidden w-full text-left px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-bold ${isAnimatingCart ? cartAnimationClass : ''}`}>
+                <span className="relative z-10">Add to Cart</span>
+                {isAnimatingCart && (
+                  <span
+                    className={`absolute inset-0 z-0 pointer-events-none ${cartAnimationType === 'multiple' ? 'opacity-95' : 'opacity-50 flex items-center justify-center'}`}
+                  >
+                    <LottieAnimation
+                      src={cartAnimationSrc}
+                      className={cartAnimationType === 'multiple' ? 'h-full w-full object-cover' : 'w-16 h-16 object-contain'}
+                      autoplay
+                      loop={false}
+                      speed={1.2}
+                    />
+                  </span>
+                )}
             </button>
             <button onClick={handleBuyNowClick} className="w-full text-left px-3 py-2 rounded-lg bg-surface-soft hover:bg-gray-200 text-sm font-bold text-text-primary">
                 {translatedItem.listingType === 'rent' ? 'Rent Now' : translatedItem.listingType === 'auction' ? 'Bid Now' : 'Buy Now'}
@@ -209,8 +228,21 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
               <p className="font-extrabold text-base sm:text-lg text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-[10px] font-normal text-text-secondary capitalize ml-0.5">{priceLabel}</span></p>
               {displayDueDate && <p className="text-[10px] font-bold text-red-500 mt-0.5">Due: {displayDueDate}</p>}
             </div>
-            <button onClick={handleAddToCartClick} className={`p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-colors shadow-md self-start sm:self-auto ${isAnimatingCart ? 'animate-add-to-cart' : ''}`} aria-label="Add to cart">
-              <CartIcon />
+            <button onClick={handleAddToCartClick} className={`relative overflow-hidden p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-colors shadow-md self-start sm:self-auto ${isAnimatingCart ? cartAnimationClass : ''}`} aria-label="Add to cart">
+              <span className="relative z-10"><CartIcon /></span>
+              {isAnimatingCart && (
+                <span
+                  className={`absolute inset-0 z-0 pointer-events-none ${cartAnimationType === 'multiple' ? 'opacity-95' : 'opacity-80 flex items-center justify-center'}`}
+                >
+                  <LottieAnimation
+                    src={cartAnimationSrc}
+                    className={cartAnimationType === 'multiple' ? 'h-full w-full object-cover scale-110' : 'w-12 h-12 object-contain'}
+                    autoplay
+                    loop={false}
+                    speed={1.2}
+                  />
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -263,8 +295,21 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
                  <button onClick={() => onQuickView(item)} className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-bold text-sm">
                     Quick View
                 </button>
-                <button onClick={handleAddToCartClick} className={`px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg text-sm hover:opacity-80 transition-colors shadow-md ${isAnimatingCart ? 'animate-add-to-cart' : ''}`}>
-                    Add to Cart
+                <button onClick={handleAddToCartClick} className={`relative overflow-hidden px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg text-sm hover:opacity-80 transition-colors shadow-md ${isAnimatingCart ? cartAnimationClass : ''}`}>
+                    <span className="relative z-10">Add to Cart</span>
+                    {isAnimatingCart && (
+                      <span
+                        className={`absolute inset-0 z-0 pointer-events-none ${cartAnimationType === 'multiple' ? 'opacity-95' : 'opacity-70 flex items-center justify-center'}`}
+                      >
+                        <LottieAnimation
+                          src={cartAnimationSrc}
+                          className={cartAnimationType === 'multiple' ? 'h-full w-full object-cover' : 'w-16 h-16 object-contain'}
+                          autoplay
+                          loop={false}
+                          speed={1.2}
+                        />
+                      </span>
+                    )}
                 </button>
             </div>
         </div>

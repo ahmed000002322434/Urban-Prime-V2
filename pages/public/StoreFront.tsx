@@ -10,6 +10,8 @@ import Spinner from '../../components/Spinner';
 import EditableHero from '../../components/builder/sections/EditableHero';
 import EditableProductGrid from '../../components/builder/sections/EditableProductGrid';
 import EditableTextSection from '../../components/builder/sections/EditableTextSection';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const StoreFront: React.FC = () => {
     const { storeSlug } = useParams<{ storeSlug: string }>();
@@ -42,9 +44,12 @@ const StoreFront: React.FC = () => {
     if (isLoading) return <div className="h-screen flex items-center justify-center bg-black"><Spinner size="lg" /></div>;
     if (error || !layout) return (
         <div className="h-screen flex flex-col items-center justify-center bg-white text-center p-8">
-            <h1 className="text-4xl font-black mb-4">404</h1>
+            <LottieAnimation src={uiLottieAnimations.error404} className="h-56 w-56" loop autoplay />
             <p className="text-gray-500 mb-8">{error || "This store is currently unavailable."}</p>
-            <Link to="/" className="px-8 py-3 bg-black text-white rounded-full font-bold uppercase tracking-widest">Return Home</Link>
+            <Link to="/" className="inline-flex items-center gap-2 px-8 py-3 bg-black text-white rounded-full font-bold uppercase tracking-widest">
+                <LottieAnimation src={uiLottieAnimations.home} alt="Home icon" className="h-5 w-5 object-contain" loop autoplay />
+                Return Home
+            </Link>
         </div>
     );
 

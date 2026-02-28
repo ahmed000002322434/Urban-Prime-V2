@@ -9,6 +9,11 @@ const isSupabaseConfigured = () => {
 };
 
 const isDirectMirrorEnabled = () => (import.meta.env.VITE_ENABLE_DIRECT_SUPABASE_MIRROR as string | undefined) === 'true';
+const MIRROR_UPSERT_MIN_INTERVAL_MS = 10_000;
+const MIRROR_BACKEND_SUSPEND_MS = 60_000;
+const MIRROR_BACKEND_SUSPEND_MS_404 = 5 * 60_000;
+const recentMirrorUpserts = new Map<string, number>();
+let backendMirrorSuspendedUntil = 0;
 
 type MirrorRecord<T> = {
   collection: string;
@@ -53,17 +58,53 @@ const buildMirrorQuery = (
 
 const shouldUseDirectSupabase = () => !shouldUseBackend() && isSupabaseConfigured() && isDirectMirrorEnabled();
 
+const parseBackendStatusCode = (error: unknown): number => {
+  const message = String((error as any)?.message || '');
+  const statusMatch = message.match(/\b(\d{3})\b/);
+  if (!statusMatch) return 0;
+  const status = Number(statusMatch[1]);
+  return Number.isFinite(status) ? status : 0;
+};
+
+const recordBackendMirrorFailure = (error: unknown) => {
+  const status = parseBackendStatusCode(error);
+  if (status === 404) {
+    backendMirrorSuspendedUntil = Date.now() + MIRROR_BACKEND_SUSPEND_MS_404;
+    return;
+  }
+  if (status === 429) {
+    backendMirrorSuspendedUntil = Date.now() + MIRROR_BACKEND_SUSPEND_MS;
+    return;
+  }
+  backendMirrorSuspendedUntil = Date.now() + Math.min(MIRROR_BACKEND_SUSPEND_MS, 20_000);
+};
+
+const canAttemptBackendMirror = () => Date.now() >= backendMirrorSuspendedUntil;
+
+const shouldSkipFrequentUpsert = (collection: string, docId: string) => {
+  const key = `${collection}:${docId}`;
+  const last = recentMirrorUpserts.get(key) || 0;
+  const now = Date.now();
+  if (now - last < MIRROR_UPSERT_MIN_INTERVAL_MS) {
+    return true;
+  }
+  recentMirrorUpserts.set(key, now);
+  return false;
+};
+
 export const supabaseMirror = {
   enabled: prefersSupabase() && (shouldUseBackend() || shouldUseDirectSupabase()),
 
   upsert: async <T>(collection: string, docId: string, data: T) => {
     if (!supabaseMirror.enabled) return;
+    if (shouldSkipFrequentUpsert(collection, docId)) return;
     try {
-      if (shouldUseBackend() && isBackendConfigured()) {
+      if (shouldUseBackend() && isBackendConfigured() && canAttemptBackendMirror()) {
         await backendFetch('/api/mirror_documents?upsert=1&onConflict=collection,doc_id', {
           method: 'POST',
           body: JSON.stringify(buildPayload(collection, docId, data))
         });
+        backendMirrorSuspendedUntil = 0;
         return;
       }
 
@@ -74,6 +115,7 @@ export const supabaseMirror = {
       });
       if (error) handleSupabaseError(error);
     } catch (error) {
+      recordBackendMirrorFailure(error);
       handleSupabaseError(error);
       console.warn('Supabase mirror upsert failed:', error);
     }
@@ -96,10 +138,11 @@ export const supabaseMirror = {
   remove: async (collection: string, docId: string) => {
     if (!supabaseMirror.enabled) return;
     try {
-      if (shouldUseBackend() && isBackendConfigured()) {
+      if (shouldUseBackend() && isBackendConfigured() && canAttemptBackendMirror()) {
         await backendFetch(`/api/mirror_documents?eq.collection=${encodeURIComponent(collection)}&eq.doc_id=${encodeURIComponent(docId)}`, {
           method: 'DELETE'
         });
+        backendMirrorSuspendedUntil = 0;
         return;
       }
 
@@ -108,6 +151,7 @@ export const supabaseMirror = {
       const { error } = await supabase.from('mirror_documents').delete().eq('collection', collection).eq('doc_id', docId);
       if (error) handleSupabaseError(error);
     } catch (error) {
+      recordBackendMirrorFailure(error);
       handleSupabaseError(error);
       console.warn('Supabase mirror delete failed:', error);
     }

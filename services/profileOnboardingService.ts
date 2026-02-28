@@ -94,7 +94,8 @@ const mapCompletion = (raw: any): ProfileCompletion => ({
 });
 
 const mapFeatureFlags = (raw: any): FeatureFlags => ({
-  profileOnboardingV2: raw?.profileOnboardingV2 !== false
+  profileOnboardingV2: raw?.profileOnboardingV2 !== false,
+  chatReliabilityV2: raw?.chatReliabilityV2 !== false
 });
 
 const mapOnboardingState = (raw: any): UserOnboardingState | null => {
@@ -126,6 +127,8 @@ const mapUnifiedProfile = (raw: any): UnifiedProfile => {
   const completion = mapCompletion(raw?.completion || {});
   const featureFlags = mapFeatureFlags(raw?.featureFlags || raw?.feature_flags || {});
   const interests = normalizeArray(profileRow?.interests);
+  const preferences = profileRow?.preferences && typeof profileRow.preferences === 'object' ? profileRow.preferences : {};
+  const chatPresenceVisible = preferences?.chatPresenceVisible !== false;
 
   const user: User = {
     id: userRow?.firebase_uid || userRow?.id || '',
@@ -143,6 +146,11 @@ const mapUnifiedProfile = (raw: any): UnifiedProfile => {
     about: profileRow?.about || undefined,
     businessName: profileRow?.business_name || undefined,
     businessDescription: profileRow?.business_description || undefined,
+    chatSettings: {
+      e2eEnabled: false,
+      presenceVisible: chatPresenceVisible,
+      soundEnabled: true
+    },
     following: [],
     followers: [],
     wishlist: [],

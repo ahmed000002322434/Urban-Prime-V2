@@ -1,5 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import LottieAnimation from './LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 const icons: Record<string, React.ReactNode> = {
     cart: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-24 h-24 text-gray-300 dark:text-gray-700"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c.51 0 .962-.328 1.125-.824l2.857-9.643A.75.75 0 0020.25 3H6.088a.75.75 0 00-.744.824l.643 3.963M7.5 14.25L5.106 5.162" /></svg>,
@@ -15,19 +17,28 @@ interface EmptyStateProps {
   buttonText: string;
   buttonLink: string;
   icon?: keyof typeof icons;
+  animation?: keyof typeof uiLottieAnimations;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({ title, message, buttonText, buttonLink, icon }) => {
+const EmptyState: React.FC<EmptyStateProps> = ({ title, message, buttonText, buttonLink, icon, animation }) => {
+  const resolvedAnimation = animation || (icon === 'cart' ? 'nothing' : undefined);
   return (
     <div className="flex items-center justify-center py-10">
       <div className="bg-white dark:bg-dark-surface p-12 rounded-2xl shadow-soft border border-gray-200 dark:border-gray-700 text-center max-w-lg mx-auto">
-        {icon && icons[icon] && <div className="flex justify-center mb-6">{icons[icon]}</div>}
+        {resolvedAnimation ? (
+          <div className="flex justify-center mb-4">
+            <LottieAnimation src={uiLottieAnimations[resolvedAnimation]} className="h-40 w-40" loop autoplay />
+          </div>
+        ) : (
+          icon && icons[icon] && <div className="flex justify-center mb-6">{icons[icon]}</div>
+        )}
         <h2 className="text-3xl font-extrabold font-display text-gray-800 dark:text-dark-text">{title}</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">{message}</p>
         <Link
           to={buttonLink}
-          className="mt-8 inline-block bg-primary text-white font-bold py-3 px-8 rounded-full hover:opacity-90 transition-opacity"
+          className="mt-8 inline-flex items-center gap-2 bg-primary text-white font-bold py-3 px-8 rounded-full hover:opacity-90 transition-opacity"
         >
+          {buttonLink === '/' && <LottieAnimation src={uiLottieAnimations.home} alt="Home icon" className="h-5 w-5 object-contain" loop autoplay />}
           {buttonText}
         </Link>
       </div>

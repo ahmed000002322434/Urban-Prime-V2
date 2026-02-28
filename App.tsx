@@ -55,8 +55,10 @@ const StoresDirectoryPage = lazy(() => import('./pages/public/StoresDirectoryPag
 const SellerDirectoryPage = lazy(() => import('./pages/public/SellerDirectoryPage'));
 const RenterDirectoryPage = lazy(() => import('./pages/public/RenterDirectoryPage'));
 const BuyerDirectoryPage = lazy(() => import('./pages/public/BuyerDirectoryPage'));
+const ExploreHubPage = lazy(() => import('./pages/public/ExploreHubPage'));
 const BrowsePage = lazy(() => import('./pages/public/BrowsePage'));
 const BrowseServicesPage = lazy(() => import('./pages/public/BrowseServicesPage'));
+const ServicesMarketplacePage = lazy(() => import('./pages/public/ServicesMarketplacePage'));
 const ItemDetailPage = lazy(() => import('./pages/public/ItemDetailPage'));
 const ServiceDetailPage = lazy(() => import('./pages/public/ServiceDetailPage'));
 const ReelsPage = lazy(() => import('./pages/public/ReelsPage'));
@@ -321,8 +323,10 @@ const AppContent: React.FC = () => {
             <Route path="sellers" element={<SellerDirectoryPage />} />
             <Route path="renters" element={<RenterDirectoryPage />} />
             <Route path="buyers" element={<BuyerDirectoryPage />} />
+            <Route path="explore" element={<ExploreHubPage />} />
             <Route path="browse" element={<BrowsePage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
+            <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
             <Route path="reels" element={<ReelsPage />} />
             <Route path="live" element={<LiveShoppingPage />} />
             <Route path="pixe" element={<PixePage />} />
@@ -462,6 +466,13 @@ const AppContent: React.FC = () => {
                         <Route path="privacy" element={<PrivacySettingsPage />} />
                         <Route path="notifications" element={<NotificationsSettingsPage />} />
                     </Route>
+                    <Route path="addresses" element={<Navigate to="/profile/settings/addresses" replace />} />
+                    <Route path="notifications-settings" element={<Navigate to="/profile/settings/notifications" replace />} />
+                    <Route path="payment-options" element={<Navigate to="/payment-options" replace />} />
+                    <Route path="analytics/traffic" element={<Navigate to="/store/manager/analytics/traffic" replace />} />
+                    <Route path="analytics/revenue" element={<Navigate to="/store/manager/analytics/revenue" replace />} />
+                    <Route path="analytics/conversion" element={<Navigate to="/store/manager/analytics/conversion" replace />} />
+                    <Route path="analytics/sales-units" element={<Navigate to="/store/manager/analytics/sales-units" replace />} />
                     <Route path="wallet" element={<WalletPage />} />
                     <Route path="permissions" element={<PermissionsPage />} />
                     <Route path="switch-accounts" element={<SwitchAccountsPage />} />

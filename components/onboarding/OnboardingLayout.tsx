@@ -17,6 +17,8 @@ interface OnboardingLayoutProps {
   submitLabel?: string;
   nextDisabled?: boolean;
   showSubmit?: boolean;
+  onSkip?: () => void;
+  skipLabel?: string;
 }
 
 const autosaveCopy: Record<OnboardingLayoutProps['autosaveStatus'], string> = {
@@ -50,14 +52,16 @@ const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
   nextLabel = 'Continue',
   submitLabel = 'Complete setup',
   nextDisabled = false,
-  showSubmit = false
+  showSubmit = false,
+  onSkip,
+  skipLabel = 'Skip for now'
 }) => {
   const percent = Math.max(0, Math.min(100, (stepIndex / totalSteps) * 100));
 
   return (
-    <div className="relative h-screen overflow-hidden px-4 py-3 sm:px-6 sm:py-4">
+    <div className="relative min-h-screen overflow-x-hidden px-4 py-3 sm:px-6 sm:py-4 md:h-screen md:overflow-hidden">
       <AuthVideoBackdrop />
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-4xl flex-col">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col md:h-full md:min-h-0">
         <header className="mb-3 rounded-3xl border border-white/25 bg-white/12 p-3 text-white shadow-[0_20px_70px_-30px_rgba(0,0,0,0.6)] backdrop-blur-xl sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -65,9 +69,20 @@ const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
               <h1 className="mt-1 text-2xl font-black tracking-tight">{title}</h1>
               {subtitle ? <p className="mt-1 text-sm text-white/80">{subtitle}</p> : null}
             </div>
-            <p className={`rounded-full border px-3 py-1 text-xs font-semibold ${autosaveClass[autosaveStatus]}`}>
-              {autosaveCopy[autosaveStatus]}
-            </p>
+            <div className="flex items-center gap-2">
+              {onSkip ? (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="rounded-full border border-white/40 bg-black/30 px-3 py-1 text-xs font-semibold text-white transition hover:bg-black/45"
+                >
+                  {skipLabel}
+                </button>
+              ) : null}
+              <p className={`rounded-full border px-3 py-1 text-xs font-semibold ${autosaveClass[autosaveStatus]}`}>
+                {autosaveCopy[autosaveStatus]}
+              </p>
+            </div>
           </div>
 
           <div className="mt-3">
@@ -80,7 +95,7 @@ const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1">{children}</div>
+        <div className="min-h-0 flex-1 overflow-visible md:overflow-hidden">{children}</div>
 
         <footer className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <button

@@ -121,6 +121,9 @@ const OnboardingPage: React.FC = () => {
   const [systemNotice, setSystemNotice] = useState<string | null>(null);
   const [stepDirection, setStepDirection] = useState<1 | -1>(1);
   const [stepScale, setStepScale] = useState(1);
+  const [isCompactViewport, setIsCompactViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
+  );
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fitViewportRef = useRef<HTMLDivElement | null>(null);
   const fitContentRef = useRef<HTMLDivElement | null>(null);
@@ -286,6 +289,10 @@ const OnboardingPage: React.FC = () => {
   }, [initialized, autosaveStatus, currentStep, selectedIntents, draft]);
 
   const recomputeStepScale = useCallback(() => {
+    if (isCompactViewport) {
+      setStepScale(1);
+      return;
+    }
     const viewport = fitViewportRef.current;
     const content = fitContentRef.current;
     if (!viewport || !content) return;
@@ -298,7 +305,7 @@ const OnboardingPage: React.FC = () => {
     const boundedScale = Math.max(0.62, Math.min(1, rawScale));
 
     setStepScale((current) => (Math.abs(current - boundedScale) > 0.01 ? boundedScale : current));
-  }, []);
+  }, [isCompactViewport]);
 
   useEffect(() => {
     const raf = requestAnimationFrame(recomputeStepScale);
@@ -306,10 +313,52 @@ const OnboardingPage: React.FC = () => {
   }, [recomputeStepScale, currentStep, draft, selectedIntents, stepError, systemNotice]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = () => {
+      setIsCompactViewport(mediaQuery.matches);
+    };
+    handleChange();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
     const onResize = () => recomputeStepScale();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [recomputeStepScale]);
+
+  const handleSkipForNow = async () => {
+    const skipIntents: OnboardingIntent[] = selectedIntents.length > 0 ? selectedIntents : ['buy'];
+    const skipDraft = mergeDraft(draft, {
+      intent: {
+        selectedIntents: skipIntents
+      }
+    });
+
+    setSelectedIntents(skipIntents);
+    setDraft(skipDraft);
+    writeLocalOnboardingState(currentStep, skipIntents, skipDraft);
+    try {
+      setAutosaveStatus('saving');
+      await saveOnboardingStep(currentStep, {
+        selectedIntents: skipIntents,
+        draft: skipDraft
+      });
+      clearLocalOnboardingState();
+      setAutosaveStatus('saved');
+      setTimeout(() => setAutosaveStatus('idle'), 900);
+    } catch {
+      writeLocalOnboardingState(currentStep, skipIntents, skipDraft);
+      setAutosaveStatus('local');
+    }
+    navigate('/profile/messages', { replace: true });
+  };
 
   const validateStep = (step: OnboardingStepId): string[] => {
     const identity = draft.identity || {};
@@ -509,8 +558,10 @@ const OnboardingPage: React.FC = () => {
       nextDisabled={isSubmitting}
       showSubmit={currentStep === 'review'}
       submitLabel={isSubmitting ? 'Completing...' : 'Complete setup'}
+      onSkip={handleSkipForNow}
+      skipLabel="Skip for now"
     >
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col md:h-full">
         <div className="relative min-h-0 flex-1" style={{ perspective: 1600 }}>
           <AnimatePresence mode="wait" custom={stepDirection}>
             <motion.div
@@ -542,15 +593,22 @@ const OnboardingPage: React.FC = () => {
                 backfaceVisibility: 'hidden'
               }}
             >
-              <div ref={fitViewportRef} className="relative h-full overflow-hidden">
+              <div
+                ref={fitViewportRef}
+                className={`relative h-full ${isCompactViewport ? 'overflow-y-auto pr-1' : 'overflow-hidden'}`}
+              >
                 <div
                   ref={fitContentRef}
-                  className="absolute inset-x-0 top-0"
-                  style={{
-                    transform: `scale(${stepScale})`,
-                    transformOrigin: 'top center',
-                    transition: 'transform 180ms ease'
-                  }}
+                  className={isCompactViewport ? 'relative' : 'absolute inset-x-0 top-0'}
+                  style={
+                    isCompactViewport
+                      ? undefined
+                      : {
+                          transform: `scale(${stepScale})`,
+                          transformOrigin: 'top center',
+                          transition: 'transform 180ms ease'
+                        }
+                  }
                 >
                   {renderCurrentStep()}
                 </div>

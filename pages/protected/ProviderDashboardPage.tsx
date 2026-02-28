@@ -44,7 +44,9 @@ const JobRequestCard: React.FC<{ request: Job; onAccept: () => void; onDecline: 
                 <img src={request.customer.avatar} alt={request.customer.name} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-white/10" />
                 <div>
                     <h4 className="font-bold text-lg text-text-primary">{request.service?.title}</h4>
-                    <p className="text-sm text-text-secondary flex items-center gap-1">{request.customer.name} • <MapPinIcon /> 2.5km away</p>
+                    <p className="text-sm text-text-secondary flex items-center gap-1">
+                        {request.customer.name} <span>&middot;</span> <MapPinIcon /> 2.5km away
+                    </p>
                 </div>
             </div>
             <div className="text-right">
@@ -53,7 +55,7 @@ const JobRequestCard: React.FC<{ request: Job; onAccept: () => void; onDecline: 
             </div>
         </div>
         <div className="bg-surface-soft p-3 rounded-lg mb-4 text-sm text-text-secondary font-mono">
-             <p>📅 {new Date(request.scheduledTime).toLocaleDateString()} @ {new Date(request.scheduledTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+             <p>{new Date(request.scheduledTime).toLocaleDateString()} @ {new Date(request.scheduledTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
         </div>
         <div className="flex gap-3">
             <button onClick={onAccept} className="flex-1 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-xl hover:opacity-90 transition-opacity">Accept Job</button>
@@ -95,13 +97,18 @@ const ServiceRow: React.FC<{ service: Service }> = ({ service }) => (
         className="flex items-center justify-between p-4 bg-surface rounded-xl border border-border hover:shadow-md transition-all"
     >
         <div className="flex items-center gap-4">
-            <img src={service.imageUrls[0]} alt={service.title} className="w-16 h-16 rounded-lg object-cover border border-border" />
+            <img src={service.imageUrls?.[0] || '/icons/urbanprime.svg'} alt={service.title} className="w-16 h-16 rounded-lg object-cover border border-border" />
             <div>
                 <h4 className="font-bold text-text-primary">{service.title}</h4>
-                <p className="text-sm text-text-secondary font-mono">${service.pricingModels[0].price}/{service.pricingModels[0].type === 'hourly' ? 'hr' : 'job'}</p>
+                <p className="text-sm text-text-secondary font-mono">
+                    ${(service.pricingModels?.[0]?.price || 0)}/{service.pricingModels?.[0]?.type === 'hourly' ? 'hr' : 'job'}
+                </p>
             </div>
         </div>
-        <Link to={`/profile/services/new?edit=${service.id}`} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-bold text-text-primary hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Edit</Link>
+        <div className="flex items-center gap-2">
+            <Link to={`/service/${service.id}`} className="px-3 py-2 border border-border rounded-lg text-xs font-bold text-text-primary hover:bg-surface-soft transition-colors">Showcase</Link>
+            <Link to={`/profile/services/new?edit=${service.id}`} className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-bold text-text-primary hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Edit</Link>
+        </div>
     </motion.div>
 );
 
@@ -118,7 +125,7 @@ const ProposalRow: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
                 <h4 className="font-bold text-text-primary">{proposal.title}</h4>
                 <p className="text-sm text-text-secondary mt-1 line-clamp-2">{proposal.coverLetter || 'No cover letter provided.'}</p>
                 <p className="text-sm font-mono text-text-secondary mt-2">
-                    ${proposal.priceTotal.toLocaleString()} {proposal.currency} • {proposal.deliveryDays || 0} days
+                    ${proposal.priceTotal.toLocaleString()} {proposal.currency} | {proposal.deliveryDays || 0} days
                 </p>
             </div>
             <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
@@ -175,6 +182,11 @@ const ProviderDashboardPage: React.FC = () => {
     const handleAcceptJob = async (jobId: string) => {
         await providerService.updateJobStatus(jobId, 'confirmed');
         fetchData(); // Refresh to move to active
+    };
+
+    const handleDeclineJob = async (jobId: string) => {
+        await providerService.updateJobStatus(jobId, 'cancelled');
+        fetchData();
     };
 
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Spinner size="lg" /></div>;
@@ -238,7 +250,7 @@ const ProviderDashboardPage: React.FC = () => {
                                 <div className="lg:col-span-2 space-y-6">
                                     <h3 className="font-bold text-xl text-text-primary">Incoming Requests</h3>
                                     {requests.length > 0 ? requests.map(req => (
-                                        <JobRequestCard key={req.id} request={req} onAccept={() => handleAcceptJob(req.id)} onDecline={() => {}} />
+                                        <JobRequestCard key={req.id} request={req} onAccept={() => handleAcceptJob(req.id)} onDecline={() => handleDeclineJob(req.id)} />
                                     )) : <div className="p-8 bg-surface rounded-xl border border-border text-center text-text-secondary italic">No new requests at the moment.</div>}
                                 </div>
                                 <div className="space-y-6">
@@ -253,7 +265,7 @@ const ProviderDashboardPage: React.FC = () => {
                         {activeTab === 'requests' && (
                             <div className="grid md:grid-cols-2 gap-6">
                                  {requests.length > 0 ? requests.map(req => (
-                                    <JobRequestCard key={req.id} request={req} onAccept={() => handleAcceptJob(req.id)} onDecline={() => {}} />
+                                    <JobRequestCard key={req.id} request={req} onAccept={() => handleAcceptJob(req.id)} onDecline={() => handleDeclineJob(req.id)} />
                                 )) : <div className="col-span-2 text-center py-20 text-text-secondary font-medium">No pending requests. Great job!</div>}
                             </div>
                         )}

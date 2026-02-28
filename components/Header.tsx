@@ -7,13 +7,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useCart } from '../hooks/useCart';
 import { itemService, userService } from '../services/itemService';
-import type { Item, Notification, User } from '../types';
+import type { Item, Notification, PersonaType, User } from '../types';
 import Spinner from './Spinner';
 import { useTranslation } from '../hooks/useTranslation';
 import BackButton from './BackButton';
 import LogoutConfirmationModal from './LogoutConfirmationModal';
+import { LANGUAGES } from '../data/languages';
+import LottieAnimation from './LottieAnimation';
+import { authAvatarIcons, uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 const { Link, NavLink, useLocation, useNavigate } = ReactRouterDOM as any;
+const profileAvatarFallback = authAvatarIcons.male;
+const resolveProfileAvatar = (avatar?: string | null) => {
+    const value = String(avatar || '').trim();
+    return value || profileAvatarFallback;
+};
 
 // --- ICONS ---
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
@@ -52,27 +60,65 @@ const AdminPanelIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" 
 
 
 // --- DROPDOWN COMPONENTS ---
-const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onLogout }) => {
+const AccountMenu: React.FC<{
+    user: User;
+    activePersonaType?: PersonaType;
+    onLogout: () => void;
+    onClose: () => void;
+}> = ({ user, activePersonaType, onLogout, onClose }) => {
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
     const quickActions = [
         { icon: <UserIcon />, text: 'Profile', path: `/user/${user.id}` },
-        { icon: <ListIcon />, text: 'Listings', path: '/profile/products' },
-        { icon: <MessageSquareIcon />, text: 'Messages', path: '/profile/messages' }
+        { icon: <MessageSquareIcon />, text: 'Messages', path: '/profile/messages' },
+        { icon: <ShieldCheckIcon />, text: 'Settings', path: '/profile/settings' }
     ];
+
+    const workspaceItems = (() => {
+        if (activePersonaType === 'seller') {
+            return [
+                { icon: <StoreIcon />, text: 'Store', path: '/profile/store' },
+                { icon: <ListIcon />, text: 'Products', path: '/profile/products' },
+                { icon: <ListIcon />, text: 'Sales', path: '/profile/sales' },
+                { icon: <BalanceIcon />, text: 'Earnings', path: '/profile/earnings' }
+            ];
+        }
+        if (activePersonaType === 'provider') {
+            return [
+                { icon: <ListIcon />, text: 'Provider dashboard', path: '/profile/provider-dashboard' },
+                { icon: <ListIcon />, text: 'Create service', path: '/profile/services/new' },
+                { icon: <ClockIcon />, text: 'Workflows', path: '/profile/workflows' }
+            ];
+        }
+        if (activePersonaType === 'affiliate') {
+            return [
+                { icon: <CouponIcon />, text: 'Affiliate center', path: '/profile/affiliate' },
+                { icon: <ClockIcon />, text: 'Promotions', path: '/profile/promotions' }
+            ];
+        }
+        return [
+            { icon: <ListIcon />, text: 'Your orders', path: '/profile/orders' },
+            { icon: <ListIcon />, text: 'Wishlist', path: '/profile/wishlist' },
+            { icon: <ClockIcon />, text: 'Browsing history', path: '/profile/history' }
+        ];
+    })();
 
     const sections = [
         {
+            title: 'Workspace',
+            items: workspaceItems
+        },
+        {
             title: 'My Activity',
             items: [
-                { icon: <ListIcon />, text: 'Your orders', path: '/profile/orders' },
                 { icon: <ReviewIcon />, text: 'Your reviews', path: '/profile/reviews' },
                 { icon: <FollowedStoreIcon />, text: 'Followed stores', path: '/profile/followed-stores' },
-                { icon: <ClockIcon />, text: 'Browsing history', path: '/profile/history' },
                 { icon: <CouponIcon />, text: 'Coupons & offers', path: '/profile/coupons' },
                 { icon: <BalanceIcon />, text: 'Credit balance', path: '/profile/wallet' }
             ]
         },
         {
-            title: 'Settings',
+            title: 'Account',
             items: [
                 { icon: <MapPinIcon />, text: 'Addresses', path: '/profile/settings/addresses' },
                 { icon: <ShieldCheckIcon />, text: 'Account security', path: '/profile/settings/trust-and-verification' },
@@ -82,13 +128,39 @@ const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onL
         }
     ];
 
+    const handleAutoScroll = (event: React.MouseEvent<HTMLDivElement>) => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const bounds = container.getBoundingClientRect();
+        const threshold = 64;
+        const maxStep = 22;
+        const fromTop = event.clientY - bounds.top;
+        const fromBottom = bounds.bottom - event.clientY;
+
+        if (fromTop < threshold) {
+            const ratio = (threshold - Math.max(fromTop, 0)) / threshold;
+            container.scrollTop -= Math.ceil(maxStep * ratio);
+        } else if (fromBottom < threshold) {
+            const ratio = (threshold - Math.max(fromBottom, 0)) / threshold;
+            container.scrollTop += Math.ceil(maxStep * ratio);
+        }
+    };
+
+    const handleLogoutClick = () => {
+        onClose();
+        onLogout();
+    };
+
     return (
         <div className="absolute top-full right-0 mt-2 w-[320px] bg-surface rounded-2xl shadow-2xl border border-border z-50 animate-dropdown-fade-in-up overflow-hidden">
             <div className="p-4 border-b border-border bg-surface/80">
                 <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center font-bold text-lg text-text-primary">
-                        {user.name.charAt(0).toUpperCase()}
-                    </div>
+                    <img
+                        src={resolveProfileAvatar(user.avatar)}
+                        alt={user.name}
+                        className="w-12 h-12 rounded-full object-cover bg-surface-soft"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}
+                    />
                     <div>
                         <p className="font-bold text-text-primary">{user.name}</p>
                         <p className="text-xs text-text-secondary">{user.email || 'Urban Prime member'}</p>
@@ -96,18 +168,28 @@ const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onL
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
                     {quickActions.map(action => (
-                        <Link key={action.text} to={action.path} className="flex flex-col items-center gap-1 py-2 rounded-xl border border-border bg-surface-soft text-xs font-semibold text-text-primary hover:border-primary">
+                        <Link
+                            key={action.text}
+                            to={action.path}
+                            onClick={onClose}
+                            className="flex flex-col items-center gap-1 py-2 rounded-xl border border-border bg-surface-soft text-xs font-semibold text-text-primary hover:border-primary"
+                        >
                             <span className="text-text-secondary">{action.icon}</span>
                             <span>{action.text}</span>
                         </Link>
                     ))}
                 </div>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto">
+            <div
+                ref={scrollContainerRef}
+                className="max-h-[60vh] overflow-y-auto"
+                onMouseMove={handleAutoScroll}
+            >
                 {user.isAdmin && (
                     <div className="px-4 py-3 border-b border-border">
                         <Link
                             to="/admin/dashboard"
+                            onClick={onClose}
                             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-primary hover:bg-surface-soft"
                         >
                             <AdminPanelIcon /> Admin Panel
@@ -120,7 +202,11 @@ const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onL
                         <ul className="space-y-1">
                             {section.items.map(item => (
                                 <li key={item.text}>
-                                    <Link to={item.path} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary">
+                                    <Link
+                                        to={item.path}
+                                        onClick={onClose}
+                                        className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary"
+                                    >
                                         <span className="w-9 h-9 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
                                             {item.icon}
                                         </span>
@@ -133,7 +219,7 @@ const AccountMenu: React.FC<{ user: User, onLogout: () => void }> = ({ user, onL
                 ))}
                 <div className="px-4 py-3">
                     <button
-                        onClick={onLogout}
+                        onClick={handleLogoutClick}
                         className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-soft hover:text-text-primary"
                     >
                         <span className="w-9 h-9 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
@@ -229,7 +315,7 @@ const LanguageMenu: React.FC = () => {
             <div className="border-t border-border"></div>
             <div className="p-2 rounded-md bg-surface-soft">
                 <p className="text-sm text-text-primary">{t('langMenu.shoppingIn')}</p>
-                <Link to="/select-language" className="text-sm font-bold text-primary hover:underline mt-1">{t('langMenu.changeLanguage')}</Link>
+                <Link to="/languages" className="text-sm font-bold text-primary hover:underline">{t('langMenu.changeLanguage')}</Link>
             </div>
         </div>
     );
@@ -251,46 +337,105 @@ const ExploreMenu: React.FC<{ onClose: () => void; onOpenOmni?: () => void }> = 
     ];
   
     return (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[640px] bg-surface rounded-lg shadow-2xl border border-border z-50 p-4 animate-dropdown-fade-in-up">
-            <div className="grid grid-cols-2 gap-4">
-                {features.map(feature => {
-                    const content = (
-                        <>
-                            <div className="w-10 h-10 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
-                                {feature.icon}
-                            </div>
-                            <div className="flex-1">
-                                <p className="font-bold text-sm text-text-primary">{feature.titleKey ? t(feature.titleKey) : feature.title}</p>
-                                <p className="text-xs text-text-secondary">{feature.descKey ? t(feature.descKey) : feature.desc}</p>
-                            </div>
-                            <div className="text-text-secondary/50">
-                                <span className="transition-transform duration-200 ease-in-out inline-block group-hover:-translate-y-0.5">?</span>
-                            </div>
-                        </>
-                    );
-                    if (feature.action) {
-                        return (
-                            <button
-                                key={feature.titleKey || feature.title}
-                                type="button"
-                                onClick={() => {
-                                    feature.action?.();
-                                    onClose();
-                                }}
-                                className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors text-left"
-                            >
-                                {content}
-                            </button>
+        <>
+            {/* Desktop Menu */}
+            <div className="hidden md:block absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[640px] bg-surface rounded-lg shadow-2xl border border-border z-50 p-4 animate-dropdown-fade-in-up">
+                <div className="grid grid-cols-2 gap-4">
+                    {features.map(feature => {
+                        const content = (
+                            <>
+                                <div className="w-10 h-10 rounded-full bg-surface-soft flex items-center justify-center text-text-secondary">
+                                    {feature.icon}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-bold text-sm text-text-primary">{feature.titleKey ? t(feature.titleKey) : feature.title}</p>
+                                    <p className="text-xs text-text-secondary">{feature.descKey ? t(feature.descKey) : feature.desc}</p>
+                                </div>
+                                <div className="text-text-secondary/50">
+                                    <span className="transition-transform duration-200 ease-in-out inline-block group-hover:-translate-y-0.5">?</span>
+                                </div>
+                            </>
                         );
-                    }
-                    return (
-                        <Link to={feature.link} onClick={onClose} key={feature.titleKey || feature.title} className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors">
-                            {content}
-                        </Link>
-                    );
-                })}
+                        if (feature.action) {
+                            return (
+                                <button
+                                    key={feature.titleKey || feature.title}
+                                    type="button"
+                                    onClick={() => {
+                                        feature.action?.();
+                                        onClose();
+                                    }}
+                                    className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors text-left"
+                                >
+                                    {content}
+                                </button>
+                            );
+                        }
+                        return (
+                            <Link to={feature.link} onClick={onClose} key={feature.titleKey || feature.title} className="group flex items-center gap-4 p-3 rounded-lg hover:bg-surface-soft transition-colors">
+                                {content}
+                            </Link>
+                        );
+                    })}
+                </div>
             </div>
-        </div>
+
+            {/* Mobile Menu */}
+            <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="md:hidden absolute top-full left-0 right-0 mt-2 mx-2 bg-surface rounded-lg shadow-lg border border-border z-50 p-3 max-h-[60vh] overflow-y-auto"
+            >
+                <div className="space-y-2">
+                    {features.map((feature, index) => {
+                        const content = (
+                            <>
+                                <div className="w-9 h-9 rounded-lg bg-surface-soft flex items-center justify-center text-text-secondary flex-shrink-0">
+                                    {feature.icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-xs text-text-primary truncate">{feature.titleKey ? t(feature.titleKey) : feature.title}</p>
+                                    <p className="text-[11px] text-text-secondary line-clamp-1">{feature.descKey ? t(feature.descKey) : feature.desc}</p>
+                                </div>
+                            </>
+                        );
+                        
+                        if (feature.action) {
+                            return (
+                                <motion.button
+                                    key={feature.titleKey || feature.title}
+                                    initial={{ opacity: 0, x: -5 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.03 }}
+                                    type="button"
+                                    onClick={() => {
+                                        feature.action?.();
+                                        onClose();
+                                    }}
+                                    className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-surface-soft active:bg-primary/10 transition-colors text-left"
+                                >
+                                    {content}
+                                </motion.button>
+                            );
+                        }
+                        return (
+                            <motion.div
+                                key={feature.titleKey || feature.title}
+                                initial={{ opacity: 0, x: -5 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: index * 0.03 }}
+                            >
+                                <Link to={feature.link} onClick={onClose} className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-soft active:bg-primary/10 transition-colors">
+                                    {content}
+                                </Link>
+                            </motion.div>
+                        );
+                    })}
+                </div>
+            </motion.div>
+        </>
     );
 };
 
@@ -633,14 +778,26 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         <div className="relative" onMouseEnter={() => handleMenuEnter('account')}>
                             {isAuthenticated && user ? (
                                 <button className="flex items-center gap-2 p-1 rounded-full hover:bg-surface-soft text-text-primary">
-                                    <div className="w-8 h-8 bg-surface-soft rounded-full flex items-center justify-center font-bold text-sm text-text-secondary">{user.name.charAt(0).toUpperCase()}</div>
+                                    <img
+                                        src={resolveProfileAvatar(user.avatar)}
+                                        alt={user.name}
+                                        className="w-8 h-8 rounded-full object-cover bg-surface-soft"
+                                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}
+                                    />
                                 </button>
                             ) : (
                                 <button onClick={() => openAuthModal('login')} className="p-2 rounded-full hover:bg-surface-soft text-text-primary">
                                     <UserIcon />
                                 </button>
                             )}
-                            {activeMenu === 'account' && user && <AccountMenu user={user} onLogout={() => setIsLogoutModalOpen(true)} />}
+                            {activeMenu === 'account' && user && (
+                                <AccountMenu
+                                    user={user}
+                                    activePersonaType={activePersona?.type}
+                                    onLogout={() => setIsLogoutModalOpen(true)}
+                                    onClose={() => setActiveMenu(null)}
+                                />
+                            )}
                         </div>
                         
                         {isAuthenticated && (
@@ -712,16 +869,28 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                         className="p-0.5 rounded-full hover:bg-surface-soft"
                                         aria-label="Account menu"
                                     >
-                                        <img src={user.avatar || "/icons/urbanprime.svg"} alt={user.name} className="w-8 h-8 rounded-full" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/icons/urbanprime.svg"; }} />
+                                        <img
+                                            src={resolveProfileAvatar(user.avatar)}
+                                            alt={user.name}
+                                            className="w-8 h-8 rounded-full object-cover bg-surface-soft"
+                                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}
+                                        />
                                     </button>
-                                    {activeMenu === 'account' && <AccountMenu user={user} onLogout={() => setIsLogoutModalOpen(true)} />}
+                                    {activeMenu === 'account' && (
+                                        <AccountMenu
+                                            user={user}
+                                            activePersonaType={activePersona?.type}
+                                            onLogout={() => setIsLogoutModalOpen(true)}
+                                            onClose={() => setActiveMenu(null)}
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 <button onClick={() => openAuthModal('login')} className="px-2.5 py-1.5 bg-primary text-white font-bold rounded-full text-[11px]">Login</button>
                             )}
                         </div>
                     </div>
-                    <div className="relative">
+                    <div className="space-y-2">
                         <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} overflow-x-auto overflow-y-visible no-scrollbar`}>
                             <NavLink to="/deals" className={getMobileNavLinkClass}>{t('header.deals')}</NavLink>
                             <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
@@ -730,16 +899,27 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                             <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
                                 <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
                             </NavLink>
-                            <div className="relative">
-                                <button
-                                    onClick={() => setActiveMenu(activeMenu === 'explore' ? null : 'explore')}
-                                    className={`${getMobileNavLinkClass({ isActive: activeMenu === 'explore' })} whitespace-nowrap`}
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => setActiveMenu(activeMenu === 'explore' ? null : 'explore')}
+                                className={`${getMobileNavLinkClass({ isActive: activeMenu === 'explore' })} whitespace-nowrap transition-all duration-300 ${
+                                    activeMenu === 'explore' ? 'bg-primary/20 shadow-md' : ''
+                                }`}
+                            >
+                                <motion.span
+                                    animate={{ rotate: activeMenu === 'explore' ? 180 : 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="inline-block"
                                 >
-                                    {t('header.explore')}
-                                </button>
-                                {activeMenu === 'explore' && <ExploreMenu onClose={() => setActiveMenu(null)} onOpenOmni={handleOpenOmni} />}
-                            </div>
+                                    ✨
+                                </motion.span>
+                                {t('header.explore')}
+                            </motion.button>
                         </div>
+                        <AnimatePresence>
+                            {activeMenu === 'explore' && <ExploreMenu onClose={() => setActiveMenu(null)} onOpenOmni={handleOpenOmni} />}
+                        </AnimatePresence>
                     </div>
                 </div>
             </header>
@@ -781,7 +961,10 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                     {isLoadingSearch ? (
                                         <div className="py-6 flex justify-center"><Spinner /></div>
                                     ) : products.length === 0 ? (
-                                        <p className="text-sm text-text-secondary">No products found for "{searchQuery}"</p>
+                                        <div className="rounded-xl border border-border bg-surface p-4 text-center">
+                                            <LottieAnimation src={uiLottieAnimations.noResults} className="h-24 w-24 mx-auto" loop autoplay />
+                                            <p className="text-sm text-text-secondary mt-1">No results found for "{searchQuery}"</p>
+                                        </div>
                                     ) : (
                                         <div className="space-y-3">
                                             {products.map(product => {
@@ -859,13 +1042,14 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     </form>
 
                     {showSearchPanel && (
-                        <div className={`transition-opacity duration-300 ${hasSearchResults || isLoadingSearch ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="transition-opacity duration-300 opacity-100">
                             <div className="mt-4 border-t border-border/80 pt-4 max-h-[60vh] overflow-y-auto">
                                 {isLoadingSearch ? (
                                     <div className="text-center py-10"><Spinner /></div>
                                 ) : !hasSearchResults ? (
                                     <div className="text-center py-10">
-                                        <p className="text-text-secondary">No results found for "{searchQuery}"</p>
+                                        <LottieAnimation src={uiLottieAnimations.noResults} className="h-28 w-28 mx-auto" loop autoplay />
+                                        <p className="text-text-secondary mt-1">No results found for "{searchQuery}"</p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

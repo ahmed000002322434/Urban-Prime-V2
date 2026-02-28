@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import { serviceService } from '../../services/itemService';
@@ -32,7 +32,10 @@ const ProgressBar: React.FC<{ currentStep: number; totalSteps: number }> = ({ cu
 const ListServicePage: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { showNotification } = useNotification();
+    const editingServiceId = String(searchParams.get('edit') || '').trim();
+    const isEditing = Boolean(editingServiceId);
     
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState<Partial<Service>>({
@@ -48,6 +51,41 @@ const ListServicePage: React.FC = () => {
     });
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingBio, setIsGeneratingBio] = useState(false);
+    const [isPrefilling, setIsPrefilling] = useState(false);
+
+    useEffect(() => {
+        if (!isEditing || !editingServiceId) return;
+        let cancelled = false;
+        const loadService = async () => {
+            setIsPrefilling(true);
+            try {
+                const existing = await serviceService.getServiceById(editingServiceId);
+                if (!existing || cancelled) return;
+                setFormData({
+                    title: existing.title || '',
+                    description: existing.description || '',
+                    category: existing.category || '',
+                    imageUrls: existing.imageUrls || [],
+                    pricingModels: existing.pricingModels?.length
+                        ? existing.pricingModels
+                        : [{ type: 'hourly', price: 50, description: 'Standard hourly rate' }],
+                    mode: existing.mode || 'hybrid',
+                    fulfillmentKind: existing.fulfillmentKind || 'hybrid',
+                    currency: existing.currency || 'USD',
+                    timezone: existing.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                });
+            } catch (error) {
+                console.error(error);
+                showNotification('Unable to load service for editing.');
+            } finally {
+                if (!cancelled) setIsPrefilling(false);
+            }
+        };
+        void loadService();
+        return () => {
+            cancelled = true;
+        };
+    }, [isEditing, editingServiceId, showNotification]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -104,8 +142,13 @@ const ListServicePage: React.FC = () => {
         if (!user) return;
         setIsLoading(true);
         try {
-            await serviceService.addService(formData, user);
-            showNotification("Service submitted for approval!");
+            if (isEditing && editingServiceId) {
+                await serviceService.updateService(editingServiceId, formData, user);
+                showNotification("Service updated successfully.");
+            } else {
+                await serviceService.addService(formData, user);
+                showNotification("Service submitted for approval.");
+            }
             navigate('/profile/provider-dashboard');
         } catch(e) {
             showNotification("Failed to submit service.");
@@ -259,6 +302,11 @@ const ListServicePage: React.FC = () => {
                 </div>
                 
                 <div className="bg-surface p-8 rounded-2xl shadow-xl border border-border">
+                     {isPrefilling ? (
+                        <div className="mb-5 flex items-center gap-2 rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm text-text-secondary">
+                            <Spinner size="sm" /> Loading service details...
+                        </div>
+                     ) : null}
                      <ProgressBar currentStep={step} totalSteps={3} />
                      
                      <div className="min-h-[300px]">
@@ -273,8 +321,8 @@ const ListServicePage: React.FC = () => {
                          {step < 3 ? (
                              <button onClick={() => setStep(s => s + 1)} className="px-8 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:opacity-90">Next Step</button>
                          ) : (
-                             <button onClick={handlePublish} disabled={isLoading} className="px-8 py-2.5 bg-primary text-white font-bold rounded-lg hover:opacity-90 flex items-center gap-2">
-                                 {isLoading ? <Spinner size="sm" /> : "Submit Service"}
+                             <button onClick={handlePublish} disabled={isLoading || isPrefilling} className="px-8 py-2.5 bg-primary text-white font-bold rounded-lg hover:opacity-90 flex items-center gap-2 disabled:opacity-60">
+                                 {isLoading ? <Spinner size="sm" /> : (isEditing ? "Update Service" : "Submit Service")}
                              </button>
                          )}
                      </div>

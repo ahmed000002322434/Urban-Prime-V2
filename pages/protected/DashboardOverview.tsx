@@ -37,22 +37,23 @@ const SetupStepCard: React.FC<{
   actionLabel: string;
   actionTo: string;
 }> = ({ title, status, statusTone, body, actionLabel, actionTo }) => (
-  <div className="rounded-xl border border-[#d8d8d8] bg-[#f4f4f5] p-4">
+  <div className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-surface via-surface to-surface-soft p-4 shadow-soft">
+    <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-primary/10 blur-2xl transition-opacity group-hover:opacity-90" />
     <div className="mb-3 flex items-start justify-between gap-2">
-      <h3 className="text-lg font-semibold leading-6 text-[#1f1f1f]">{title}</h3>
+      <h3 className="text-lg font-semibold leading-6 text-text-primary">{title}</h3>
       <span
         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-          statusTone === 'ok' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+          statusTone === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
         }`}
       >
         <DotIcon />
         {status}
       </span>
     </div>
-    <p className="text-sm text-[#616161]">{body}</p>
+    <p className="text-sm text-text-secondary">{body}</p>
     <Link
       to={actionTo}
-      className="mt-4 inline-flex h-8 items-center rounded-lg border border-[#cfcfcf] bg-white px-3 text-[13px] font-semibold text-[#1f1f1f] hover:bg-[#f6f6f6]"
+      className="mt-4 inline-flex h-8 items-center rounded-lg border border-border bg-surface px-3 text-[13px] font-semibold text-text-primary hover:bg-surface-soft"
     >
       {actionLabel}
     </Link>
@@ -65,10 +66,11 @@ const OverviewStat: React.FC<{
   subtext?: string;
   to: string;
 }> = ({ label, value, subtext, to }) => (
-  <Link to={to} className="rounded-xl border border-[#d8d8d8] bg-white p-4 transition-colors hover:bg-[#fafafa]">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">{label}</p>
-    <p className="mt-2 text-[23px] font-semibold leading-none text-[#1f1f1f] sm:text-[30px]">{value}</p>
-    {subtext ? <p className="mt-1 text-xs text-[#727272]">{subtext}</p> : null}
+  <Link to={to} className="group relative overflow-hidden rounded-2xl border border-border bg-surface p-4 transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-soft">
+    <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-primary/10 blur-2xl" />
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">{label}</p>
+    <p className="mt-2 text-[23px] font-semibold leading-none text-text-primary sm:text-[30px]">{value}</p>
+    {subtext ? <p className="mt-1 text-xs text-text-secondary">{subtext}</p> : null}
   </Link>
 );
 
@@ -91,10 +93,29 @@ const EmptyChartState: React.FC<{ title: string; body: string; ctaLabel: string;
 );
 
 const WorkspaceAction: React.FC<{ to: string; title: string; body: string }> = ({ to, title, body }) => (
-  <Link to={to} className="rounded-xl border border-[#d8d8d8] bg-white p-4 transition-colors hover:bg-[#fafafa]">
-    <p className="text-base font-semibold text-[#1f1f1f]">{title}</p>
-    <p className="mt-1 text-sm text-[#666]">{body}</p>
+  <Link to={to} className="group relative overflow-hidden rounded-2xl border border-border bg-surface p-4 transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-soft">
+    <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-primary/10 blur-2xl opacity-80" />
+    <p className="text-base font-semibold text-text-primary">{title}</p>
+    <p className="mt-1 text-sm text-text-secondary">{body}</p>
   </Link>
+);
+
+const DashboardHero: React.FC<{ title: string; subtitle: string; chips: string[] }> = ({ title, subtitle, chips }) => (
+  <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-surface via-surface to-surface-soft p-5 shadow-soft">
+    <div className="pointer-events-none absolute -left-16 -top-16 h-36 w-36 rounded-full bg-primary/15 blur-3xl" />
+    <div className="pointer-events-none absolute -bottom-16 right-0 h-40 w-40 rounded-full bg-sky-500/10 blur-3xl" />
+    <div className="relative">
+      <h2 className="text-2xl font-black tracking-tight text-text-primary">{title}</h2>
+      <p className="mt-1 text-sm text-text-secondary">{subtitle}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {chips.map((chip) => (
+          <span key={chip} className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-text-secondary">
+            {chip}
+          </span>
+        ))}
+      </div>
+    </div>
+  </div>
 );
 
 const defaultBuyerSnapshot: BuyerDashboardSnapshot = {
@@ -204,6 +225,15 @@ const DashboardOverview: React.FC = () => {
 
     return (
       <div className="dashboard-page space-y-4">
+        <DashboardHero
+          title="Consumer dashboard"
+          subtitle="Track orders, rentals, saved products, and conversations from one place."
+          chips={[
+            `${summary.pendingOrders} pending`,
+            `${summary.wishlistItems} wishlist`,
+            `${summary.conversations} chats`
+          ]}
+        />
         <div className="grid gap-3 md:grid-cols-3">
           <SetupStepCard
             title="Complete your profile"
@@ -284,14 +314,15 @@ const DashboardOverview: React.FC = () => {
 
     return (
       <div className="dashboard-page space-y-4">
-        <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
-          <h2 className="text-2xl font-semibold text-[#1f1f1f]">
-            {isProviderWorkspace ? 'Provider workspace' : 'Affiliate workspace'}
-          </h2>
-          <p className="mt-1 text-sm text-[#666]">
-            Use workspace actions below. Analytics and store modules unlock automatically when seller setup is completed.
-          </p>
-        </div>
+        <DashboardHero
+          title={isProviderWorkspace ? 'Provider workspace' : 'Affiliate workspace'}
+          subtitle="Use these actions to manage your workflow, availability, and conversion pipeline."
+          chips={[
+            `${summary.totalOrders} orders`,
+            `${summary.conversations} chats`,
+            `${summary.wishlistItems} saved products`
+          ]}
+        />
 
         <div className="grid gap-3 md:grid-cols-2">
           {isProviderWorkspace ? (
@@ -324,6 +355,15 @@ const DashboardOverview: React.FC = () => {
 
   return (
     <div className="dashboard-page space-y-4">
+      <DashboardHero
+        title="Seller command center"
+        subtitle="Monitor revenue, operations, inventory, and inbox signals in real time."
+        chips={[
+          `${sellerSummary.pendingOrders} pending orders`,
+          `${sellerSummary.unreadMessages} unread messages`,
+          `${sellerSummary.lowStockCount} low stock`
+        ]}
+      />
       <div className="grid gap-3 md:grid-cols-3">
         <SetupStepCard
           title="Store setup"

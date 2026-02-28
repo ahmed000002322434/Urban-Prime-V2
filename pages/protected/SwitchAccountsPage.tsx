@@ -111,6 +111,10 @@ const SwitchAccountsPage: React.FC = () => {
             await setActivePersona(personaId);
             setSuccess('Active workspace updated.');
         } catch (err) {
+            if (err instanceof Error && err.message === 'Workspace switch cancelled.') {
+                setSuccess('Workspace switch canceled.');
+                return;
+            }
             setError(err instanceof Error ? err.message : 'Unable to switch workspace right now.');
         }
     };
@@ -192,7 +196,7 @@ const SwitchAccountsPage: React.FC = () => {
             });
 
             await pushProfileUpdates(user, form);
-            await setActivePersona(created.id);
+            await setActivePersona(created.id, { requireConfirmation: false });
             setSuccess(`${formatPersonaLabel(selectedType)} workspace created and activated.`);
             setForm(initialForm);
         } catch (err) {

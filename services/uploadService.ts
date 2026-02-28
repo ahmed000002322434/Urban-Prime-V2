@@ -1,5 +1,5 @@
 ﻿import { auth } from '../firebase';
-import { backendFetch, isBackendConfigured } from './backendClient';
+import { backendFetch, getBackendBaseUrl, isBackendConfigured } from './backendClient';
 import { shouldUseLocalMockFallback } from './dataMode';
 
 export type ImageType = 'listing' | 'profile' | 'store-banner' | 'store-logo' | 'review';
@@ -53,18 +53,12 @@ class UploadService {
     review: { maxWidth: 800, maxHeight: 800, quality: 0.8, format: 'jpeg' }
   };
 
-  private getBackendBaseUrl() {
-    const envUrl = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.trim();
-    if (envUrl) return envUrl.replace(/\/$/, '');
-    return import.meta.env.DEV ? 'http://localhost:5050' : '';
-  }
-
   private makeAbsoluteUrl(path: string) {
     if (!path) return path;
     if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
       return path;
     }
-    const base = this.getBackendBaseUrl();
+    const base = getBackendBaseUrl();
     return base ? `${base}${path.startsWith('/') ? '' : '/'}${path}` : path;
   }
 

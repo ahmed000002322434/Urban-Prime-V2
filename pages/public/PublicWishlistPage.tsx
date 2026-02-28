@@ -6,6 +6,8 @@ import Spinner from '../../components/Spinner';
 import { useAuth } from '../../hooks/useAuth';
 import EmptyState from '../../components/EmptyState';
 import { useNotification } from '../../context/NotificationContext';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const HeartIcon: React.FC<{isFilled: boolean}> = ({ isFilled }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill={isFilled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className={isFilled ? 'text-red-500' : 'text-gray-500'}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
@@ -113,7 +115,14 @@ const PublicWishlistPage: React.FC = () => {
     }, [fetchData]);
 
     if (isLoading) return <Spinner size="lg" className="mt-20" />;
-    if (!profile) return <div className="text-center py-20">User not found.</div>;
+    if (!profile) {
+        return (
+            <div className="text-center py-20">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-44 w-44 mx-auto" loop autoplay />
+                <p>User not found.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-gray-50 min-h-screen">

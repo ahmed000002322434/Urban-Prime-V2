@@ -4,7 +4,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../hooks/useTranslation';
 import { listerService } from '../../services/itemService';
 import type { DashboardAnalytics, Booking, DiscountCode, ItemBundle } from '../../types';
-import Spinner from '../../components/Spinner';
+import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -71,11 +73,13 @@ const DashboardPage: React.FC = () => {
     const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
     const [bundles, setBundles] = useState<ItemBundle[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const sidebarY = 0;
 
     const fetchDashboardData = () => {
         if (!user) return;
         setIsLoading(true);
+        setLoadError(null);
         Promise.all([
             listerService.getDashboardAnalytics(user.id),
             listerService.getBookings(user.id),
@@ -87,7 +91,11 @@ const DashboardPage: React.FC = () => {
             setDiscounts(discountsData);
             setBundles(bundlesData);
             setIsLoading(false);
-        }).catch(console.error);
+        }).catch((error) => {
+            console.error(error);
+            setLoadError('Could not load dashboard data.');
+            setIsLoading(false);
+        });
     }
 
     useEffect(() => {
@@ -100,8 +108,24 @@ const DashboardPage: React.FC = () => {
     };
 
 
-    if (isLoading) return <Spinner size="lg" className="mt-20" />;
-    if (!analytics) return <div className="text-center py-20">Could not load dashboard data.</div>;
+    if (isLoading) return <DashboardPageLoader title="Loading dashboard data..." />;
+    if (loadError || !analytics) {
+        return (
+            <div className="rounded-2xl border border-border bg-surface p-8 text-center">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-44 w-44 mx-auto object-contain" />
+                <h2 className="mt-3 text-2xl font-bold text-text-primary">Could not load dashboard data</h2>
+                <p className="mt-2 text-sm text-text-secondary">{loadError || 'Please try again.'}</p>
+                <div className="mt-5 flex items-center justify-center gap-3">
+                    <button onClick={fetchDashboardData} className="rounded-full bg-primary px-6 py-2 text-sm font-semibold text-primary-text">
+                        Retry
+                    </button>
+                    <button onClick={() => window.location.reload()} className="rounded-full border border-border px-6 py-2 text-sm font-semibold text-text-primary">
+                        Refresh Page
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
@@ -234,13 +258,10 @@ const DashboardPage: React.FC = () => {
                                     ))}
                                 </motion.div>
                             ) : (
-                                <motion.p 
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="text-center text-slate-500 dark:text-slate-400 py-4"
-                                >
-                                    No bookings found.
-                                </motion.p>
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-4 text-center">
+                                    <LottieAnimation src={uiLottieAnimations.nothing} className="h-32 w-32 mx-auto object-contain" />
+                                    <p className="text-slate-500 dark:text-slate-400">No bookings found.</p>
+                                </motion.div>
                             )}
                         </div>
                     </motion.div>
@@ -307,7 +328,8 @@ const DashboardPage: React.FC = () => {
                             animate="show"
                             className="space-y-3"
                         >
-                            {discounts.map((d, index) => (
+                            {discounts.length > 0 ? (
+                                discounts.map((d, index) => (
                                 <motion.div 
                                     key={d.id} 
                                     variants={itemVariants}
@@ -330,7 +352,13 @@ const DashboardPage: React.FC = () => {
                                         {d.isActive ? '✓ ACTIVE' : '○ INACTIVE'}
                                     </motion.span>
                                 </motion.div>
-                            ))}
+                                ))
+                            ) : (
+                                <div className="py-3 text-center">
+                                    <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-28 w-28 mx-auto object-contain" />
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">No discount codes yet.</p>
+                                </div>
+                            )}
                         </motion.div>
                         <motion.button 
                             whileHover={{ scale: 1.02 }}
@@ -353,7 +381,8 @@ const DashboardPage: React.FC = () => {
                             animate="show"
                             className="space-y-3"
                         >
-                            {bundles.map((b, index) => (
+                            {bundles.length > 0 ? (
+                                bundles.map((b, index) => (
                                 <motion.div 
                                     key={b.id} 
                                     variants={itemVariants}
@@ -370,7 +399,13 @@ const DashboardPage: React.FC = () => {
                                         {b.itemTitles.join(', ')}
                                     </motion.p>
                                 </motion.div>
-                            ))}
+                                ))
+                            ) : (
+                                <div className="py-3 text-center">
+                                    <LottieAnimation src={uiLottieAnimations.noResults} className="h-28 w-28 mx-auto object-contain" />
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">No bundles created yet.</p>
+                                </div>
+                            )}
                         </motion.div>
                         <motion.button 
                             whileHover={{ scale: 1.02 }}

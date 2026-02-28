@@ -7,6 +7,8 @@ import type { Booking, Item, User } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useNotification } from '../../context/NotificationContext';
 import ReviewSystem from '../../components/ReviewSystem';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const FormCard: React.FC<{title: string, children: React.ReactNode, className?: string}> = ({title, children, className}) => (
     <div className={`bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 ${className}`}>
@@ -168,7 +170,14 @@ const OrderDetailsPage: React.FC = () => {
     };
 
     if (isLoading) return <Spinner size="lg" className="m-auto" />;
-    if (!booking || !item) return <div className="text-center p-8">Order not found.</div>;
+    if (!booking || !item) {
+        return (
+            <div className="text-center p-8">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-40 w-40 mx-auto" loop autoplay />
+                <p>Order not found.</p>
+            </div>
+        );
+    }
 
     const isSeller = user?.id === item.owner.id;
     const isBuyer = user?.id === booking.renterId;

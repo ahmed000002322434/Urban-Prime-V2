@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { AuthContext } from '../context/AuthContext';
 import ImageUploader from './ImageUploader';
 import type { UploadResponse } from '../services/uploadService';
-import type { User } from '../types';
+import { userService } from '../services/itemService';
 
 interface ProfilePictureUploadPageProps {
   userId?: string;
@@ -65,18 +65,17 @@ const ProfilePictureUploadPage: React.FC<ProfilePictureUploadPageProps> = ({
 
     setIsSaving(true);
     try {
-      // Update user profile in auth context
-      updateUserFn({
+      const updatedUser = await userService.updateUserProfile(userId, {
         avatar: uploadedUrl
       });
-
-      setCurrentAvatar(uploadedUrl);
+      updateUserFn(updatedUser);
+      setCurrentAvatar(updatedUser.avatar || uploadedUrl);
       setUploadedUrl(null);
       setSuccess('Profile picture updated successfully!');
       setError(null);
 
       // Call parent callback
-      onSuccess?.(uploadedUrl);
+      onSuccess?.(updatedUser.avatar || uploadedUrl);
 
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
@@ -99,11 +98,13 @@ const ProfilePictureUploadPage: React.FC<ProfilePictureUploadPageProps> = ({
 
     setIsSaving(true);
     try {
-      updateUserFn({
-        avatar: null
+      const updatedUser = await userService.updateUserProfile(userId, {
+        avatar: '',
+        gender: user?.gender
       });
+      updateUserFn(updatedUser);
 
-      setCurrentAvatar(null);
+      setCurrentAvatar(updatedUser.avatar || null);
       setUploadedUrl(null);
       setSuccess('Profile picture removed successfully!');
       setError(null);

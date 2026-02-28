@@ -5,6 +5,8 @@ import { useAuth } from '../hooks/useAuth';
 import dashboardService from '../services/dashboardService';
 import { SearchSuggestionsDropdown } from '../components/dashboard/SearchSuggestionsDropdown';
 import type { SellerDashboardSetup } from '../types';
+import LottieAnimation from '../components/LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 const TOP_BAR_HEIGHT = 52;
 const DESKTOP_SIDEBAR_WIDTH = 248;
@@ -395,10 +397,10 @@ const DashboardLayout: React.FC = () => {
 
       // Always show analytics section for sellers
       sellerItems.push(
-        { to: '/profile/analytics/traffic', label: 'Traffic', icon: AnalyticsIcon },
-        { to: '/profile/analytics/revenue', label: 'Revenue', icon: EarningsIcon },
-        { to: '/profile/analytics/conversion', label: 'Conversions', icon: TrendIcon },
-        { to: '/profile/analytics/sales-units', label: 'Units Sold', icon: OrdersIcon }
+        { to: '/store/manager/analytics/traffic', label: 'Traffic', icon: AnalyticsIcon },
+        { to: '/store/manager/analytics/revenue', label: 'Revenue', icon: EarningsIcon },
+        { to: '/store/manager/analytics/conversion', label: 'Conversions', icon: TrendIcon },
+        { to: '/store/manager/analytics/sales-units', label: 'Units Sold', icon: OrdersIcon }
       );
 
       // Show earnings
@@ -461,9 +463,9 @@ const DashboardLayout: React.FC = () => {
       title: 'Account & Settings',
       headingArrow: true,
       items: [
-        { to: '/profile/addresses', label: 'Addresses', icon: MapPinIcon },
-        { to: '/profile/payment-options', label: 'Payment Methods', icon: CreditCardIcon },
-        { to: '/profile/notifications-settings', label: 'Notifications', icon: BellIcon },
+        { to: '/profile/settings/addresses', label: 'Addresses', icon: MapPinIcon },
+        { to: '/payment-options', label: 'Payment Methods', icon: CreditCardIcon },
+        { to: '/profile/settings/notifications', label: 'Notifications', icon: BellIcon },
         { to: '/profile/settings', label: 'Settings', icon: SettingsIcon }
       ]
     });
@@ -582,7 +584,7 @@ const DashboardLayout: React.FC = () => {
                 to="/"
                 className="inline-flex h-8 items-center rounded-md border border-white/20 bg-white/10 px-2.5 text-[11px] font-semibold text-white/90 hover:bg-white/20"
               >
-                <span className="mr-1 text-xs">{'<'}</span>
+                <LottieAnimation src={uiLottieAnimations.home} className="mr-1 h-4 w-4 object-contain" />
                 Back to homepage
               </Link>
             </motion.div>
@@ -632,7 +634,17 @@ const DashboardLayout: React.FC = () => {
           {personas.length > 0 && (
             <select
               value={activePersona?.id || ''}
-              onChange={(event) => setActivePersona(event.target.value)}
+              onChange={async (event) => {
+                try {
+                  await setActivePersona(event.target.value);
+                } catch (error) {
+                  if (error instanceof Error && error.message !== 'Workspace switch cancelled.') {
+                    if (typeof window !== 'undefined') {
+                      window.alert(error.message);
+                    }
+                  }
+                }
+              }}
               className="hidden h-8 min-w-[152px] rounded-lg border border-white/15 bg-white/10 px-2 text-xs text-white/95 lg:block"
             >
               {personas.map((persona) => (
@@ -699,8 +711,8 @@ const DashboardLayout: React.FC = () => {
                     <>
                       <div className="my-1 border-t border-[#e5e5e5]" />
                       <Link to="/profile/products" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Products</Link>
-                      <Link to="/profile/analytics/traffic" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Traffic Analytics</Link>
-                      <Link to="/profile/analytics/revenue" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Revenue Analytics</Link>
+                      <Link to="/store/manager/analytics/traffic" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Traffic Analytics</Link>
+                      <Link to="/store/manager/analytics/revenue" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Revenue Analytics</Link>
                       <Link to="/profile/earnings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Earnings</Link>
                       <Link to="/profile/store" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">
                         {sellerSetup.hasStore ? 'Online Store' : 'Set up Store'}
@@ -723,9 +735,9 @@ const DashboardLayout: React.FC = () => {
                     </Link>
                   ) : null}
                   <div className="my-1 border-t border-[#e5e5e5]" />
-                  <Link to="/profile/addresses" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Addresses</Link>
-                  <Link to="/profile/payment-options" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Payment Methods</Link>
-                  <Link to="/profile/notifications-settings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Notifications</Link>
+                  <Link to="/profile/settings/addresses" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Addresses</Link>
+                  <Link to="/payment-options" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Payment Methods</Link>
+                  <Link to="/profile/settings/notifications" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Notifications</Link>
                   <Link to="/profile/settings" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Settings</Link>
                   <div className="my-1 border-t border-[#e5e5e5]" />
                   <Link to="/" className="block rounded-lg px-3 py-2 text-sm text-[#1f1f1f] hover:bg-[#f5f5f5]">Marketplace home</Link>

@@ -24,8 +24,9 @@ const ProfileCompletionGate: React.FC<ProfileCompletionGateProps> = ({ children 
   }
 
   const isOnboardingRoute = location.pathname === '/auth/onboarding';
+  const isMessagingRoute = location.pathname.startsWith('/profile/messages');
   const mustCompleteProfile = Boolean(isProfileOnboardingEnabled && profileCompletion && !profileCompletion.isComplete);
-  if (mustCompleteProfile && !isOnboardingRoute) {
+  if (mustCompleteProfile && !isOnboardingRoute && !isMessagingRoute) {
     return <Navigate to="/auth/onboarding" replace state={{ from: location }} />;
   }
 

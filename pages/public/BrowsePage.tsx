@@ -1,16 +1,17 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { itemService } from '../../services/itemService';
-import type { Item, Category } from '../../types';
+import { itemService, serviceService, userService, reelService } from '../../services/itemService';
+import type { Item, Category, Service, ChatThread, Reel, User } from '../../types';
 import ItemCard from '../../components/ItemCard';
 import Spinner from '../../components/Spinner';
 import SkeletonCard from '../../components/SkeletonCard';
 import QuickViewModal from '../../components/QuickViewModal';
 import StarRating from '../../components/StarRating';
+import LottieAnimation from '../../components/LottieAnimation';
 import { useCategories } from '../../context/CategoryContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useBrowsingHistory } from '../../hooks/useBrowsingHistory'; // NEW
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>;
 const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
@@ -18,6 +19,73 @@ const ShuffleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vi
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 
 const DEFAULT_PRICE_RANGE: [number, number] = [0, 10000];
+type GlobalSearchSectionKey = 'pages' | 'features' | 'users' | 'items' | 'services' | 'messages' | 'pixes';
+
+interface GlobalSearchEntry {
+    id: string;
+    title: string;
+    subtitle: string;
+    to: string;
+}
+
+type GlobalSearchResults = Record<GlobalSearchSectionKey, GlobalSearchEntry[]>;
+
+const EMPTY_GLOBAL_RESULTS: GlobalSearchResults = {
+    pages: [],
+    features: [],
+    users: [],
+    items: [],
+    services: [],
+    messages: [],
+    pixes: []
+};
+
+const PAGE_SEARCH_INDEX: GlobalSearchEntry[] = [
+    { id: 'page-home', title: 'Home', subtitle: 'Urban Prime home feed', to: '/' },
+    { id: 'page-explore', title: 'Explore', subtitle: 'Discover modules and directories', to: '/explore' },
+    { id: 'page-browse', title: 'Browse products', subtitle: 'Marketplace product discovery', to: '/browse' },
+    { id: 'page-services', title: 'Browse services', subtitle: 'Service provider listings', to: '/browse/services' },
+    { id: 'page-sellers', title: 'Seller directory', subtitle: 'Explore seller personas', to: '/sellers' },
+    { id: 'page-buyers', title: 'Buyer directory', subtitle: 'Explore buyer personas', to: '/buyers' },
+    { id: 'page-renters', title: 'Renter directory', subtitle: 'Explore renter personas', to: '/renters' },
+    { id: 'page-stores', title: 'Stores', subtitle: 'Public store directory', to: '/stores' },
+    { id: 'page-pixe', title: 'Pixe', subtitle: 'Creator and short-form hub', to: '/pixe' },
+    { id: 'page-reels', title: 'Reels', subtitle: 'Vertical media discovery', to: '/reels' },
+    { id: 'page-live', title: 'Live shopping', subtitle: 'Live commerce sessions', to: '/live' },
+    { id: 'page-features', title: 'Features', subtitle: 'Platform feature hub', to: '/features' }
+];
+
+const FEATURE_SEARCH_INDEX: GlobalSearchEntry[] = [
+    { id: 'feature-deals', title: 'Deals and promotions', subtitle: 'Flash offers and campaigns', to: '/deals' },
+    { id: 'feature-new-arrivals', title: 'New arrivals', subtitle: 'Latest marketplace drops', to: '/new-arrivals' },
+    { id: 'feature-compare', title: 'Compare items', subtitle: 'Side-by-side item comparison', to: '/compare' },
+    { id: 'feature-tracking', title: 'Track order', subtitle: 'Order and delivery tracking', to: '/track-order' },
+    { id: 'feature-battles', title: 'Product battles', subtitle: 'Interactive item voting', to: '/battles' },
+    { id: 'feature-genie', title: 'Urban Genie', subtitle: 'AI assisted shopping help', to: '/genie' },
+    { id: 'feature-dropshipping', title: 'Dropshipping', subtitle: 'Supplier and fulfillment workflows', to: '/dropshipping' },
+    { id: 'feature-community', title: 'Community', subtitle: 'Events, guides, and social discovery', to: '/community' }
+];
+
+const PIXE_SEARCH_INDEX: GlobalSearchEntry[] = [
+    { id: 'pixe-feed', title: 'Pixe feed', subtitle: 'Browse creator content', to: '/pixe' },
+    { id: 'pixe-reels', title: 'Reels stream', subtitle: 'Fast vertical video feed', to: '/reels' },
+    { id: 'pixe-live', title: 'Live shopping events', subtitle: 'Join creator live sessions', to: '/live' }
+];
+
+const GLOBAL_SECTION_META: Record<GlobalSearchSectionKey, { title: string; tone: string }> = {
+    pages: { title: 'Pages', tone: 'from-cyan-500/15 to-sky-500/5' },
+    features: { title: 'Features', tone: 'from-indigo-500/15 to-blue-500/5' },
+    users: { title: 'Users', tone: 'from-emerald-500/15 to-teal-500/5' },
+    items: { title: 'Products', tone: 'from-amber-500/15 to-orange-500/5' },
+    services: { title: 'Services', tone: 'from-fuchsia-500/15 to-purple-500/5' },
+    messages: { title: 'Your messages', tone: 'from-rose-500/15 to-pink-500/5' },
+    pixes: { title: 'Pixe', tone: 'from-violet-500/15 to-purple-500/5' }
+};
+
+const normalizeSearchText = (value: string) => value.trim().toLowerCase();
+
+const includesQuery = (haystack: string, normalizedQuery: string) => haystack.toLowerCase().includes(normalizedQuery);
+
 const formatPriceRange = (range: [number, number]) => {
     const [min, max] = range;
     if (min === 0 && max >= 10000) return 'Any price';
@@ -173,8 +241,14 @@ const BrowsePage: React.FC = () => {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [quickViewItem, setQuickViewItem] = useState<Item | null>(null);
     const loaderRef = useRef<HTMLDivElement>(null);
+    const servicesCacheRef = useRef<Service[] | null>(null);
+    const threadsCacheRef = useRef<ChatThread[] | null>(null);
+    const reelsCacheRef = useRef<Reel[] | null>(null);
+    const threadPartnerCacheRef = useRef<Record<string, User | null>>({});
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile state
     const [showFilters, setShowFilters] = useState(false); // Desktop state
+    const [globalSearchResults, setGlobalSearchResults] = useState<GlobalSearchResults>(EMPTY_GLOBAL_RESULTS);
+    const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
 
     const [filters, setFilters] = useState({
         query: searchParams.get('q') || '',
@@ -187,6 +261,8 @@ const BrowsePage: React.FC = () => {
         sortBy: 'newest' as 'newest' | 'price_asc' | 'price_desc' | 'popularity',
         page: 1
     });
+
+    const hasGlobalQuery = filters.query.trim().length >= 2;
 
     const categoryLabel = useMemo(() => {
         if (!filters.category) return '';
@@ -212,7 +288,7 @@ const BrowsePage: React.FC = () => {
             chips.push({ label: `Type: ${filters.listingType}`, onRemove: () => setFilters(p => ({ ...p, listingType: '', page: 1 })) });
         }
         if (filters.minRating) {
-            chips.push({ label: `${filters.minRating}★ & Up`, onRemove: () => setFilters(p => ({ ...p, minRating: 0, page: 1 })) });
+            chips.push({ label: `Rating ${filters.minRating}+`, onRemove: () => setFilters(p => ({ ...p, minRating: 0, page: 1 })) });
         }
         if (filters.location) {
             chips.push({ label: 'Local Only', onRemove: () => setFilters(p => ({ ...p, location: '', page: 1 })) });
@@ -227,6 +303,173 @@ const BrowsePage: React.FC = () => {
     }, [filters, categoryLabel]);
 
     const activeFilterCount = activeFilterChips.length;
+
+    useEffect(() => {
+        threadsCacheRef.current = null;
+        threadPartnerCacheRef.current = {};
+    }, [user?.id]);
+
+    useEffect(() => {
+        if (!hasGlobalQuery) {
+            setGlobalSearchResults(EMPTY_GLOBAL_RESULTS);
+            setIsGlobalSearchLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            const queryText = filters.query.trim();
+            const normalizedQuery = normalizeSearchText(queryText);
+            if (!normalizedQuery) return;
+
+            setIsGlobalSearchLoading(true);
+            try {
+                const pageMatches = PAGE_SEARCH_INDEX
+                    .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
+                    .slice(0, 6);
+
+                const featureMatches = FEATURE_SEARCH_INDEX
+                    .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
+                    .slice(0, 6);
+
+                const [itemPayload, foundUsers] = await Promise.all([
+                    itemService.getItems({ search: queryText }, { page: 1, limit: 6 }).catch(() => ({ items: [], total: 0 })),
+                    userService.searchUsers(queryText, { excludeUserId: user?.id, limit: 6 }).catch(() => [])
+                ]);
+
+                const itemMatches = (itemPayload.items || []).slice(0, 6).map((item) => ({
+                    id: `item-${item.id}`,
+                    title: item.title,
+                    subtitle: item.category || 'Product listing',
+                    to: `/item/${item.id}`
+                }));
+
+                const userMatches = (foundUsers || []).slice(0, 6).map((entry) => ({
+                    id: `user-${entry.id}`,
+                    title: entry.name || 'User',
+                    subtitle: entry.email || 'Marketplace profile',
+                    to: `/user/${entry.id}`
+                }));
+
+                if (!servicesCacheRef.current) {
+                    servicesCacheRef.current = await serviceService.getServices().catch(() => []);
+                }
+
+                const serviceMatches = (servicesCacheRef.current || [])
+                    .filter((service) => {
+                        const source = `${service.title} ${service.description || ''} ${service.category || ''} ${service.provider?.name || ''}`;
+                        return includesQuery(source, normalizedQuery);
+                    })
+                    .slice(0, 6)
+                    .map((service) => ({
+                        id: `service-${service.id}`,
+                        title: service.title,
+                        subtitle: service.provider?.name ? `By ${service.provider.name}` : service.category || 'Service listing',
+                        to: `/service/${service.id}`
+                    }));
+
+                if (user?.id && !threadsCacheRef.current) {
+                    threadsCacheRef.current = await itemService.getChatThreadsForUser(user.id).catch(() => []);
+                }
+                const messageThreads = threadsCacheRef.current || [];
+
+                if (user?.id && messageThreads.length > 0) {
+                    const partnerIds = Array.from(
+                        new Set(
+                            messageThreads
+                                .map((thread) => (thread.buyerId === user.id ? thread.sellerId : thread.buyerId))
+                                .filter((id) => Boolean(id) && id !== user.id)
+                        )
+                    ).slice(0, 24);
+
+                    const missingPartnerIds = partnerIds.filter((id) => !(id in threadPartnerCacheRef.current));
+                    if (missingPartnerIds.length > 0) {
+                        const partners = await Promise.all(
+                            missingPartnerIds.map((id) => userService.getUserById(id).catch(() => null))
+                        );
+                        missingPartnerIds.forEach((id, index) => {
+                            threadPartnerCacheRef.current[id] = partners[index] || null;
+                        });
+                    }
+                }
+
+                const messageMatches = messageThreads
+                    .filter((thread) => {
+                        const partnerId = user?.id ? (thread.buyerId === user.id ? thread.sellerId : thread.buyerId) : '';
+                        const partnerName = partnerId ? threadPartnerCacheRef.current[partnerId]?.name || '' : '';
+                        const searchable = `${partnerName} ${thread.lastMessage || ''}`;
+                        return includesQuery(searchable, normalizedQuery);
+                    })
+                    .slice(0, 6)
+                    .map((thread) => {
+                        const partnerId = user?.id ? (thread.buyerId === user.id ? thread.sellerId : thread.buyerId) : '';
+                        const partnerName = partnerId ? threadPartnerCacheRef.current[partnerId]?.name || 'Conversation' : 'Conversation';
+                        return {
+                            id: `message-${thread.id}`,
+                            title: partnerName,
+                            subtitle: thread.lastMessage || 'Open conversation',
+                            to: `/profile/messages/${thread.id}`
+                        };
+                    });
+
+                if (!reelsCacheRef.current) {
+                    reelsCacheRef.current = await reelService.getReelsForFeed(user?.id || '').catch(() => []);
+                }
+
+                const reelMatches = (reelsCacheRef.current || [])
+                    .filter((reel) => {
+                        const source = `${reel.caption || ''} ${(reel.hashtags || []).join(' ')}`;
+                        return includesQuery(source, normalizedQuery);
+                    })
+                    .slice(0, 6)
+                    .map((reel) => ({
+                        id: `pixe-${reel.id}`,
+                        title: reel.caption || 'Pixe reel',
+                        subtitle: `${reel.views || 0} views`,
+                        to: `/reels?focus=${encodeURIComponent(reel.id)}`
+                    }));
+
+                const fallbackPixeMatches = PIXE_SEARCH_INDEX
+                    .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
+                    .slice(0, 4);
+
+                if (!cancelled) {
+                    setGlobalSearchResults({
+                        pages: pageMatches,
+                        features: featureMatches,
+                        users: userMatches,
+                        items: itemMatches,
+                        services: serviceMatches,
+                        messages: messageMatches,
+                        pixes: reelMatches.length > 0 ? reelMatches : fallbackPixeMatches
+                    });
+                }
+            } catch (error) {
+                console.warn('Global browse search failed:', error);
+                if (!cancelled) {
+                    setGlobalSearchResults({
+                        ...EMPTY_GLOBAL_RESULTS,
+                        pages: PAGE_SEARCH_INDEX
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .slice(0, 6),
+                        features: FEATURE_SEARCH_INDEX
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .slice(0, 6),
+                        pixes: PIXE_SEARCH_INDEX
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .slice(0, 4)
+                    });
+                }
+            } finally {
+                if (!cancelled) setIsGlobalSearchLoading(false);
+            }
+        }, 320);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [filters.query, hasGlobalQuery, user?.id]);
 
     const fetchAllBrands = async () => {
         const { items: allItems } = await itemService.getItems({}, { page: 1, limit: 1000 });
@@ -333,92 +576,231 @@ const BrowsePage: React.FC = () => {
         }));
     }, []);
 
+    const globalSearchSections = useMemo(() => {
+        return (Object.keys(GLOBAL_SECTION_META) as GlobalSearchSectionKey[])
+            .map((key) => ({
+                key,
+                title: GLOBAL_SECTION_META[key].title,
+                tone: GLOBAL_SECTION_META[key].tone,
+                entries: globalSearchResults[key]
+            }))
+            .filter((section) => section.entries.length > 0);
+    }, [globalSearchResults]);
+
+    const globalSearchResultCount = useMemo(
+        () => globalSearchSections.reduce((sum, section) => sum + section.entries.length, 0),
+        [globalSearchSections]
+    );
+
+    const openSearchResult = useCallback((path: string) => {
+        if (path.startsWith('/profile') && !user) {
+            navigate('/auth', { state: { from: { pathname: path } } });
+            return;
+        }
+        navigate(path);
+    }, [navigate, user]);
+
     return (
         <>
             {quickViewItem && <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />}
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 animate-fade-in-up">
                 
                 <RecentlyViewedBar />
-                <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                    {[
-                        { title: 'Verified Sellers', desc: 'Shop trusted storefronts with quality checks.', tag: 'Trust' },
-                        { title: 'Free Shipping', desc: 'Discover items with seller-paid delivery.', tag: 'Delivery' },
-                        { title: 'Dropship Ready', desc: 'Source items with built-in fulfillment.', tag: 'Fulfillment' },
-                        { title: 'Auctions & Deals', desc: 'Bid on rare pieces and limited drops.', tag: 'Hype' }
-                    ].map(card => (
-                        <div key={card.title} className="rounded-2xl border border-border bg-surface p-4 shadow-soft">
-                            <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">{card.tag}</p>
-                            <h3 className="mt-2 font-bold text-text-primary">{card.title}</h3>
-                            <p className="mt-2 text-sm text-text-secondary">{card.desc}</p>
+                <div className="mb-8 rounded-2xl border border-border bg-surface p-5 shadow-soft">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-text-secondary">Product Discovery</p>
+                            <h1 className="mt-1 text-2xl font-black tracking-tight text-text-primary sm:text-3xl">Find products, then hire services or visit stores</h1>
+                            <p className="mt-1 text-sm text-text-secondary">This page now connects all discovery modules: products, services, and stores.</p>
                         </div>
-                    ))}
-                </div>
-
-                <div className="mb-8 bg-surface rounded-2xl border border-border p-5 shadow-soft">
-                    <div className="flex flex-col lg:flex-row gap-4 items-stretch">
-                        <div className="flex-1 relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary">
-                                <SearchIcon />
-                            </span>
-                            <input
-                                value={filters.query}
-                                onChange={e => setFilters(p => ({ ...p, query: e.target.value, page: 1 }))}
-                                placeholder="Search items, brands, categories, creators..."
-                                className="w-full pl-12 pr-10 py-3 rounded-xl border border-border bg-surface-soft text-text-primary font-medium focus:ring-2 focus:ring-primary outline-none"
-                            />
-                            {filters.query && (
-                                <button
-                                    onClick={() => setFilters(p => ({ ...p, query: '', page: 1 }))}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                                >
-                                    <CloseIcon />
-                                </button>
-                            )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <button onClick={handleShuffle} className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-border text-xs sm:text-sm font-semibold text-text-primary hover:bg-surface-soft flex items-center gap-2">
-                                <ShuffleIcon /> Shuffle
-                            </button>
-                            <button onClick={() => setShowFilters(true)} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-black text-white font-semibold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2">
-                                Advanced Filters
-                                {activeFilterCount > 0 && (
-                                    <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">
-                                        {activeFilterCount}
-                                    </span>
-                                )}
-                            </button>
+                        <div className="grid grid-cols-2 gap-2 text-center sm:w-[220px]">
+                            <div className="rounded-xl border border-border bg-surface-soft px-3 py-2">
+                                <p className="text-lg font-black text-text-primary">{totalItems}</p>
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-text-secondary">Products</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface-soft px-3 py-2">
+                                <p className="text-lg font-black text-text-primary">{allBrands.length}</p>
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-text-secondary">Brands</p>
+                            </div>
                         </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                        {allBrands.slice(0, 6).map(brand => (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {[
+                            {
+                                title: 'Explore services',
+                                desc: 'Open the dedicated hiring marketplace for service providers.',
+                                tag: 'Hire',
+                                to: '/services/marketplace'
+                            },
+                            {
+                                title: 'Explore stores',
+                                desc: 'Jump into storefront discovery and follow verified sellers.',
+                                tag: 'Stores',
+                                to: '/stores'
+                            },
+                            {
+                                title: 'Seller directory',
+                                desc: 'Browse seller personas and open direct conversations.',
+                                tag: 'People',
+                                to: '/sellers'
+                            },
+                            {
+                                title: 'Live and pixe',
+                                desc: 'Discover creator-led product showcases and launches.',
+                                tag: 'Content',
+                                to: '/pixe'
+                            }
+                        ].map((card) => (
                             <button
-                                key={brand}
-                                onClick={() => setFilters(p => ({ ...p, query: brand, page: 1 }))}
-                                className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary"
+                                key={card.title}
+                                onClick={() => navigate(card.to)}
+                                className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface-soft p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-soft"
                             >
-                                {brand}
+                                <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">{card.tag}</p>
+                                <h3 className="mt-2 font-bold text-text-primary">{card.title}</h3>
+                                <p className="mt-2 text-sm text-text-secondary">{card.desc}</p>
                             </button>
                         ))}
-                        <button onClick={() => setFilters(p => ({ ...p, query: 'limited', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Limited</button>
-                        <button onClick={() => setFilters(p => ({ ...p, query: 'verified', page: 1 }))} className="px-3 py-1 rounded-full border border-border text-text-secondary hover:text-text-primary hover:border-primary">Verified</button>
                     </div>
-                    {activeFilterChips.length > 0 && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                            {activeFilterChips.map((chip, idx) => (
+                </div>
+
+                <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface shadow-soft">
+                    <div className="relative p-5">
+                        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/15 blur-3xl" />
+                        <div className="pointer-events-none absolute -bottom-16 left-10 h-32 w-32 rounded-full bg-sky-500/10 blur-3xl" />
+                        <div className="relative">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-text-secondary">Marketplace Search</p>
+                            <h2 className="mt-2 text-xl font-black tracking-tight text-text-primary sm:text-2xl">
+                                Find anything: products, services, users, messages, pages, and pixe
+                            </h2>
+                            <p className="mt-2 text-sm text-text-secondary">
+                                Type at least 2 characters to unlock cross-platform search cards with direct navigation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-border bg-surface p-5">
+                        <div className="flex flex-col items-stretch gap-4 lg:flex-row">
+                            <div className="relative flex-1">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary">
+                                    <SearchIcon />
+                                </span>
+                                <input
+                                    value={filters.query}
+                                    onChange={e => setFilters(p => ({ ...p, query: e.target.value, page: 1 }))}
+                                    placeholder="Search items, users, services, pages, messages, pixe..."
+                                    className="w-full rounded-xl border border-border bg-surface-soft py-3 pl-12 pr-10 font-medium text-text-primary outline-none focus:ring-2 focus:ring-primary"
+                                />
+                                {filters.query && (
+                                    <button
+                                        onClick={() => setFilters(p => ({ ...p, query: '', page: 1 }))}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                                    >
+                                        <CloseIcon />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button onClick={handleShuffle} className="flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-xs font-semibold text-text-primary hover:bg-surface-soft sm:w-auto sm:text-sm">
+                                    <ShuffleIcon /> Shuffle
+                                </button>
+                                <button onClick={() => setShowFilters(true)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-2.5 text-xs font-semibold text-white hover:opacity-90 sm:w-auto sm:text-sm">
+                                    Advanced Filters
+                                    {activeFilterCount > 0 ? (
+                                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold">
+                                            {activeFilterCount}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                            {allBrands.slice(0, 6).map(brand => (
                                 <button
-                                    key={`${chip.label}-${idx}`}
-                                    onClick={chip.onRemove}
-                                    className="px-3 py-1 rounded-full bg-surface-soft border border-border text-text-primary hover:border-primary flex items-center gap-2"
+                                    key={brand}
+                                    onClick={() => setFilters(p => ({ ...p, query: brand, page: 1 }))}
+                                    className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary"
                                 >
-                                    <span className="capitalize">{chip.label}</span>
-                                    <span className="text-text-secondary">×</span>
+                                    {brand}
                                 </button>
                             ))}
-                            <button onClick={resetFilters} className="px-3 py-1 rounded-full border border-primary text-primary font-semibold">
-                                Clear All
-                            </button>
+                            <button onClick={() => setFilters(p => ({ ...p, query: 'limited', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Limited</button>
+                            <button onClick={() => setFilters(p => ({ ...p, query: 'verified', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Verified</button>
+                            <button onClick={() => setFilters(p => ({ ...p, query: 'auction', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Auction</button>
+                            <button onClick={() => setFilters(p => ({ ...p, query: 'service', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Service</button>
                         </div>
-                    )}
+
+                        {activeFilterChips.length > 0 && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                                {activeFilterChips.map((chip, idx) => (
+                                    <button
+                                        key={`${chip.label}-${idx}`}
+                                        onClick={chip.onRemove}
+                                        className="flex items-center gap-2 rounded-full border border-border bg-surface-soft px-3 py-1 text-text-primary hover:border-primary"
+                                    >
+                                        <span className="capitalize">{chip.label}</span>
+                                        <span className="text-text-secondary">x</span>
+                                    </button>
+                                ))}
+                                <button onClick={resetFilters} className="rounded-full border border-primary px-3 py-1 font-semibold text-primary">
+                                    Clear All
+                                </button>
+                            </div>
+                        )}
+
+                        {hasGlobalQuery ? (
+                            <div className="mt-5 rounded-2xl border border-border bg-surface-soft/80 p-3 sm:p-4">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
+                                        Universal search
+                                    </p>
+                                    <p className="text-xs text-text-secondary">
+                                        {isGlobalSearchLoading ? 'Searching...' : `${globalSearchResultCount} results`}
+                                    </p>
+                                </div>
+
+                                {isGlobalSearchLoading && globalSearchResultCount === 0 ? (
+                                    <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-secondary">
+                                        <Spinner size="sm" />
+                                        <span>Looking across pages, users, items, services, messages, and pixe...</span>
+                                    </div>
+                                ) : globalSearchSections.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-border bg-surface px-3 py-3 text-sm text-text-secondary">
+                                        No global matches found for "{filters.query}".
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                        {globalSearchSections.map((section) => (
+                                            <div key={section.key} className="overflow-hidden rounded-xl border border-border bg-surface">
+                                                <div className={`border-b border-border bg-gradient-to-r ${section.tone} px-3 py-2`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">{section.title}</p>
+                                                        <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] font-semibold text-text-secondary">
+                                                            {section.entries.length}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5 p-2.5">
+                                                    {section.entries.map((entry) => (
+                                                        <button
+                                                            key={entry.id}
+                                                            type="button"
+                                                            onClick={() => openSearchResult(entry.to)}
+                                                            className="block w-full rounded-lg border border-transparent px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-surface-soft"
+                                                        >
+                                                            <p className="truncate text-sm font-semibold text-text-primary">{entry.title}</p>
+                                                            <p className="truncate text-xs text-text-secondary">{entry.subtitle}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+                    </div>
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -444,7 +826,7 @@ const BrowsePage: React.FC = () => {
                         </select>
                     </div>
                     <div className="lg:hidden text-xs text-text-secondary px-1 -mt-1">
-                        {isLoading && items.length === 0 ? 'Loading results…' : `${totalItems} results`}
+                        {isLoading && items.length === 0 ? 'Loading results...' : `${totalItems} results`}
                     </div>
 
                     {/* Sidebar */}
@@ -481,7 +863,7 @@ const BrowsePage: React.FC = () => {
                                 <p className="text-sm font-semibold text-text-secondary">{totalItems} Results</p>
                                 <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-text-primary hover:text-primary transition-colors ml-2">
                                     <input type="checkbox" checked={!!filters.location} onChange={toggleNeighborhoodMode} className="toggle-checkbox" />
-                                    <span>🌍 Local Only</span>
+                                    <span>Local Only</span>
                                 </label>
                              </div>
                              <div className="flex items-center gap-3">
@@ -516,7 +898,7 @@ const BrowsePage: React.FC = () => {
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center py-20 bg-surface/50 border border-dashed border-border rounded-xl">
-                                <div className="text-4xl mb-4">🔍</div>
+                                <LottieAnimation src={uiLottieAnimations.noResults} className="h-40 w-40 mb-2" loop autoplay />
                                 <h3 className="text-xl font-bold text-text-primary">No Items Found</h3>
                                 <p className="text-text-secondary mt-2">Try adjusting your filters or search terms.</p>
                                 <button onClick={resetFilters} className="mt-6 text-primary font-bold hover:underline">Clear All Filters</button>
@@ -535,3 +917,4 @@ const BrowsePage: React.FC = () => {
 };
 
 export default BrowsePage;
+

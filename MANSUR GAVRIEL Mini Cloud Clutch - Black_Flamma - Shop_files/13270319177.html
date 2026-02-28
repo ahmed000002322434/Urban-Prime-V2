@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!-- saved from url=(0072)https://checkout.shopify.com/3527949/policies/13270319177.html?locale=en -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Shipping</title>
+    
+    <script nonce="">
+      const debounce = function(func, wait, immediate) {
+        var timeout;
+        return function() {
+          var context = this, args = arguments;
+          clearTimeout(timeout);
+          timeout = setTimeout(function() {
+            timeout = null;
+            if (!immediate) func.apply(context, args);
+          }, wait);
+          if (immediate && !timeout) func.apply(context, args);
+        };
+      };
+
+      const sendMessage = function() {
+        parent.postMessage({ action: 'checkoutModalIframeResized', height: document.body.scrollHeight + 'px'}, '*');
+      };
+
+      document.addEventListener('DOMContentLoaded', sendMessage, false);
+      window.addEventListener('resize', debounce(sendMessage, 200), false);
+    </script>
+
+    <link rel="stylesheet" crossorigin="anonymous" href="./standalone-dfb65dca3b130340ce121985031c6a5511d52eb90543c2a728b7f48667ab05ca.css" integrity="sha256-37ZdyjsTA0DOEhmFAxxqVRHVLrkFQ8KnKLf0hmerBco=">
+  </head>
+  <body class="page-policies default-background text-container">
+      <p><span>US &amp; Canada orders over $150 ship free via UPS Ground. UPS 2nd Day Air is $75. We do not ship to PO boxes or freight forwarders. International orders ship express with DHL for $25 USD.</span></p>
+
+
+    <div class="hidden">
+  <span class="visually-hidden" id="forwarding-external-new-window-message">
+    Opens external website in a new window.
+  </span>
+
+  <span class="visually-hidden" id="forwarding-new-window-message">
+    Opens in a new window.
+  </span>
+
+  <span class="visually-hidden" id="forwarding-external-message">
+    Opens external website.
+  </span>
+
+  <span class="visually-hidden" id="checkout-context-step-one">
+    Order details - MANSUR GAVRIEL - Checkout
+  </span>
+</div>
+
+  
+
+<div id="volume-booster-visusalizer">
+                    <div class="sound">
+                        <div class="sound-icon"></div>
+                        <div class="sound-wave sound-wave_one"></div>
+                        <div class="sound-wave sound-wave_two"></div>
+                        <div class="sound-wave sound-wave_three"></div>
+                    </div>
+                    <div class="segments-box">
+                        <div data-range="1-20" class="segment"><span></span></div>
+                        <div data-range="21-40" class="segment"><span></span></div>
+                        <div data-range="41-60" class="segment"><span></span></div>
+                        <div data-range="61-80" class="segment"><span></span></div>
+                        <div data-range="81-100" class="segment"><span></span></div>
+                    </div>
+                </div></body></html>

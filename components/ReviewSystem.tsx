@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import StarRating from './StarRating';
 import Spinner from './Spinner';
+import LottieAnimation from './LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 interface ReviewSystemProps {
     onSubmit: (rating: number, comment: string) => Promise<void>;
@@ -27,7 +29,10 @@ const ReviewSystem: React.FC<ReviewSystemProps> = ({ onSubmit }) => {
 
     return (
         <div className="bg-white dark:bg-dark-surface p-6 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 mt-6">
-            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">How was your experience?</h3>
+            <div className="flex items-center justify-center gap-2 mb-4">
+                <LottieAnimation src={uiLottieAnimations.userReviews} alt="User reviews animation" className="h-24 w-24 object-contain" loop autoplay />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">How was your experience?</h3>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="flex justify-center">
                     <StarRating rating={rating} interactive onRatingChange={setRating} size="lg" />

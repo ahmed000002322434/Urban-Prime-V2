@@ -13,6 +13,8 @@ import { useUserData } from '../../hooks/useUserData';
 import { useAuth } from '../../hooks/useAuth';
 import QuickViewModal from '../../components/QuickViewModal';
 import StarRating from '../../components/StarRating';
+import LottieAnimation from '../../components/LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const WebsiteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>;
 const InstagramIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>;
@@ -114,8 +116,22 @@ const PublicProfilePage: React.FC = () => {
     }, [id, loggedInUser]);
     
     if (isLoading) return <Spinner size="lg" className="mt-20" />;
-    if (loadError) return <div className="text-center py-20 text-text-secondary">{loadError}</div>;
-    if (!profile) return <div className="text-center py-20">User not found.</div>;
+    if (loadError) {
+        return (
+            <div className="text-center py-20 text-text-secondary">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-44 w-44 mx-auto" loop autoplay />
+                <p>{loadError}</p>
+            </div>
+        );
+    }
+    if (!profile) {
+        return (
+            <div className="text-center py-20">
+                <LottieAnimation src={uiLottieAnimations.noFileFound} className="h-44 w-44 mx-auto" loop autoplay />
+                <p>User not found.</p>
+            </div>
+        );
+    }
 
     const { user, items, store } = profile;
     const userBadges = allBadgesData.filter(b => (user.badges || []).includes(b.id));
@@ -179,6 +195,9 @@ const PublicProfilePage: React.FC = () => {
                                             <button onClick={handleFollowToggle} className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors ${isFollowing ? 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600' : 'bg-primary text-white hover:opacity-90'}`}>
                                                 {isFollowing ? 'Following' : 'Follow'}
                                             </button>
+                                            <Link to={`/profile/messages?sellerId=${encodeURIComponent(user.id)}`} className="px-4 py-1.5 text-sm bg-primary text-white font-semibold rounded-lg hover:opacity-90">
+                                                Message
+                                            </Link>
                                             {store && <Link to={`/store/${store.slug}`} className="px-4 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 font-semibold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">View Store</Link>}
                                         </>
                                     )}

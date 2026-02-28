@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type {
   AccountPersona,
@@ -14,15 +14,17 @@ import type {
   User,
   UserOnboardingState
 } from '../types';
-import { authService } from '../services/itemService';
+import { authService, userService } from '../services/itemService';
 import profileOnboardingService from '../services/profileOnboardingService';
 import personaService from '../services/personaService';
 import { auth } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Spinner from '../components/Spinner';
+import { enforceAvatarIdentity, needsAvatarNormalization } from '../utils/avatarEnforcement';
 
 const ONBOARDING_PRESET_KEY = 'urbanprime_onboarding_preset_v2';
 const ONBOARDING_REDIRECT_KEY = 'urbanprime_onboarding_redirect_v2';
+const UNIFIED_PROFILE_CACHE_PREFIX = 'urbanprime_unified_profile_cache_v2:';
 
 const toLegacyPurpose = (intents: OnboardingIntent[]): OnboardingData['purpose'] | undefined => {
   const hasSell = intents.includes('sell');
@@ -73,6 +75,30 @@ const readProfileOnboardingFlag = () => {
   return true;
 };
 
+const getUnifiedProfileCacheKey = (firebaseUid: string) => `${UNIFIED_PROFILE_CACHE_PREFIX}${firebaseUid}`;
+
+const readCachedUnifiedProfile = (firebaseUid: string): UnifiedProfile | null => {
+  if (!firebaseUid || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(getUnifiedProfileCacheKey(firebaseUid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as UnifiedProfile;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedUnifiedProfile = (firebaseUid: string, profile: UnifiedProfile) => {
+  if (!firebaseUid || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(getUnifiedProfileCacheKey(firebaseUid), JSON.stringify(profile));
+  } catch {
+    // ignore cache write failures
+  }
+};
+
 const fallbackCompletion = (profile: User): ProfileCompletion => {
   const missingRequiredFields: string[] = [];
   if (!profile?.name) missingRequiredFields.push('name');
@@ -109,7 +135,14 @@ interface AuthContextType {
   profileCompletion: ProfileCompletion | null;
   isProfileOnboardingEnabled: boolean;
   login: (email: string, pass: string) => Promise<User>;
-  register: (name: string, email: string, pass: string, phone: string, city: string) => Promise<User>;
+  register: (
+    name: string,
+    email: string,
+    pass: string,
+    phone: string,
+    city: string,
+    profileOverrides?: Partial<User>
+  ) => Promise<User>;
   signInWithGoogle: () => Promise<User>;
   logout: () => void;
   switchUser: (targetUserId: string) => Promise<void>;
@@ -119,7 +152,7 @@ interface AuthContextType {
   openOnboarding: (purpose?: OnboardingData['purpose'] | OnboardingIntent | OnboardingIntent[], redirectPath?: string) => void;
   closeOnboarding: () => void;
   updateUser: (updatedData: Partial<User>) => void;
-  setActivePersona: (personaId: string) => Promise<void>;
+  setActivePersona: (personaId: string, options?: { requireConfirmation?: boolean; confirmationMessage?: string }) => Promise<void>;
   createPersona: (type: PersonaType, payload?: Partial<AccountPersona>) => Promise<AccountPersona>;
   hasCapability: (capability: Capability, personaId?: string) => boolean;
   capabilityState: (capability: Capability, personaId?: string) => CapabilityState;
@@ -141,6 +174,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [onboardingPreset, setOnboardingPreset] = useState<OnboardingData['purpose'] | OnboardingIntent | null>(null);
   const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
   const [isProfileOnboardingEnabled, setIsProfileOnboardingEnabled] = useState<boolean>(onboardingFeatureDefault);
+  const avatarNormalizationAttemptRef = useRef(new Set<string>());
+  const avatarDirectoryNormalizationRef = useRef(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -149,27 +184,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const authRedirectPath = (location.state?.from as any)?.pathname || '/';
 
   const buildFallbackUser = useCallback(
-    (firebaseUser: FirebaseUser): User => ({
-      id: firebaseUser.uid,
-      name: firebaseUser.displayName || 'User',
-      email: firebaseUser.email || '',
-      avatar: firebaseUser.photoURL || '/icons/urbanprime.svg',
-      phone: '',
-      city: '',
-      country: '',
-      purpose: undefined,
-      interests: [],
-      currencyPreference: '',
-      following: [],
-      followers: [],
-      wishlist: [],
-      cart: [],
-      badges: [],
-      memberSince: new Date().toISOString(),
-      status: 'active',
-      accountLifecycle: 'restricted',
-      capabilities: personaService.getCapabilitiesForPersonaType('consumer', { isAdmin: false })
-    }),
+    (firebaseUser: FirebaseUser): User =>
+      enforceAvatarIdentity({
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || 'User',
+        email: firebaseUser.email || '',
+        avatar: firebaseUser.photoURL || '/icons/urbanprime.svg',
+        phone: '',
+        city: '',
+        country: '',
+        purpose: undefined,
+        interests: [],
+        currencyPreference: '',
+        following: [],
+        followers: [],
+        wishlist: [],
+        cart: [],
+        badges: [],
+        memberSince: new Date().toISOString(),
+        status: 'active',
+        accountLifecycle: 'restricted',
+        capabilities: personaService.getCapabilitiesForPersonaType('consumer', { isAdmin: false })
+      }),
     []
   );
 
@@ -184,19 +220,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return list;
   }, []);
 
+  const ensureCurrentUserAvatarNormalized = useCallback(async (currentUser: User) => {
+    if (!currentUser?.id) return;
+    if (!needsAvatarNormalization(currentUser)) return;
+    if (avatarNormalizationAttemptRef.current.has(currentUser.id)) return;
+
+    avatarNormalizationAttemptRef.current.add(currentUser.id);
+    const normalized = enforceAvatarIdentity(currentUser);
+    setUser((prev) => (prev && prev.id === currentUser.id ? { ...prev, avatar: normalized.avatar, gender: normalized.gender } : prev));
+
+    try {
+      await userService.updateUserProfile(currentUser.id, {
+        avatar: normalized.avatar,
+        gender: normalized.gender
+      });
+    } catch (error) {
+      console.warn('Avatar normalization sync skipped:', error);
+    }
+  }, []);
+
+  const normalizeAvatarDirectory = useCallback(async () => {
+    if (avatarDirectoryNormalizationRef.current) return;
+    avatarDirectoryNormalizationRef.current = true;
+    try {
+      await userService.normalizeAllUserAvatars();
+    } catch (error) {
+      console.warn('Avatar directory normalization skipped:', error);
+    }
+  }, []);
+
   const applyUnifiedProfile = useCallback(
     async (unified: UnifiedProfile) => {
+      const normalizedUser = enforceAvatarIdentity(unified.user);
       const onboardingEnabled = unified.featureFlags?.profileOnboardingV2 ?? onboardingFeatureDefault;
+      const normalizedUnified: UnifiedProfile = {
+        ...unified,
+        user: normalizedUser
+      };
       setIsProfileOnboardingEnabled(onboardingEnabled);
-      setUser(unified.user);
+      setUser(normalizedUser);
       setPersonas(unified.personas);
       setActivePersonaState(unified.activePersona || null);
       setProfileCompletion(onboardingEnabled ? (unified.completion || defaultCompletion) : completedBypassCompletion);
-      if (!unified.personas || unified.personas.length === 0) {
-        await syncPersonas(unified.user);
+      const firebaseUid = auth.currentUser?.uid || normalizedUser.id;
+      writeCachedUnifiedProfile(firebaseUid, normalizedUnified);
+      if (firebaseUid !== normalizedUser.id) {
+        writeCachedUnifiedProfile(normalizedUser.id, normalizedUnified);
       }
+      if (!unified.personas || unified.personas.length === 0) {
+        await syncPersonas(normalizedUser);
+      }
+      await ensureCurrentUserAvatarNormalized(normalizedUser);
+      void normalizeAvatarDirectory();
     },
-    [onboardingFeatureDefault, syncPersonas]
+    [ensureCurrentUserAvatarNormalized, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]
   );
 
   const refreshProfile = useCallback(async (): Promise<UnifiedProfile | null> => {
@@ -216,7 +293,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return unified;
     } catch (error) {
       console.error('Profile API unavailable, using fallback:', error);
-      const fallback = (await authService.getProfile(firebaseUser.uid)) || buildFallbackUser(firebaseUser);
+      const cachedUnified = readCachedUnifiedProfile(firebaseUser.uid);
+      if (cachedUnified) {
+        await applyUnifiedProfile(cachedUnified);
+        return cachedUnified;
+      }
+      const fallbackRaw = (await authService.getProfile(firebaseUser.uid)) || buildFallbackUser(firebaseUser);
+      const fallback = enforceAvatarIdentity(fallbackRaw);
       setUser(fallback);
       const completion = fallbackCompletion(fallback);
       setProfileCompletion(onboardingFeatureDefault ? completion : completedBypassCompletion);
@@ -226,7 +309,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (active) {
         setUser((prev) => (prev ? { ...prev, activePersonaId: active.id, capabilities: active.capabilities } : prev));
       }
-      return {
+      await ensureCurrentUserAvatarNormalized(fallback);
+      void normalizeAvatarDirectory();
+      const fallbackUnified: UnifiedProfile = {
         user: fallback,
         profile: {},
         personas: syncedPersonas,
@@ -236,8 +321,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           profileOnboardingV2: onboardingFeatureDefault
         }
       };
+      writeCachedUnifiedProfile(firebaseUser.uid, fallbackUnified);
+      return fallbackUnified;
     }
-  }, [applyUnifiedProfile, buildFallbackUser, onboardingFeatureDefault, syncPersonas]);
+  }, [applyUnifiedProfile, buildFallbackUser, ensureCurrentUserAvatarNormalized, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -247,8 +334,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
+          try {
+            await authService.syncAuthenticatedUser();
+          } catch (syncError) {
+            console.warn('Auth restore sync skipped:', syncError);
+          }
           await refreshProfile();
         } else {
+          avatarNormalizationAttemptRef.current.clear();
+          avatarDirectoryNormalizationRef.current = false;
           setUser(null);
           setPersonas([]);
           setActivePersonaState(null);
@@ -292,8 +386,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const register = useCallback(
-    async (name: string, email: string, pass: string, phone: string, city: string) => {
-      await authService.register(name, email, pass, phone, city);
+    async (
+      name: string,
+      email: string,
+      pass: string,
+      phone: string,
+      city: string,
+      profileOverrides?: Partial<User>
+    ) => {
+      await authService.register(name, email, pass, phone, city, profileOverrides);
       const unified = await refreshProfile();
       if (unified?.user) return unified.user;
       if (user) return user;
@@ -312,6 +413,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = useCallback(() => {
     authService.logout();
+    avatarNormalizationAttemptRef.current.clear();
+    avatarDirectoryNormalizationRef.current = false;
     setUser(null);
     setPersonas([]);
     setActivePersonaState(null);
@@ -322,7 +425,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const switchUser = useCallback(
     async (_targetUserId: string) => {
+      if (!user) {
+        throw new Error('You must be logged in to switch accounts.');
+      }
+      if (typeof window !== 'undefined') {
+        const confirmed = window.confirm('Switching account will log you out first. Continue?');
+        if (!confirmed) {
+          return;
+        }
+      }
       await authService.logout();
+      avatarNormalizationAttemptRef.current.clear();
+      avatarDirectoryNormalizationRef.current = false;
       setUser(null);
       setPersonas([]);
       setActivePersonaState(null);
@@ -330,7 +444,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsProfileOnboardingEnabled(onboardingFeatureDefault);
       navigate('/auth');
     },
-    [navigate, onboardingFeatureDefault]
+    [navigate, onboardingFeatureDefault, user]
   );
 
   const saveOnboardingStep = useCallback(
@@ -371,7 +485,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         : payload;
 
-      const unified = await profileOnboardingService.completeOnboarding(normalizedPayload);
+      const unified = await profileOnboardingService.completeOnboarding(normalizedPayload as any);
       await applyUnifiedProfile(unified);
 
       sessionStorage.removeItem(ONBOARDING_PRESET_KEY);
@@ -423,15 +537,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateUser = useCallback((updatedData: Partial<User>) => {
     setUser((currentUser) => {
       if (!currentUser) return null;
-      return { ...currentUser, ...updatedData };
+      return enforceAvatarIdentity({ ...currentUser, ...updatedData });
     });
   }, []);
 
   const setActivePersona = useCallback(
-    async (personaId: string) => {
-      if (!user) return;
+    async (
+      personaId: string,
+      options?: { requireConfirmation?: boolean; confirmationMessage?: string }
+    ) => {
+      if (!user) {
+        throw new Error('You must be logged in to switch workspaces.');
+      }
       const target = personas.find((persona) => persona.id === personaId);
-      if (!target) return;
+      if (!target) {
+        throw new Error('Selected workspace was not found for this account.');
+      }
+
+      const requireConfirmation = options?.requireConfirmation ?? true;
+      if (requireConfirmation && typeof window !== 'undefined') {
+        const confirmed = window.confirm(
+          options?.confirmationMessage ||
+            `Switch workspace to "${target.displayName}"? You can change it again any time.`
+        );
+        if (!confirmed) {
+          throw new Error('Workspace switch cancelled.');
+        }
+      }
+
       await personaService.setActivePersona(user.id, personaId);
       setActivePersonaState(target);
       setUser((prev) => (prev ? { ...prev, activePersonaId: personaId, capabilities: target.capabilities } : prev));
@@ -455,7 +588,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updatedPersonas = await personaService.getPersonasForUser(user);
       setPersonas(updatedPersonas);
       if (!activePersona) {
-        await setActivePersona(created.id);
+        await setActivePersona(created.id, { requireConfirmation: false });
       }
       return created;
     },

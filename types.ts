@@ -45,6 +45,7 @@ export interface User {
   likedReels?: string[];
   dailyUsage?: { date: string; videos: number; images: number };
   rating?: number; // Added rating to fix usage in directories
+  chatSettings?: ChatSettings;
 }
 
 
@@ -195,6 +196,7 @@ export interface ProfileCompletion {
 
 export interface FeatureFlags {
   profileOnboardingV2: boolean;
+  chatReliabilityV2?: boolean;
 }
 
 export interface UserOnboardingState {
@@ -1209,13 +1211,48 @@ export interface ChatMessage {
     sender?: string;
     text?: string;
     content?: any; 
-    type?: 'text' | 'image' | 'video' | 'listing-draft' | 'offer' | 'contract' | 'milestone';
+    type?: 'text' | 'image' | 'video' | 'voice' | 'listing-draft' | 'offer' | 'contract' | 'milestone';
     timestamp: string | Date;
     imageUrl?: string;
     videoUrl?: string;
+    audioUrl?: string;
+    audioDurationMs?: number;
     isRead?: boolean;
     offer?: CustomOffer;
     sources?: any[];
+}
+
+export type ChatCallMode = 'voice' | 'video';
+export type ChatCallStatus = 'ringing' | 'accepted' | 'declined' | 'ended' | 'missed';
+
+export interface ChatCallSession {
+    id: string;
+    threadId: string;
+    roomName: string;
+    mode: ChatCallMode;
+    status: ChatCallStatus;
+    initiatorId: string;
+    receiverId: string;
+    acceptedById?: string;
+    silentByIds?: string[];
+    startedAt: string;
+    updatedAt: string;
+    endedAt?: string;
+    reason?: string;
+}
+
+export interface ChatPresenceState {
+    userId: string;
+    isOnline: boolean;
+    lastSeenAt?: string;
+    visibility: boolean;
+    updatedAt: string;
+}
+
+export interface ChatSettings {
+    e2eEnabled: boolean;
+    presenceVisible: boolean;
+    soundEnabled: boolean;
 }
 
 export type WorkMode = 'instant' | 'proposal' | 'hybrid';

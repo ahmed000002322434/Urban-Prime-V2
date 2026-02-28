@@ -3,7 +3,9 @@ import { useAuth } from '../hooks/useAuth';
 import { itemService } from '../services/itemService';
 import StarRating from './StarRating';
 import Spinner from './Spinner';
+import LottieAnimation from './LottieAnimation';
 import type { Item, User } from '../types';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 interface ReviewFormProps {
   itemId: string;
@@ -53,7 +55,10 @@ const ReviewForm: React.FC<ReviewFormProps> = ({ itemId, onReviewSubmit }) => {
 
   return (
     <div className="mt-8 bg-surface-soft p-8 rounded-lg">
-      <h3 className="text-xl font-bold text-text-primary">Write a Review</h3>
+      <div className="flex items-center gap-3">
+        <LottieAnimation src={uiLottieAnimations.feedbackStore} alt="Feedback animation" className="h-24 w-24 object-contain" loop autoplay />
+        <h3 className="text-xl font-bold text-text-primary">Write a Review</h3>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4 mt-4">
         <div>
           <label className="font-semibold text-sm text-text-secondary">Your Rating</label>

@@ -1,5 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import LottieAnimation from '../LottieAnimation';
+import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 interface DashboardPageLoaderProps {
   title?: string;
@@ -23,8 +25,11 @@ const DashboardPageLoader: React.FC<DashboardPageLoaderProps> = ({ title = 'Load
   return (
     <div className="dashboard-page space-y-4">
       <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
-        <p className="text-sm font-semibold text-[#3f3f3f]">{title}</p>
-        <Block className="mt-3 h-3 w-44" />
+        <div className="flex flex-col items-center justify-center text-center py-2">
+          <LottieAnimation src={uiLottieAnimations.loader} className="h-20 w-20 object-contain" />
+          <p className="mt-2 text-sm font-semibold text-[#3f3f3f]">{title}</p>
+        </div>
+        <Block className="mt-3 h-3 w-44 mx-auto" />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -31,13 +31,14 @@ import {
 } from 'firebase/auth';
 import { db, auth, googleProvider } from '../firebase';
 import { db as mockDb } from '../data/database';
-import { backendFetch, isBackendConfigured } from './backendClient';
+import { backendFetch, getBackendBaseUrl, isBackendConfigured } from './backendClient';
 import supabaseMirror from './supabaseMirror';
 import personaService from './personaService';
 import workService, { mapWorkListingToService } from './workService';
 import proposalService from './proposalService';
 import contractService from './contractService';
 import { shouldUseFirestoreFallback, shouldUseLocalMockFallback } from './dataMode';
+import { enforceAvatarIdentity } from '../utils/avatarEnforcement';
 import type { 
     Item, 
     User, 
@@ -72,7 +73,13 @@ import type {
     GrowthInsight,
     CartItem,
     Notification,
-    ListingActivityPreferences
+    ListingActivityPreferences,
+    ChatThread,
+    ChatMessage,
+    CustomOffer,
+    ChatCallSession,
+    ChatPresenceState,
+    ChatCallMode
 } from '../types';
 import { CATEGORIES, HIERARCHICAL_CATEGORIES } from '../constants';
 
@@ -99,22 +106,80 @@ const ensureMockDb = () => {
     }
 };
 const supabaseUserIdCache = new Map<string, string>();
+const supabaseUserMissCache = new Map<string, number>();
+const supabaseUserRowCache = new Map<string, { row: any; cachedAt: number }>();
+const SUPABASE_USER_CACHE_TTL_MS = 120_000;
+const SUPABASE_USER_MISS_TTL_MS = 20_000;
+const customOfferCache = new Map<string, { offer: CustomOffer; cachedAt: number }>();
+const CUSTOM_OFFER_CACHE_TTL_MS = 120_000;
+let activeUserSearchCache: { users: User[]; expiresAt: number } | null = null;
+const ACTIVE_USER_SEARCH_CACHE_TTL_MS = 60_000;
 
-const resolveSupabaseUserId = async (firebaseUid: string): Promise<string | null> => {
-    if (!firebaseUid || !isBackendConfigured()) return null;
-    const cached = supabaseUserIdCache.get(firebaseUid);
+const getCachedSupabaseUserRow = (id: string) => {
+    const cached = supabaseUserRowCache.get(id);
+    if (!cached) return null;
+    if (Date.now() - cached.cachedAt > SUPABASE_USER_CACHE_TTL_MS) {
+        supabaseUserRowCache.delete(id);
+        return null;
+    }
+    return cached.row;
+};
+
+const resolveSupabaseUserId = async (userIdOrFirebaseUid: string): Promise<string | null> => {
+    if (!userIdOrFirebaseUid || !isBackendConfigured()) return null;
+    const normalizedInput = String(userIdOrFirebaseUid).trim();
+    if (!normalizedInput) return null;
+    if (isUuidLike(normalizedInput)) {
+        supabaseUserIdCache.set(normalizedInput, normalizedInput);
+        supabaseUserMissCache.delete(normalizedInput);
+        return normalizedInput;
+    }
+
+    const cached = supabaseUserIdCache.get(normalizedInput);
     if (cached) return cached;
+    const missUntil = supabaseUserMissCache.get(normalizedInput) || 0;
+    if (missUntil > Date.now()) return null;
     try {
         const token = await getBackendToken();
-        const res = await backendFetch(`/api/users?eq.firebase_uid=${firebaseUid}&select=id,firebase_uid&limit=1`, {}, token);
-        const data = res?.data;
-        const row = Array.isArray(data) ? data[0] : data;
-        const supabaseId = row?.id || null;
-        if (supabaseId) {
-            supabaseUserIdCache.set(firebaseUid, supabaseId);
+        const byFirebaseRes = await backendFetch(
+            `/api/users?eq.firebase_uid=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
+            {},
+            token
+        );
+        const byFirebaseData = byFirebaseRes?.data;
+        const byFirebaseRow = Array.isArray(byFirebaseData) ? byFirebaseData[0] : byFirebaseData;
+
+        let supabaseId = byFirebaseRow?.id || null;
+        let matchedFirebaseUid = byFirebaseRow?.firebase_uid ? String(byFirebaseRow.firebase_uid) : normalizedInput;
+
+        if (!supabaseId) {
+            const byIdRes = await backendFetch(
+                `/api/users?eq.id=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
+                {},
+                token
+            );
+            const byIdData = byIdRes?.data;
+            const byIdRow = Array.isArray(byIdData) ? byIdData[0] : byIdData;
+            supabaseId = byIdRow?.id || null;
+            if (byIdRow?.firebase_uid) {
+                matchedFirebaseUid = String(byIdRow.firebase_uid);
+            }
         }
+
+        if (supabaseId) {
+            supabaseUserIdCache.set(normalizedInput, supabaseId);
+            supabaseUserMissCache.delete(normalizedInput);
+            supabaseUserIdCache.set(supabaseId, supabaseId);
+            supabaseUserMissCache.delete(supabaseId);
+            if (matchedFirebaseUid) {
+                supabaseUserIdCache.set(matchedFirebaseUid, supabaseId);
+                supabaseUserMissCache.delete(matchedFirebaseUid);
+            }
+        }
+        if (!supabaseId) supabaseUserMissCache.set(normalizedInput, Date.now() + SUPABASE_USER_MISS_TTL_MS);
         return supabaseId;
     } catch (error) {
+        supabaseUserMissCache.set(normalizedInput, Date.now() + SUPABASE_USER_MISS_TTL_MS);
         console.warn('Supabase user lookup failed:', error);
         return null;
     }
@@ -139,22 +204,32 @@ const mapPersonaNotification = (row: any, fallbackUserId: string): Notification 
     createdAt: row?.created_at || row?.createdAt || new Date().toISOString()
 });
 
-const mapBackendUserRow = (row: any): User => ({
-    id: row?.firebase_uid || row?.id || '',
-    name: row?.name || 'User',
-    email: row?.email || '',
-    avatar: row?.avatar_url || '/icons/urbanprime.svg',
-    phone: row?.phone || '',
-    status: (row?.status || 'active') as User['status'],
-    following: [],
-    followers: [],
-    wishlist: [],
-    cart: [],
-    badges: [],
-    memberSince: row?.created_at || new Date().toISOString(),
-    accountLifecycle: 'member',
-    capabilities: personaService.getCapabilitiesForPersonaType('consumer')
-});
+const mapBackendUserRow = (row: any): User => {
+    const identity = enforceAvatarIdentity({
+        name: row?.name || 'User',
+        email: row?.email || '',
+        gender: row?.gender,
+        avatar: row?.avatar_url
+    });
+
+    return {
+        id: row?.firebase_uid || row?.id || '',
+        name: identity.name,
+        email: identity.email,
+        avatar: identity.avatar,
+        gender: identity.gender,
+        phone: row?.phone || '',
+        status: (row?.status || 'active') as User['status'],
+        following: [],
+        followers: [],
+        wishlist: [],
+        cart: [],
+        badges: [],
+        memberSince: row?.created_at || new Date().toISOString(),
+        accountLifecycle: 'member',
+        capabilities: personaService.getCapabilitiesForPersonaType('consumer')
+    };
+};
 
 const mapUnifiedProfilePayloadToUser = (payload: any, fallbackUid: string): User | null => {
     const userRow = payload?.user;
@@ -168,7 +243,7 @@ const mapUnifiedProfilePayloadToUser = (payload: any, fallbackUid: string): User
     else if (purposeRaw.includes('sell')) purpose = 'list';
     else if (purposeRaw.length > 0) purpose = 'rent';
 
-    return {
+    const enrichedUser: User = {
         ...mapped,
         id: userRow?.firebase_uid || fallbackUid || mapped.id,
         phone: userRow?.phone || mapped.phone || '',
@@ -183,6 +258,8 @@ const mapUnifiedProfilePayloadToUser = (payload: any, fallbackUid: string): User
         gender: profileRow?.gender || undefined,
         purpose
     };
+
+    return enforceAvatarIdentity(enrichedUser);
 };
 
 
@@ -249,6 +326,12 @@ const mapBackendItemRow = (
     const salePrice = toNumber(row?.sale_price, toNumber(metadata.salePrice, 0));
     const rentalPrice = toNumber(row?.rental_price, toNumber(metadata.rentalPrice, 0));
     const auctionStartPrice = toNumber(row?.auction_start_price, toNumber(metadata.auctionStartPrice, 0));
+    const ownerIdentity = enforceAvatarIdentity({
+        name: ownerRow?.name || metadata.ownerName || 'Seller',
+        email: ownerRow?.email || metadata.ownerEmail || '',
+        gender: ownerRow?.gender || metadata.ownerGender,
+        avatar: ownerRow?.avatar_url || metadata.ownerAvatar
+    });
 
     return {
         id: row?.id,
@@ -263,8 +346,8 @@ const mapBackendItemRow = (
         imageUrls: itemImages,
         owner: {
             id: ownerRow?.firebase_uid || row?.seller_id || '',
-            name: ownerRow?.name || metadata.ownerName || 'Seller',
-            avatar: ownerRow?.avatar_url || metadata.ownerAvatar || '/icons/urbanprime.svg'
+            name: ownerIdentity.name,
+            avatar: ownerIdentity.avatar
         },
         ownerPersonaId: row?.owner_persona_id || metadata.ownerPersonaId,
         activityPreferences: normalizeActivityPreferences(metadata.activityPreferences || {}),
@@ -347,13 +430,22 @@ const fetchBackendItemSupport = async (rows: any[], token?: string) => {
 const syncUserToBackend = async (firebaseUser: FirebaseUser, payload: Partial<User> = {}): Promise<User | null> => {
     if (!isBackendConfigured()) return null;
     const token = await getBackendToken();
-    const body = {
+    const rawName = String(payload.name || firebaseUser.displayName || '').trim();
+    const rawEmail = String(payload.email || firebaseUser.email || '').trim();
+    const rawAvatar = String(payload.avatar || firebaseUser.photoURL || '').trim();
+    const normalizedIdentity = enforceAvatarIdentity({
+        name: rawName || undefined,
+        email: rawEmail || undefined,
+        gender: payload.gender,
+        avatar: rawAvatar || undefined
+    });
+    const body: Record<string, unknown> = {
         firebase_uid: firebaseUser.uid,
-        email: payload.email || firebaseUser.email || null,
-        name: payload.name || firebaseUser.displayName || 'User',
-        avatar_url: payload.avatar || firebaseUser.photoURL || '/icons/urbanprime.svg',
         phone: payload.phone || null
     };
+    if (rawEmail) body.email = normalizedIdentity.email || rawEmail;
+    if (rawName) body.name = normalizedIdentity.name || rawName;
+    if (rawAvatar) body.avatar_url = normalizedIdentity.avatar || rawAvatar;
 
     try {
         const res = await backendFetch('/auth/sync-user', {
@@ -538,7 +630,9 @@ const getAllActiveUsers = async (): Promise<User[]> => {
     if (supabaseMirror.enabled) {
         const mirrored = await supabaseMirror.list<User>('users', { limit: 2000 });
         if (mirrored.length > 0) {
-            return mirrored.filter((user) => (user.status || 'active') === 'active');
+            return mirrored
+                .filter((user) => (user.status || 'active') === 'active')
+                .map((user) => enforceAvatarIdentity(user));
         }
     }
 
@@ -547,7 +641,7 @@ const getAllActiveUsers = async (): Promise<User[]> => {
             const activeQuery = query(collection(db, 'users'), where('status', '==', 'active'));
             const activeSnapshot = await getDocs(activeQuery);
             if (!activeSnapshot.empty) {
-                return activeSnapshot.docs.map((docSnap) => fromFirestore<User>(docSnap));
+                return activeSnapshot.docs.map((docSnap) => enforceAvatarIdentity(fromFirestore<User>(docSnap)));
             }
         } catch (error) {
             console.warn('Firestore active users fetch failed:', error);
@@ -556,7 +650,7 @@ const getAllActiveUsers = async (): Promise<User[]> => {
         try {
             const allSnapshot = await getDocs(query(collection(db, 'users')));
             if (!allSnapshot.empty) {
-                const users = allSnapshot.docs.map((docSnap) => fromFirestore<User>(docSnap));
+                const users = allSnapshot.docs.map((docSnap) => enforceAvatarIdentity(fromFirestore<User>(docSnap)));
                 return users.filter((user) => (user.status || 'active') === 'active');
             }
         } catch (error) {
@@ -567,10 +661,274 @@ const getAllActiveUsers = async (): Promise<User[]> => {
     if (shouldUseLocalMockFallback()) {
         ensureMockDb();
         const users = mockDb.get<User[]>('users') || [];
-        return users.filter((user) => (user.status || 'active') === 'active');
+        return users
+            .filter((user) => (user.status || 'active') === 'active')
+            .map((user) => enforceAvatarIdentity(user));
     }
 
     return [];
+};
+
+const CHAT_THREAD_SELECT = 'id,item_id,buyer_id,seller_id,buyer_persona_id,seller_persona_id,last_message_at,created_at';
+const CHAT_MESSAGE_SELECT = 'id,thread_id,sender_id,message_type,body,image_url,offer_id,created_at';
+const CHAT_OFFER_SELECT = 'id,thread_id,sender_id,title,description,price,duration_days,status,created_at';
+const VOICE_NOTE_PREFIX = '__voice_note__:';
+const ENCRYPTED_MESSAGE_PREFIX = '__enc_v1__:';
+const CHAT_TYPING_COLLECTION_PREFIX = 'chat_typing:';
+const CHAT_READ_COLLECTION_PREFIX = 'chat_read:';
+const CHAT_PRESENCE_COLLECTION = 'chat_presence';
+const VOICE_EXTENSION_BY_MIME: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/ogg': 'ogg',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav'
+};
+
+const isUuidLike = (value?: string | null) =>
+    typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const toIsoTimestamp = (value?: string | Date | null) => {
+    if (!value) return new Date().toISOString();
+    const dateValue = new Date(value);
+    if (Number.isNaN(dateValue.getTime())) return new Date().toISOString();
+    return dateValue.toISOString();
+};
+
+const normalizeChatMessageType = (value: unknown): ChatMessage['type'] => {
+    const normalized = String(value || 'text').toLowerCase();
+    if (normalized === 'offer') return 'offer';
+    if (normalized === 'image') return 'image';
+    if (normalized === 'video') return 'video';
+    if (normalized === 'voice') return 'voice';
+    return 'text';
+};
+
+const encodeVoiceNotePayload = (payload: { url: string; durationMs?: number; mimeType?: string }) =>
+    `${VOICE_NOTE_PREFIX}${JSON.stringify(payload)}`;
+
+const parseVoiceNotePayload = (value: unknown): { url: string; durationMs?: number; mimeType?: string } | null => {
+    if (typeof value !== 'string' || !value.startsWith(VOICE_NOTE_PREFIX)) return null;
+    try {
+        const parsed = JSON.parse(value.slice(VOICE_NOTE_PREFIX.length));
+        const url = String(parsed?.url || '');
+        if (!url) return null;
+        const durationMs = Number(parsed?.durationMs || 0);
+        const mimeType = parsed?.mimeType ? String(parsed.mimeType) : undefined;
+        return {
+            url,
+            durationMs: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined,
+            mimeType
+        };
+    } catch {
+        return null;
+    }
+};
+
+const isEncryptedMessagePayload = (value: unknown) =>
+    typeof value === 'string' && value.startsWith(ENCRYPTED_MESSAGE_PREFIX);
+
+const encodeTypingCollection = (threadId: string) => `${CHAT_TYPING_COLLECTION_PREFIX}${threadId}`;
+const encodeReadCollection = (threadId: string) => `${CHAT_READ_COLLECTION_PREFIX}${threadId}`;
+const normalizeMimeType = (value?: string | null) => String(value || '').trim().toLowerCase().split(';')[0] || '';
+const voiceFileExtensionForMime = (mimeType?: string | null) =>
+    VOICE_EXTENSION_BY_MIME[normalizeMimeType(mimeType)] || 'webm';
+
+const blobToBase64 = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const [, payload = ''] = result.split(',');
+            if (!payload) {
+                reject(new Error('Failed to encode blob payload'));
+                return;
+            }
+            resolve(payload);
+        };
+        reader.onerror = () => reject(new Error('Failed to read blob payload'));
+        reader.readAsDataURL(blob);
+    });
+
+const mapBackendOfferRowToCustomOffer = (
+    row: any
+): CustomOffer => ({
+    id: String(row?.id || ''),
+    title: String(row?.title || 'Custom Offer'),
+    description: String(row?.description || ''),
+    price: Number(row?.price || 0),
+    duration: Number(row?.duration_days || 1),
+    status: (String(row?.status || 'pending') as CustomOffer['status']),
+    createdAt: row?.created_at || new Date().toISOString(),
+    engagementId: row?.thread_id || undefined
+});
+
+const mapBackendMessageRowToChatMessage = (
+    row: any,
+    firebaseUidBySupabaseUserId: Map<string, string>,
+    offerById: Map<string, CustomOffer>
+): ChatMessage => {
+    const offerId = row?.offer_id ? String(row.offer_id) : '';
+    const bodyText = String(row?.body || '');
+    const voicePayload = parseVoiceNotePayload(bodyText);
+    const messageType = normalizeChatMessageType(row?.message_type);
+    const mappedType = offerId ? 'offer' : (voicePayload ? 'voice' : messageType);
+    const encrypted = isEncryptedMessagePayload(bodyText);
+
+    const resolvedText = (() => {
+        if (voicePayload) return '';
+        if (encrypted) return 'Encrypted message';
+        return bodyText;
+    })();
+
+    return {
+        id: String(row?.id || ''),
+        senderId: firebaseUidBySupabaseUserId.get(String(row?.sender_id || '')) || String(row?.sender_id || ''),
+        text: resolvedText,
+        type: mappedType,
+        imageUrl: row?.image_url || undefined,
+        audioUrl: voicePayload?.url,
+        audioDurationMs: voicePayload?.durationMs,
+        content: encrypted ? { encrypted: true, payload: bodyText } : undefined,
+        timestamp: toIsoTimestamp(row?.created_at),
+        offer: offerId ? offerById.get(offerId) : undefined
+    };
+};
+
+const mapBackendCallSession = (
+    row: any,
+    firebaseUidBySupabaseUserId: Map<string, string>
+): ChatCallSession | null => {
+    if (!row) return null;
+    const initiatorRaw = String(row?.initiatorId || row?.initiator_user_id || '');
+    const receiverRaw = String(row?.receiverId || row?.receiver_user_id || '');
+    const acceptedByRaw = String(row?.acceptedById || row?.accepted_by_user_id || '');
+    const silentByRaw = Array.isArray(row?.silentByIds)
+        ? row.silentByIds
+        : Array.isArray(row?.silent_by_user_ids)
+            ? row.silent_by_user_ids
+            : [];
+
+    const mapUserId = (value: string) => firebaseUidBySupabaseUserId.get(value) || value;
+
+    const mode = String(row?.mode || 'voice').toLowerCase() === 'video' ? 'video' : 'voice';
+    const statusRaw = String(row?.status || 'ringing').toLowerCase();
+    const status: ChatCallSession['status'] = ['ringing', 'accepted', 'declined', 'ended', 'missed'].includes(statusRaw)
+        ? (statusRaw as ChatCallSession['status'])
+        : 'ringing';
+
+    return {
+        id: String(row?.id || row?.callId || ''),
+        threadId: String(row?.threadId || row?.thread_id || ''),
+        roomName: String(row?.roomName || row?.room_name || ''),
+        mode,
+        status,
+        initiatorId: mapUserId(initiatorRaw),
+        receiverId: mapUserId(receiverRaw),
+        acceptedById: acceptedByRaw ? mapUserId(acceptedByRaw) : undefined,
+        silentByIds: silentByRaw.map((entry: any) => mapUserId(String(entry || ''))).filter(Boolean),
+        startedAt: toIsoTimestamp(row?.startedAt || row?.started_at || row?.created_at),
+        updatedAt: toIsoTimestamp(row?.updatedAt || row?.updated_at || row?.created_at),
+        endedAt: row?.endedAt || row?.ended_at ? toIsoTimestamp(row?.endedAt || row?.ended_at) : undefined,
+        reason: row?.reason || row?.endReason || row?.end_reason || undefined
+    };
+};
+
+const fetchUsersBySupabaseIds = async (
+    ids: string[],
+    token?: string
+): Promise<{ rowsById: Map<string, any>; firebaseUidBySupabaseUserId: Map<string, string> }> => {
+    const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+    if (uniqueIds.length === 0 || !isBackendConfigured()) {
+        return { rowsById: new Map(), firebaseUidBySupabaseUserId: new Map() };
+    }
+
+    const rowsById = new Map<string, any>();
+    const firebaseUidBySupabaseUserId = new Map<string, string>();
+    const uncachedIds: string[] = [];
+
+    uniqueIds.forEach((id) => {
+        const cachedRow = getCachedSupabaseUserRow(id);
+        if (!cachedRow) {
+            uncachedIds.push(id);
+            return;
+        }
+        rowsById.set(id, cachedRow);
+        const cachedFirebaseUid = String(cachedRow?.firebase_uid || '');
+        if (cachedFirebaseUid) {
+            firebaseUidBySupabaseUserId.set(id, cachedFirebaseUid);
+        }
+    });
+
+    if (uncachedIds.length > 0) {
+        const params = new URLSearchParams();
+        params.set('in.id', uncachedIds.join(','));
+        params.set('select', 'id,firebase_uid,email,name,avatar_url,phone,status,created_at');
+        params.set('limit', String(Math.max(100, uncachedIds.length + 10)));
+
+        const res = await backendFetch(`/api/users?${params.toString()}`, {}, token);
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        rows.forEach((row: any) => {
+            const supabaseId = String(row?.id || '');
+            if (!supabaseId) return;
+            rowsById.set(supabaseId, row);
+            supabaseUserRowCache.set(supabaseId, { row, cachedAt: Date.now() });
+            const firebaseUid = String(row?.firebase_uid || '');
+            if (firebaseUid) {
+                firebaseUidBySupabaseUserId.set(supabaseId, firebaseUid);
+            }
+        });
+    }
+
+    Array.from(rowsById.entries()).forEach(([supabaseId, row]) => {
+        const firebaseUid = String(row?.firebase_uid || '');
+        if (firebaseUid && !firebaseUidBySupabaseUserId.has(supabaseId)) {
+            firebaseUidBySupabaseUserId.set(supabaseId, firebaseUid);
+        }
+    });
+
+    return { rowsById, firebaseUidBySupabaseUserId };
+};
+
+const fetchOffersByIds = async (
+    offerIds: string[],
+    _firebaseUidBySupabaseUserId: Map<string, string>,
+    token?: string
+): Promise<Map<string, CustomOffer>> => {
+    const ids = Array.from(new Set(offerIds.filter(Boolean)));
+    if (ids.length === 0 || !isBackendConfigured()) return new Map();
+
+    const offerMap = new Map<string, CustomOffer>();
+    const uncachedIds: string[] = [];
+
+    ids.forEach((id) => {
+        const cached = customOfferCache.get(id);
+        if (cached && Date.now() - cached.cachedAt <= CUSTOM_OFFER_CACHE_TTL_MS) {
+            offerMap.set(id, cached.offer);
+            return;
+        }
+        customOfferCache.delete(id);
+        uncachedIds.push(id);
+    });
+
+    if (uncachedIds.length === 0) return offerMap;
+
+    const params = new URLSearchParams();
+    params.set('in.id', uncachedIds.join(','));
+    params.set('select', CHAT_OFFER_SELECT);
+    params.set('limit', String(Math.max(100, uncachedIds.length + 10)));
+
+    const res = await backendFetch(`/api/custom_offers?${params.toString()}`, {}, token);
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    rows.forEach((row: any) => {
+        const id = String(row?.id || '');
+        if (!id) return;
+        const mappedOffer = mapBackendOfferRowToCustomOffer(row);
+        offerMap.set(id, mappedOffer);
+        customOfferCache.set(id, { offer: mappedOffer, cachedAt: Date.now() });
+    });
+    return offerMap;
 };
 
 const mapNotificationTypeForBackend = (type?: string) => {
@@ -755,10 +1113,17 @@ export const authService = {
         if (!user) throw new Error('User profile not found');
         return user;
     },
-    register: async (name: string, email: string, pass: string, phone: string, city: string): Promise<void> => {
+    register: async (
+        name: string,
+        email: string,
+        pass: string,
+        phone: string,
+        city: string,
+        profileOverrides?: Partial<User>
+    ): Promise<void> => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-        await userService.createUserProfile(userCredential.user, { name, phone, city });
-        await syncUserToBackend(userCredential.user, { name, email, phone, city });
+        await userService.createUserProfile(userCredential.user, { name, phone, city, ...profileOverrides });
+        await syncUserToBackend(userCredential.user, { name, email, phone, city, ...profileOverrides });
     },
     logout: async () => {
         await signOut(auth);
@@ -766,6 +1131,10 @@ export const authService = {
     signInWithGoogle: async (): Promise<void> => {
         const result = await signInWithPopup(auth, googleProvider);
         await syncUserToBackend(result.user);
+    },
+    syncAuthenticatedUser: async (payload: Partial<User> = {}): Promise<User | null> => {
+        if (!auth.currentUser) return null;
+        return syncUserToBackend(auth.currentUser, payload);
     },
     getProfile: async (uid: string): Promise<User | null> => {
         return userService.getUserById(uid);
@@ -788,10 +1157,18 @@ export const userService = {
         if (isBackendConfigured()) {
             try {
                 const token = await getBackendToken();
-                const res = await backendFetch(`/api/users?eq.firebase_uid=${uid}&select=id,firebase_uid,email,name,avatar_url,phone,status,created_at&limit=1`, {}, token);
-                const rows = Array.isArray(res?.data) ? res.data : [];
-                if (rows.length > 0) {
-                    return mapBackendUserRow(rows[0]);
+                const queryByFirebaseUid = `/api/users?eq.firebase_uid=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,created_at&limit=1`;
+                const queryBySupabaseId = `/api/users?eq.id=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,created_at&limit=1`;
+                const responses = await Promise.all([
+                    backendFetch(queryByFirebaseUid, {}, token).catch(() => null),
+                    isUuidLike(uid) ? backendFetch(queryBySupabaseId, {}, token).catch(() => null) : Promise.resolve(null)
+                ]);
+
+                for (const response of responses) {
+                    const rows = Array.isArray(response?.data) ? response?.data : [];
+                    if (rows.length > 0) {
+                        return mapBackendUserRow(rows[0]);
+                    }
                 }
             } catch (error) {
                 console.warn('Backend user fetch failed:', error);
@@ -800,14 +1177,14 @@ export const userService = {
 
         if (supabaseMirror.enabled) {
             const mirrored = await supabaseMirror.get<User>('users', uid);
-            if (mirrored) return mirrored;
+            if (mirrored) return enforceAvatarIdentity(mirrored);
         }
 
         if (shouldUseFirestoreFallback()) {
             try {
                 const docRef = doc(db, 'users', uid);
                 const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) return fromFirestore<User>(docSnap);
+                if (docSnap.exists()) return enforceAvatarIdentity(fromFirestore<User>(docSnap));
             } catch (error) {
                 console.warn('Firestore user fetch failed:', error);
             }
@@ -816,7 +1193,8 @@ export const userService = {
         if (shouldUseLocalMockFallback()) {
             ensureMockDb();
             const users = mockDb.get<User[]>('users') || [];
-            return users.find((u) => u.id === uid) || null;
+            const found = users.find((u) => u.id === uid) || null;
+            return found ? enforceAvatarIdentity(found) : null;
         }
 
         return null;
@@ -838,11 +1216,11 @@ export const userService = {
             capabilities.affiliate = 'active';
         }
 
-        const newUser: User = {
+        const newUser: User = enforceAvatarIdentity({
             id: firebaseUser.uid,
             name: additionalData.name || firebaseUser.displayName || 'User',
             email: firebaseUser.email || '',
-            avatar: firebaseUser.photoURL || '/icons/urbanprime.svg',
+            avatar: additionalData.avatar || firebaseUser.photoURL || '/icons/urbanprime.svg',
             following: [],
             followers: [],
             wishlist: [],
@@ -853,7 +1231,7 @@ export const userService = {
             accountLifecycle: 'member',
             capabilities,
             ...additionalData
-        };
+        });
 
         await syncUserToBackend(firebaseUser, newUser);
 
@@ -868,25 +1246,50 @@ export const userService = {
         return newUser;
     },
     updateUserProfile: async (uid: string, updates: Partial<User>): Promise<User> => {
+        const shouldNormalizeIdentity =
+            updates.name !== undefined ||
+            updates.email !== undefined ||
+            updates.gender !== undefined ||
+            updates.avatar !== undefined;
+        const normalizedUpdates: Partial<User> = { ...updates };
+        if (shouldNormalizeIdentity) {
+            const enforced = enforceAvatarIdentity({
+                name: updates.name,
+                email: updates.email,
+                gender: updates.gender,
+                avatar: updates.avatar
+            });
+            if (updates.avatar !== undefined) {
+                normalizedUpdates.avatar = enforced.avatar;
+            }
+            if (
+                updates.gender !== undefined ||
+                updates.name !== undefined ||
+                updates.email !== undefined
+            ) {
+                normalizedUpdates.gender = enforced.gender;
+            }
+        }
+
         if (isBackendConfigured()) {
             try {
                 const token = await getBackendToken();
                 const payload: Record<string, any> = {};
-                if (updates.name !== undefined) payload.name = updates.name;
-                if (updates.email !== undefined) payload.email = updates.email;
-                if (updates.avatar !== undefined) payload.avatar = updates.avatar;
-                if (updates.phone !== undefined) payload.phone = updates.phone;
-                if (updates.status !== undefined) payload.status = updates.status;
-                if (updates.city !== undefined) payload.city = updates.city;
-                if (updates.country !== undefined) payload.country = updates.country;
-                if (updates.interests !== undefined) payload.interests = updates.interests;
-                if (updates.currencyPreference !== undefined) payload.currencyPreference = updates.currencyPreference;
-                if (updates.about !== undefined) payload.about = updates.about;
-                if (updates.businessName !== undefined) payload.businessName = updates.businessName;
-                if (updates.businessDescription !== undefined) payload.businessDescription = updates.businessDescription;
-                if (updates.dob !== undefined) payload.dob = updates.dob;
-                if (updates.gender !== undefined) payload.gender = updates.gender;
-                if (updates.purpose !== undefined) payload.purpose = updates.purpose;
+                if (normalizedUpdates.name !== undefined) payload.name = normalizedUpdates.name;
+                if (normalizedUpdates.email !== undefined) payload.email = normalizedUpdates.email;
+                if (normalizedUpdates.avatar !== undefined) payload.avatar = normalizedUpdates.avatar;
+                if (normalizedUpdates.phone !== undefined) payload.phone = normalizedUpdates.phone;
+                if (normalizedUpdates.status !== undefined) payload.status = normalizedUpdates.status;
+                if (normalizedUpdates.city !== undefined) payload.city = normalizedUpdates.city;
+                if (normalizedUpdates.country !== undefined) payload.country = normalizedUpdates.country;
+                if (normalizedUpdates.interests !== undefined) payload.interests = normalizedUpdates.interests;
+                if (normalizedUpdates.currencyPreference !== undefined) payload.currencyPreference = normalizedUpdates.currencyPreference;
+                if (normalizedUpdates.about !== undefined) payload.about = normalizedUpdates.about;
+                if (normalizedUpdates.businessName !== undefined) payload.businessName = normalizedUpdates.businessName;
+                if (normalizedUpdates.businessDescription !== undefined) payload.businessDescription = normalizedUpdates.businessDescription;
+                if (normalizedUpdates.dob !== undefined) payload.dob = normalizedUpdates.dob;
+                if (normalizedUpdates.gender !== undefined) payload.gender = normalizedUpdates.gender;
+                if (normalizedUpdates.purpose !== undefined) payload.purpose = normalizedUpdates.purpose;
 
                 if (Object.keys(payload).length > 0) {
                     const patched = await backendFetch('/profile/me', {
@@ -895,7 +1298,7 @@ export const userService = {
                     }, token);
                     const mapped = mapUnifiedProfilePayloadToUser(patched, uid);
                     if (mapped) {
-                        const merged = { ...mapped, ...updates, id: uid };
+                        const merged = enforceAvatarIdentity({ ...mapped, ...normalizedUpdates, id: uid });
                         if (supabaseMirror.enabled) {
                             await supabaseMirror.upsert('users', uid, merged);
                         }
@@ -909,24 +1312,25 @@ export const userService = {
 
         if (shouldUseFirestoreFallback()) {
             const userRef = doc(db, 'users', uid);
-            await updateDoc(userRef, updates);
+            await updateDoc(userRef, normalizedUpdates);
             if (supabaseMirror.enabled) {
-                await supabaseMirror.mergeUpdate<User>('users', uid, updates);
+                await supabaseMirror.mergeUpdate<User>('users', uid, normalizedUpdates);
             }
             const updatedDoc = await getDoc(userRef);
-            return fromFirestore<User>(updatedDoc);
+            return enforceAvatarIdentity(fromFirestore<User>(updatedDoc));
         }
 
         if (supabaseMirror.enabled) {
-            await supabaseMirror.mergeUpdate<User>('users', uid, updates);
+            await supabaseMirror.mergeUpdate<User>('users', uid, normalizedUpdates);
             const mirrored = await supabaseMirror.get<User>('users', uid);
-            if (mirrored) return mirrored;
+            if (mirrored) return enforceAvatarIdentity(mirrored);
         }
 
         throw new Error('Unable to update profile: no active data source available.');
     },
     getAllSellers: async (): Promise<User[]> => {
-        return getAllActiveUsers();
+        const users = await getAllActiveUsers();
+        return filterUsersByPersonaType(users, 'seller', 'sell');
     },
     getAllRenters: async (): Promise<User[]> => {
         const users = await getAllActiveUsers();
@@ -935,6 +1339,231 @@ export const userService = {
     getAllBuyers: async (): Promise<User[]> => {
         const users = await getAllActiveUsers();
         return filterUsersByPersonaType(users, 'consumer', 'buy');
+    },
+    getAllProviders: async (): Promise<User[]> => {
+        const users = await getAllActiveUsers();
+        return filterUsersByPersonaType(users, 'provider', 'provide_service');
+    },
+    getAllAffiliates: async (): Promise<User[]> => {
+        const users = await getAllActiveUsers();
+        return filterUsersByPersonaType(users, 'affiliate', 'affiliate');
+    },
+    normalizeAllUserAvatars: async (): Promise<{ checked: number; updated: number }> => {
+        if (isBackendConfigured()) {
+            try {
+                const token = await getBackendToken();
+                const usersRes = await backendFetch('/api/users?select=id,name,email,avatar_url&limit=2000', {}, token);
+                const profileRes = await backendFetch('/api/user_profiles?select=id,user_id,gender&limit=2000', {}, token);
+
+                const userRows = Array.isArray(usersRes?.data) ? usersRes.data : [];
+                const profileRows = Array.isArray(profileRes?.data) ? profileRes.data : [];
+                const profilesByUserId = new Map<string, any>();
+                profileRows.forEach((row: any) => {
+                    if (row?.user_id) profilesByUserId.set(String(row.user_id), row);
+                });
+
+                let checked = 0;
+                let updated = 0;
+
+                for (const userRow of userRows) {
+                    if (!userRow?.id) continue;
+                    checked += 1;
+                    const profileRow = profilesByUserId.get(String(userRow.id));
+                    const enforced = enforceAvatarIdentity({
+                        name: userRow?.name || 'User',
+                        email: userRow?.email || '',
+                        gender: profileRow?.gender,
+                        avatar: userRow?.avatar_url
+                    });
+
+                    const currentAvatar = String(userRow?.avatar_url || '');
+                    const currentGender = String(profileRow?.gender || '').toLowerCase();
+                    let rowUpdated = false;
+
+                    if (currentAvatar !== enforced.avatar) {
+                        await backendFetch(`/api/users/${userRow.id}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ avatar_url: enforced.avatar })
+                        }, token);
+                        rowUpdated = true;
+                    }
+
+                    if (profileRow?.id && currentGender !== enforced.gender) {
+                        await backendFetch(`/api/user_profiles/${profileRow.id}`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ gender: enforced.gender })
+                        }, token);
+                        rowUpdated = true;
+                    }
+
+                    if (rowUpdated) updated += 1;
+                }
+
+                return { checked, updated };
+            } catch (error) {
+                console.warn('Backend avatar normalization failed:', error);
+            }
+        }
+
+        if (supabaseMirror.enabled) {
+            const mirrored = await supabaseMirror.list<User>('users', { limit: 2000 });
+            let checked = 0;
+            let updated = 0;
+            for (const row of mirrored) {
+                checked += 1;
+                const enforced = enforceAvatarIdentity(row);
+                const currentGender = String(row?.gender || '').toLowerCase();
+                const needsUpdate = row.avatar !== enforced.avatar || currentGender !== enforced.gender;
+                if (!needsUpdate) continue;
+                await supabaseMirror.upsert('users', row.id, { ...row, avatar: enforced.avatar, gender: enforced.gender, id: row.id });
+                updated += 1;
+            }
+            return { checked, updated };
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            try {
+                const allSnapshot = await getDocs(query(collection(db, 'users')));
+                let checked = 0;
+                let updated = 0;
+
+                for (const docSnap of allSnapshot.docs) {
+                    const current = fromFirestore<User>(docSnap);
+                    const enforced = enforceAvatarIdentity(current);
+                    const currentGender = String(current?.gender || '').toLowerCase();
+                    checked += 1;
+                    if (current.avatar === enforced.avatar && currentGender === enforced.gender) continue;
+                    await updateDoc(doc(db, 'users', current.id), {
+                        avatar: enforced.avatar,
+                        gender: enforced.gender
+                    });
+                    updated += 1;
+                }
+
+                return { checked, updated };
+            } catch (error) {
+                console.warn('Firestore avatar normalization failed:', error);
+            }
+        }
+
+        if (shouldUseLocalMockFallback()) {
+            ensureMockDb();
+            const users = mockDb.get<User[]>('users') || [];
+            let checked = 0;
+            let updated = 0;
+            const nextUsers = users.map((row) => {
+                checked += 1;
+                const enforced = enforceAvatarIdentity(row);
+                const currentGender = String(row?.gender || '').toLowerCase();
+                const needsUpdate = row.avatar !== enforced.avatar || currentGender !== enforced.gender;
+                if (needsUpdate) updated += 1;
+                return needsUpdate ? { ...row, avatar: enforced.avatar, gender: enforced.gender } : row;
+            });
+            if (updated > 0) {
+                mockDb.set('users', nextUsers);
+            }
+            return { checked, updated };
+        }
+
+        return { checked: 0, updated: 0 };
+    },
+    searchUsers: async (
+        queryText: string,
+        options?: { excludeUserId?: string; limit?: number }
+    ): Promise<User[]> => {
+        const trimmed = queryText.trim();
+        if (!trimmed) return [];
+
+        const requestedLimit = Math.min(Math.max(options?.limit || 12, 1), 30);
+        const normalizedQuery = trimmed.toLowerCase();
+
+        if (isBackendConfigured()) {
+            try {
+                const token = await getBackendToken();
+                const byNameParams = new URLSearchParams();
+                byNameParams.set('ilike.name', `%${trimmed}%`);
+                byNameParams.set('select', 'id,firebase_uid,email,name,avatar_url,phone,status,created_at');
+                byNameParams.set('limit', String(Math.max(50, requestedLimit * 3)));
+                const byNameRes = await backendFetch(`/api/users?${byNameParams.toString()}`, {}, token);
+
+                const byEmailParams = new URLSearchParams();
+                byEmailParams.set('ilike.email', `%${trimmed}%`);
+                byEmailParams.set('select', 'id,firebase_uid,email,name,avatar_url,phone,status,created_at');
+                byEmailParams.set('limit', String(Math.max(50, requestedLimit * 3)));
+                const byEmailRes = await backendFetch(`/api/users?${byEmailParams.toString()}`, {}, token);
+
+                const allRows = [
+                    ...(Array.isArray(byNameRes?.data) ? byNameRes.data : []),
+                    ...(Array.isArray(byEmailRes?.data) ? byEmailRes.data : [])
+                ];
+
+                const uniqueByFirebaseUid = new Map<string, User>();
+                allRows.forEach((row: any) => {
+                    const mapped = mapBackendUserRow(row);
+                    if (!mapped.id) return;
+                    if ((mapped.status || 'active') !== 'active') return;
+                    uniqueByFirebaseUid.set(mapped.id, mapped);
+                });
+
+                const ranked = Array.from(uniqueByFirebaseUid.values())
+                    .filter((candidate) => candidate.id !== options?.excludeUserId)
+                    .map((candidate) => {
+                        const haystackName = String(candidate.name || '').toLowerCase();
+                        const haystackEmail = String(candidate.email || '').toLowerCase();
+                        let score = 0;
+                        if (haystackName === normalizedQuery || haystackEmail === normalizedQuery) score += 10;
+                        if (haystackName.startsWith(normalizedQuery) || haystackEmail.startsWith(normalizedQuery)) score += 6;
+                        if (haystackName.includes(normalizedQuery) || haystackEmail.includes(normalizedQuery)) score += 3;
+                        return { candidate, score };
+                    })
+                    .sort((left, right) => right.score - left.score || left.candidate.name.localeCompare(right.candidate.name))
+                    .slice(0, requestedLimit)
+                    .map((entry) => entry.candidate);
+
+                if (ranked.length > 0) return ranked;
+
+                // Fallback: load active users once and apply client-side match.
+                const readCachedUsers = () =>
+                    activeUserSearchCache && activeUserSearchCache.expiresAt > Date.now()
+                        ? activeUserSearchCache.users
+                        : null;
+                const cachedUsers = readCachedUsers();
+                let fallbackUsers = cachedUsers || [];
+
+                if (fallbackUsers.length === 0) {
+                    const fallbackParams = new URLSearchParams();
+                    fallbackParams.set('eq.status', 'active');
+                    fallbackParams.set('select', 'id,firebase_uid,email,name,avatar_url,phone,status,created_at');
+                    fallbackParams.set('limit', '2000');
+                    const fallbackRes = await backendFetch(`/api/users?${fallbackParams.toString()}`, {}, token);
+                    const fallbackRows = Array.isArray(fallbackRes?.data) ? fallbackRes.data : [];
+                    fallbackUsers = fallbackRows.map(mapBackendUserRow);
+                    activeUserSearchCache = {
+                        users: fallbackUsers,
+                        expiresAt: Date.now() + ACTIVE_USER_SEARCH_CACHE_TTL_MS
+                    };
+                }
+                const fallbackMatches = fallbackUsers
+                    .filter((candidate) => candidate.id !== options?.excludeUserId)
+                    .filter((candidate) => {
+                        const haystack = `${candidate.name || ''} ${candidate.email || ''}`.toLowerCase();
+                        return haystack.includes(normalizedQuery);
+                    })
+                    .slice(0, requestedLimit);
+                if (fallbackMatches.length > 0) return fallbackMatches;
+            } catch (error) {
+                console.warn('Backend user search failed:', error);
+            }
+        }
+
+        const users = await getAllActiveUsers();
+        return users
+            .filter((candidate) => candidate.id !== options?.excludeUserId)
+            .filter((candidate) => {
+                const haystack = `${candidate.name || ''} ${candidate.email || ''}`.toLowerCase();
+                return haystack.includes(normalizedQuery);
+            })
+            .slice(0, requestedLimit);
     },
     getWishlistForUser: async (userId: string): Promise<{ wishlist: WishlistItem[], items: Item[] }> => {
         if (!shouldUseFirestoreFallback()) {
@@ -2343,23 +2972,888 @@ export const itemService = {
     
     // --- Chat Methods ---
     findOrCreateChatThread: async (itemId: string, buyerId: string, sellerId: string) => {
-        // Logic to find thread or create
-        return `thread-${Date.now()}`;
+        if (!buyerId || !sellerId) {
+            throw new Error('Both participants are required to start a conversation.');
+        }
+        if (buyerId === sellerId) {
+            throw new Error('You cannot start a conversation with yourself.');
+        }
+
+        const normalizedItemId = isUuidLike(itemId) ? itemId : null;
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const resolveConversationParticipant = async (candidateId: string): Promise<string | null> => {
+                const direct = await resolveSupabaseUserId(candidateId);
+                if (direct) return direct;
+
+                const mappedUser = await userService.getUserById(candidateId).catch(() => null);
+                if (mappedUser?.id) {
+                    const mapped = await resolveSupabaseUserId(mappedUser.id);
+                    if (mapped) return mapped;
+                }
+
+                return null;
+            };
+
+            const resolveParticipants = async () =>
+                Promise.all([resolveConversationParticipant(buyerId), resolveConversationParticipant(sellerId)]);
+
+            let [buyerSupabaseId, sellerSupabaseId] = await resolveParticipants();
+
+            if ((!buyerSupabaseId || !sellerSupabaseId) && auth.currentUser) {
+                try {
+                    await authService.syncAuthenticatedUser();
+                    [buyerSupabaseId, sellerSupabaseId] = await resolveParticipants();
+                } catch (syncError) {
+                    console.warn('Participant sync retry failed:', syncError);
+                }
+            }
+
+            if (!buyerSupabaseId && isUuidLike(buyerId)) {
+                buyerSupabaseId = buyerId;
+            }
+            if (!sellerSupabaseId && isUuidLike(sellerId)) {
+                sellerSupabaseId = sellerId;
+            }
+
+            if (!buyerSupabaseId || !sellerSupabaseId) {
+                throw new Error('Unable to resolve conversation participants.');
+            }
+
+            const queryForPair = (left: string, right: string) => {
+                const params = new URLSearchParams();
+                params.set('eq.buyer_id', left);
+                params.set('eq.seller_id', right);
+                params.set('select', CHAT_THREAD_SELECT);
+                params.set('order', 'last_message_at.desc');
+                params.set('limit', '50');
+                return `/api/chat_threads?${params.toString()}`;
+            };
+
+            const [forwardRes, reverseRes] = await Promise.all([
+                backendFetch(queryForPair(buyerSupabaseId, sellerSupabaseId), {}, token),
+                backendFetch(queryForPair(sellerSupabaseId, buyerSupabaseId), {}, token)
+            ]);
+
+            const candidates = [
+                ...(Array.isArray(forwardRes?.data) ? forwardRes.data : []),
+                ...(Array.isArray(reverseRes?.data) ? reverseRes.data : [])
+            ];
+
+            const existing = candidates.find((row: any) => {
+                if (normalizedItemId) return row?.item_id === normalizedItemId;
+                return !row?.item_id;
+            });
+
+            if (existing?.id) return String(existing.id);
+
+            const payload = {
+                buyer_id: buyerSupabaseId,
+                seller_id: sellerSupabaseId,
+                item_id: normalizedItemId,
+                last_message_at: new Date().toISOString()
+            };
+
+            const created = await backendFetch('/api/chat_threads', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            }, token);
+
+            const createdRows = Array.isArray(created?.data) ? created.data : [];
+            if (createdRows[0]?.id) return String(createdRows[0].id);
+            throw new Error('Unable to create conversation thread.');
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            const threadLookup = query(collection(db, 'chatThreads'), where('participants', 'array-contains', buyerId));
+            const snapshot = await getDocs(threadLookup);
+            const existing = snapshot.docs.find((docSnap) => {
+                const row: any = docSnap.data();
+                const participants: string[] = Array.isArray(row?.participants) ? row.participants : [];
+                const sameParticipants = participants.includes(buyerId) && participants.includes(sellerId);
+                const matchesItem = normalizedItemId ? row?.itemId === normalizedItemId : !row?.itemId;
+                return sameParticipants && matchesItem;
+            });
+
+            if (existing) return existing.id;
+
+            const createdRef = await addDoc(collection(db, 'chatThreads'), {
+                itemId: normalizedItemId,
+                buyerId,
+                sellerId,
+                participants: [buyerId, sellerId],
+                lastMessage: '',
+                lastUpdated: new Date().toISOString(),
+                createdAt: new Date().toISOString()
+            });
+            return createdRef.id;
+        }
+
+        throw new Error('Messaging backend is unavailable.');
     },
-    getChatThreadsForUser: async (userId: string) => {
-         const q = query(collection(db, 'chatThreads'), where('participants', 'array-contains', userId));
-         const snapshot = await getDocs(q);
-         return snapshot.docs.map(doc => fromFirestore(doc));
+    getChatThreadsForUser: async (userId: string): Promise<ChatThread[]> => {
+        if (!userId) return [];
+
+        if (isBackendConfigured()) {
+            try {
+                const token = await getBackendToken();
+                let supabaseUserId = await resolveSupabaseUserId(userId);
+                if (!supabaseUserId && auth.currentUser) {
+                    try {
+                        await authService.syncAuthenticatedUser();
+                        supabaseUserId = await resolveSupabaseUserId(userId);
+                    } catch (syncError) {
+                        console.warn('Chat thread sync retry failed:', syncError);
+                    }
+                }
+                if (!supabaseUserId) return [];
+
+                const buildThreadQuery = (field: 'buyer_id' | 'seller_id') => {
+                    const params = new URLSearchParams();
+                    params.set(`eq.${field}`, supabaseUserId);
+                    params.set('select', CHAT_THREAD_SELECT);
+                    params.set('order', 'last_message_at.desc');
+                    params.set('limit', '120');
+                    return `/api/chat_threads?${params.toString()}`;
+                };
+
+                const [buyerThreadsRes, sellerThreadsRes] = await Promise.all([
+                    backendFetch(buildThreadQuery('buyer_id'), {}, token),
+                    backendFetch(buildThreadQuery('seller_id'), {}, token)
+                ]);
+
+                const threadRowsRaw = [
+                    ...(Array.isArray(buyerThreadsRes?.data) ? buyerThreadsRes.data : []),
+                    ...(Array.isArray(sellerThreadsRes?.data) ? sellerThreadsRes.data : [])
+                ];
+
+                const threadRowById = new Map<string, any>();
+                threadRowsRaw.forEach((row: any) => {
+                    const id = String(row?.id || '');
+                    if (!id) return;
+                    threadRowById.set(id, row);
+                });
+                const threadRows = Array.from(threadRowById.values());
+                if (threadRows.length === 0) return [];
+
+                const threadIds = threadRows.map((row) => String(row.id)).filter(Boolean);
+                const messageParams = new URLSearchParams();
+                messageParams.set('in.thread_id', threadIds.join(','));
+                messageParams.set('select', CHAT_MESSAGE_SELECT);
+                messageParams.set('order', 'created_at.desc');
+                messageParams.set('limit', String(Math.min(Math.max(threadIds.length * 6, 80), 600)));
+                const messageRes = await backendFetch(`/api/chat_messages?${messageParams.toString()}`, {}, token);
+                const messageRows = Array.isArray(messageRes?.data) ? messageRes.data : [];
+                const latestMessageByThreadId = new Map<string, any>();
+                messageRows.forEach((row: any) => {
+                    const key = String(row?.thread_id || '');
+                    if (!key || latestMessageByThreadId.has(key)) return;
+                    latestMessageByThreadId.set(key, row);
+                });
+                const latestMessageRows = Array.from(latestMessageByThreadId.values());
+
+                const offerIds = latestMessageRows
+                    .map((row: any) => row?.offer_id ? String(row.offer_id) : '')
+                    .filter(Boolean);
+
+                const allSupabaseUserIds = [
+                    ...threadRows.flatMap((row: any) => [String(row?.buyer_id || ''), String(row?.seller_id || '')]),
+                    ...latestMessageRows.map((row: any) => String(row?.sender_id || ''))
+                ].filter(Boolean);
+
+                const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(allSupabaseUserIds, token);
+                const offerMap = await fetchOffersByIds(offerIds, firebaseUidBySupabaseUserId, token);
+
+                const lastMessageByThreadId = new Map<string, ChatMessage>();
+                latestMessageRows.forEach((row: any) => {
+                    const key = String(row?.thread_id || '');
+                    if (!key) return;
+                    lastMessageByThreadId.set(key, mapBackendMessageRowToChatMessage(row, firebaseUidBySupabaseUserId, offerMap));
+                });
+
+                const mappedThreads: ChatThread[] = threadRows.map((row: any) => {
+                    const id = String(row?.id || '');
+                    const lastMessage = lastMessageByThreadId.get(id);
+                    return {
+                        id,
+                        itemId: row?.item_id ? String(row.item_id) : '',
+                        buyerId: firebaseUidBySupabaseUserId.get(String(row?.buyer_id || '')) || String(row?.buyer_id || ''),
+                        sellerId: firebaseUidBySupabaseUserId.get(String(row?.seller_id || '')) || String(row?.seller_id || ''),
+                        buyerPersonaId: row?.buyer_persona_id || undefined,
+                        sellerPersonaId: row?.seller_persona_id || undefined,
+                        lastMessage: lastMessage?.type === 'offer' ? 'Sent an offer' : (lastMessage?.text || ''),
+                        lastUpdated: toIsoTimestamp(row?.last_message_at || row?.created_at || lastMessage?.timestamp),
+                        messages: lastMessage ? [lastMessage] : []
+                    };
+                });
+
+                return mappedThreads.sort(
+                    (left, right) => new Date(right.lastUpdated).getTime() - new Date(left.lastUpdated).getTime()
+                );
+            } catch (error) {
+                console.warn('Backend chat thread fetch failed:', error);
+            }
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            try {
+                const threadQuery = query(collection(db, 'chatThreads'), where('participants', 'array-contains', userId));
+                const snapshot = await getDocs(threadQuery);
+
+                const mapped = await Promise.all(snapshot.docs.map(async (threadDoc) => {
+                    const row: any = threadDoc.data();
+                    const messagesQuery = query(collection(db, 'chatThreads', threadDoc.id, 'messages'), orderBy('timestamp', 'asc'));
+                    const messagesSnap = await getDocs(messagesQuery);
+                    const messages = messagesSnap.docs.map((messageDoc) => ({ id: messageDoc.id, ...(messageDoc.data() as any) } as ChatMessage));
+                    const buyerId = String(row?.buyerId || row?.participants?.[0] || '');
+                    const sellerId = String(row?.sellerId || row?.participants?.find((id: string) => id !== buyerId) || '');
+                    const lastMessage = messages[messages.length - 1];
+
+                    return {
+                        id: threadDoc.id,
+                        itemId: row?.itemId || '',
+                        buyerId,
+                        sellerId,
+                        lastMessage: row?.lastMessage || (lastMessage?.type === 'offer' ? 'Sent an offer' : (lastMessage?.text || '')),
+                        lastUpdated: row?.lastUpdated || toIsoTimestamp(lastMessage?.timestamp),
+                        messages
+                    } as ChatThread;
+                }));
+
+                return mapped.sort((left, right) => new Date(right.lastUpdated).getTime() - new Date(left.lastUpdated).getTime());
+            } catch (error) {
+                console.warn('Firestore chat thread fetch failed:', error);
+            }
+        }
+
+        return [];
+    },
+    getChatMessagesForThread: async (threadId: string): Promise<ChatMessage[]> => {
+        if (!threadId) return [];
+
+        if (isBackendConfigured()) {
+            try {
+                const token = await getBackendToken();
+                const messageParams = new URLSearchParams();
+                messageParams.set('eq.thread_id', threadId);
+                messageParams.set('select', CHAT_MESSAGE_SELECT);
+                messageParams.set('order', 'created_at.asc');
+                messageParams.set('limit', '600');
+                const messageRes = await backendFetch(`/api/chat_messages?${messageParams.toString()}`, {}, token);
+                const messageRows = Array.isArray(messageRes?.data) ? messageRes.data : [];
+                if (messageRows.length === 0) return [];
+
+                const offerIds = messageRows
+                    .map((row: any) => row?.offer_id ? String(row.offer_id) : '')
+                    .filter(Boolean);
+                const allSupabaseUserIds = [
+                    ...messageRows.map((row: any) => String(row?.sender_id || ''))
+                ].filter(Boolean);
+
+                const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(allSupabaseUserIds, token);
+                const offerMap = await fetchOffersByIds(offerIds, firebaseUidBySupabaseUserId, token);
+                return messageRows
+                    .map((row: any) => mapBackendMessageRowToChatMessage(row, firebaseUidBySupabaseUserId, offerMap))
+                    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+            } catch (error) {
+                console.warn('Backend message fetch failed:', error);
+            }
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            const messagesQuery = query(collection(db, 'chatThreads', threadId, 'messages'), orderBy('timestamp', 'asc'));
+            const messagesSnap = await getDocs(messagesQuery);
+            return messagesSnap.docs.map((messageDoc) => ({ id: messageDoc.id, ...(messageDoc.data() as any) } as ChatMessage));
+        }
+
+        return [];
     },
     sendMessageToThread: async (threadId: string, senderId: string, text: string, imageUrl?: string) => {
-         await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
-             senderId, text, imageUrl, timestamp: new Date().toISOString()
-         });
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const senderSupabaseId = await resolveSupabaseUserId(senderId);
+            if (!senderSupabaseId) {
+                throw new Error('Unable to resolve sender identity for message.');
+            }
+
+            const threadRes = await backendFetch(`/api/chat_threads/${threadId}`, {}, token);
+            const threadRow = threadRes?.data;
+            if (!threadRow) throw new Error('Conversation not found.');
+
+            const participants = [String(threadRow?.buyer_id || ''), String(threadRow?.seller_id || '')];
+            if (!participants.includes(senderSupabaseId)) {
+                throw new Error('You are not a participant in this conversation.');
+            }
+
+            const now = new Date().toISOString();
+            await backendFetch('/api/chat_messages', {
+                method: 'POST',
+                body: JSON.stringify({
+                    thread_id: threadId,
+                    sender_id: senderSupabaseId,
+                    message_type: imageUrl ? 'image' : 'text',
+                    body: text?.trim() || null,
+                    image_url: imageUrl || null,
+                    created_at: now
+                })
+            }, token);
+
+            await backendFetch(`/api/chat_threads/${threadId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ last_message_at: now })
+            }, token);
+
+            const recipientSupabaseId = participants.find((participantId) => participantId && participantId !== senderSupabaseId);
+            if (recipientSupabaseId) {
+                const trimmedText = text?.trim() || '';
+                const preview = isEncryptedMessagePayload(trimmedText)
+                    ? 'Encrypted message'
+                    : (trimmedText || (imageUrl ? 'Sent an image' : 'New message'));
+                await backendFetch('/api/notifications', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: recipientSupabaseId,
+                        type: 'message',
+                        title: 'New message',
+                        body: preview.slice(0, 280),
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token);
+                await backendFetch('/push/notify-message', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        thread_id: threadId,
+                        recipient_supabase_id: recipientSupabaseId,
+                        preview: preview.slice(0, 280),
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token).catch(() => null);
+            }
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
+                senderId,
+                text: text?.trim() || '',
+                imageUrl: imageUrl || null,
+                type: imageUrl ? 'image' : 'text',
+                timestamp: new Date().toISOString()
+            });
+            await updateDoc(doc(db, 'chatThreads', threadId), {
+                lastMessage: text?.trim() || (imageUrl ? 'Sent an image' : 'New message'),
+                lastUpdated: new Date().toISOString()
+            });
+            return;
+        }
+
+        throw new Error('Messaging backend is unavailable.');
     },
-    sendOfferToThread: async (threadId: string, senderId: string, offer: any) => {
-          await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
-             senderId, type: 'offer', offer, timestamp: new Date().toISOString()
-         });
+    sendOfferToThread: async (threadId: string, senderId: string, offer: Omit<CustomOffer, 'id' | 'status'>) => {
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const senderSupabaseId = await resolveSupabaseUserId(senderId);
+            if (!senderSupabaseId) {
+                throw new Error('Unable to resolve sender identity for offer.');
+            }
+
+            const threadRes = await backendFetch(`/api/chat_threads/${threadId}`, {}, token);
+            const threadRow = threadRes?.data;
+            if (!threadRow) throw new Error('Conversation not found.');
+
+            const participants = [String(threadRow?.buyer_id || ''), String(threadRow?.seller_id || '')];
+            if (!participants.includes(senderSupabaseId)) {
+                throw new Error('You are not a participant in this conversation.');
+            }
+
+            const now = new Date().toISOString();
+            const offerInsert = await backendFetch('/api/custom_offers', {
+                method: 'POST',
+                body: JSON.stringify({
+                    thread_id: threadId,
+                    sender_id: senderSupabaseId,
+                    title: offer.title,
+                    description: offer.description || null,
+                    price: Number(offer.price || 0),
+                    duration_days: Number(offer.duration || 1),
+                    status: 'pending',
+                    created_at: now
+                })
+            }, token);
+
+            const offerRow = Array.isArray(offerInsert?.data) ? offerInsert.data[0] : null;
+            const offerId = offerRow?.id ? String(offerRow.id) : null;
+
+            await backendFetch('/api/chat_messages', {
+                method: 'POST',
+                body: JSON.stringify({
+                    thread_id: threadId,
+                    sender_id: senderSupabaseId,
+                    message_type: 'offer',
+                    body: offer.title || 'Sent an offer',
+                    offer_id: offerId,
+                    created_at: now
+                })
+            }, token);
+
+            await backendFetch(`/api/chat_threads/${threadId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ last_message_at: now })
+            }, token);
+
+            const recipientSupabaseId = participants.find((participantId) => participantId && participantId !== senderSupabaseId);
+            if (recipientSupabaseId) {
+                await backendFetch('/api/notifications', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: recipientSupabaseId,
+                        type: 'message',
+                        title: 'New custom offer',
+                        body: offer.title || 'You received a new offer.',
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token);
+                await backendFetch('/push/notify-message', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        thread_id: threadId,
+                        recipient_supabase_id: recipientSupabaseId,
+                        preview: (offer.title || 'You received a new offer.').slice(0, 280),
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token).catch(() => null);
+            }
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
+                senderId,
+                type: 'offer',
+                offer: {
+                    ...offer,
+                    id: `offer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    status: 'pending'
+                },
+                timestamp: new Date().toISOString()
+            });
+            await updateDoc(doc(db, 'chatThreads', threadId), {
+                lastMessage: offer.title || 'Sent an offer',
+                lastUpdated: new Date().toISOString()
+            });
+            return;
+        }
+
+        throw new Error('Messaging backend is unavailable.');
+    },
+    sendSystemMessageToThread: async (threadId: string, senderId: string, text: string) => {
+        if (!text.trim()) return;
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const senderSupabaseId = await resolveSupabaseUserId(senderId);
+            if (!senderSupabaseId) {
+                throw new Error('Unable to resolve sender identity for system message.');
+            }
+            const now = new Date().toISOString();
+            await backendFetch('/api/chat_messages', {
+                method: 'POST',
+                body: JSON.stringify({
+                    thread_id: threadId,
+                    sender_id: senderSupabaseId,
+                    message_type: 'system',
+                    body: text.slice(0, 400),
+                    created_at: now
+                })
+            }, token);
+            await backendFetch(`/api/chat_threads/${threadId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ last_message_at: now })
+            }, token);
+
+            const threadRes = await backendFetch(`/api/chat_threads/${threadId}`, {}, token);
+            const threadRow = threadRes?.data;
+            const participants = [String(threadRow?.buyer_id || ''), String(threadRow?.seller_id || '')];
+            const recipientSupabaseId = participants.find((participantId) => participantId && participantId !== senderSupabaseId);
+            if (recipientSupabaseId) {
+                const preview = text.slice(0, 280) || 'New system message';
+                await backendFetch('/api/notifications', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: recipientSupabaseId,
+                        type: 'message',
+                        title: 'New message',
+                        body: preview,
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token);
+                await backendFetch('/push/notify-message', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        thread_id: threadId,
+                        recipient_supabase_id: recipientSupabaseId,
+                        preview,
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token).catch(() => null);
+            }
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
+                senderId,
+                text: text.slice(0, 400),
+                type: 'text',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+    },
+    sendVoiceNoteToThread: async (
+        threadId: string,
+        senderId: string,
+        voiceBlob: Blob,
+        durationMs: number
+    ) => {
+        if (!voiceBlob || voiceBlob.size <= 0) {
+            throw new Error('Voice note is empty.');
+        }
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const senderSupabaseId = await resolveSupabaseUserId(senderId);
+            if (!senderSupabaseId) {
+                throw new Error('Unable to resolve sender identity for voice note.');
+            }
+
+            const mimeType = normalizeMimeType(voiceBlob.type) || 'audio/webm';
+            const extension = voiceFileExtensionForMime(mimeType);
+            const base64Data = await blobToBase64(voiceBlob);
+            const uploadResponse = await backendFetch('/uploads', {
+                method: 'POST',
+                body: JSON.stringify({
+                    fileName: `voice-${Date.now()}.${extension}`,
+                    mimeType,
+                    base64Data,
+                    owner_firebase_uid: senderId,
+                    asset_type: 'voice-note',
+                    resource_id: threadId,
+                    is_public: true
+                })
+            }, token);
+
+            const uploaded = uploadResponse?.data;
+            const rawAudioUrl = uploaded?.public_url || uploaded?.storage_path;
+            const audioUrl = typeof rawAudioUrl === 'string' && rawAudioUrl.startsWith('/')
+                ? `${getBackendBaseUrl()}${rawAudioUrl}`
+                : rawAudioUrl;
+            if (!audioUrl) {
+                throw new Error('Voice upload failed.');
+            }
+
+            const now = new Date().toISOString();
+            await backendFetch('/api/chat_messages', {
+                method: 'POST',
+                body: JSON.stringify({
+                    thread_id: threadId,
+                    sender_id: senderSupabaseId,
+                    message_type: 'text',
+                    body: encodeVoiceNotePayload({
+                        url: audioUrl,
+                        durationMs: Math.max(0, Math.round(durationMs || 0)),
+                        mimeType
+                    }),
+                    created_at: now
+                })
+            }, token);
+
+            await backendFetch(`/api/chat_threads/${threadId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ last_message_at: now })
+            }, token);
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            const audioDataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(new Error('Failed to encode voice note'));
+                reader.readAsDataURL(voiceBlob);
+            });
+            await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
+                senderId,
+                type: 'voice',
+                audioUrl: audioDataUrl,
+                audioDurationMs: Math.max(0, Math.round(durationMs || 0)),
+                timestamp: new Date().toISOString()
+            });
+            await updateDoc(doc(db, 'chatThreads', threadId), {
+                lastMessage: 'Voice note',
+                lastUpdated: new Date().toISOString()
+            });
+            return;
+        }
+
+        throw new Error('Voice messaging is unavailable.');
+    },
+    setThreadTypingState: async (threadId: string, userId: string, isTyping: boolean) => {
+        if (!threadId || !userId || !isBackendConfigured()) return;
+        const token = await getBackendToken();
+        const expiresAt = new Date(Date.now() + 8000).toISOString();
+        await backendFetch('/api/mirror_documents?upsert=1&onConflict=collection,doc_id', {
+            method: 'POST',
+            body: JSON.stringify({
+                collection: encodeTypingCollection(threadId),
+                doc_id: userId,
+                data: {
+                    userId,
+                    isTyping: Boolean(isTyping),
+                    expiresAt,
+                    updatedAt: new Date().toISOString()
+                },
+                updated_at: new Date().toISOString()
+            })
+        }, token);
+    },
+    getThreadTypingUsers: async (threadId: string, excludeUserId?: string): Promise<string[]> => {
+        if (!threadId || !isBackendConfigured()) return [];
+        try {
+            const token = await getBackendToken();
+            const params = new URLSearchParams();
+            params.set('eq.collection', encodeTypingCollection(threadId));
+            params.set('select', 'doc_id,data,updated_at');
+            params.set('order', 'updated_at.desc');
+            params.set('limit', '20');
+            const response = await backendFetch(`/api/mirror_documents?${params.toString()}`, {}, token);
+            const rows = Array.isArray(response?.data) ? response.data : [];
+            const now = Date.now();
+            return rows
+                .map((row: any) => row?.data || {})
+                .filter((data: any) => {
+                    if (!data?.isTyping) return false;
+                    const expiry = Date.parse(String(data?.expiresAt || ''));
+                    return Number.isFinite(expiry) && expiry > now;
+                })
+                .map((data: any) => String(data?.userId || ''))
+                .filter((id: string) => Boolean(id) && id !== excludeUserId);
+        } catch {
+            return [];
+        }
+    },
+    markThreadRead: async (threadId: string, userId: string, lastReadAt?: string) => {
+        if (!threadId || !userId || !isBackendConfigured()) return;
+        const token = await getBackendToken();
+        const timestamp = toIsoTimestamp(lastReadAt || new Date().toISOString());
+        await backendFetch('/api/mirror_documents?upsert=1&onConflict=collection,doc_id', {
+            method: 'POST',
+            body: JSON.stringify({
+                collection: encodeReadCollection(threadId),
+                doc_id: userId,
+                data: {
+                    userId,
+                    lastReadAt: timestamp
+                },
+                updated_at: new Date().toISOString()
+            })
+        }, token);
+    },
+    getThreadReadReceipts: async (threadId: string): Promise<Record<string, string>> => {
+        if (!threadId || !isBackendConfigured()) return {};
+        try {
+            const token = await getBackendToken();
+            const params = new URLSearchParams();
+            params.set('eq.collection', encodeReadCollection(threadId));
+            params.set('select', 'doc_id,data,updated_at');
+            params.set('order', 'updated_at.desc');
+            params.set('limit', '20');
+            const response = await backendFetch(`/api/mirror_documents?${params.toString()}`, {}, token);
+            const rows = Array.isArray(response?.data) ? response.data : [];
+            return rows.reduce((acc, row: any) => {
+                const data = row?.data || {};
+                const userId = String(data?.userId || row?.doc_id || '');
+                const lastReadAt = String(data?.lastReadAt || '');
+                if (!userId || !lastReadAt) return acc;
+                acc[userId] = lastReadAt;
+                return acc;
+            }, {} as Record<string, string>);
+        } catch {
+            return {};
+        }
+    },
+    startThreadCall: async (
+        threadId: string,
+        mode: ChatCallMode = 'voice'
+    ): Promise<ChatCallSession | null> => {
+        if (!threadId || !isBackendConfigured()) return null;
+        const token = await getBackendToken();
+        const response = await backendFetch('/chat/calls/start', {
+            method: 'POST',
+            body: JSON.stringify({
+                threadId,
+                mode: mode === 'video' ? 'video' : 'voice'
+            })
+        }, token);
+        const row = response?.data;
+        if (!row) return null;
+        const ids = [row?.initiator_user_id, row?.receiver_user_id, row?.accepted_by_user_id]
+            .map((entry: any) => String(entry || ''))
+            .filter(Boolean);
+        const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(ids, token);
+        return mapBackendCallSession(row, firebaseUidBySupabaseUserId);
+    },
+    respondToThreadCall: async (
+        callId: string,
+        action: 'accept' | 'decline' | 'silent'
+    ): Promise<ChatCallSession | null> => {
+        if (!callId || !isBackendConfigured()) return null;
+        const token = await getBackendToken();
+        const response = await backendFetch(`/chat/calls/${callId}/respond`, {
+            method: 'POST',
+            body: JSON.stringify({ action })
+        }, token);
+        const row = response?.data;
+        if (!row) return null;
+        const ids = [row?.initiator_user_id, row?.receiver_user_id, row?.accepted_by_user_id]
+            .map((entry: any) => String(entry || ''))
+            .filter(Boolean);
+        const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(ids, token);
+        return mapBackendCallSession(row, firebaseUidBySupabaseUserId);
+    },
+    endThreadCall: async (callId: string, reason?: string): Promise<ChatCallSession | null> => {
+        if (!callId || !isBackendConfigured()) return null;
+        const token = await getBackendToken();
+        const response = await backendFetch(`/chat/calls/${callId}/end`, {
+            method: 'POST',
+            body: JSON.stringify({
+                reason: String(reason || '').trim() || undefined
+            })
+        }, token);
+        const row = response?.data;
+        if (!row) return null;
+        const ids = [row?.initiator_user_id, row?.receiver_user_id, row?.accepted_by_user_id]
+            .map((entry: any) => String(entry || ''))
+            .filter(Boolean);
+        const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(ids, token);
+        return mapBackendCallSession(row, firebaseUidBySupabaseUserId);
+    },
+    getActiveThreadCall: async (threadId: string): Promise<ChatCallSession | null> => {
+        if (!threadId || !isBackendConfigured()) return null;
+        const token = await getBackendToken();
+        const params = new URLSearchParams();
+        params.set('threadId', threadId);
+        const response = await backendFetch(`/chat/calls/active?${params.toString()}`, {}, token);
+        const row = response?.data;
+        if (!row) return null;
+        const ids = [row?.initiator_user_id, row?.receiver_user_id, row?.accepted_by_user_id]
+            .map((entry: any) => String(entry || ''))
+            .filter(Boolean);
+        const { firebaseUidBySupabaseUserId } = await fetchUsersBySupabaseIds(ids, token);
+        return mapBackendCallSession(row, firebaseUidBySupabaseUserId);
+    },
+    updatePresenceStatus: async (payload: {
+        isOnline?: boolean;
+        lastSeenAt?: string;
+        visibility?: boolean;
+    }): Promise<ChatPresenceState | null> => {
+        if (!isBackendConfigured()) return null;
+        const token = await getBackendToken();
+        const response = await backendFetch('/chat/presence', {
+            method: 'PUT',
+            body: JSON.stringify(payload || {})
+        }, token);
+        const row = response?.data;
+        if (!row) return null;
+        return {
+            userId: String(row?.firebaseUid || row?.userId || row?.user_id || ''),
+            isOnline: Boolean(row?.isOnline),
+            lastSeenAt: row?.lastSeenAt ? String(row.lastSeenAt) : undefined,
+            visibility: row?.visibility !== false,
+            updatedAt: toIsoTimestamp(row?.updatedAt || row?.updated_at)
+        };
+    },
+    getPresenceForUsers: async (userIds: string[]): Promise<Record<string, ChatPresenceState>> => {
+        if (!isBackendConfigured()) return {};
+        const uniqueInputUserIds = Array.from(new Set((userIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+        if (uniqueInputUserIds.length === 0) return {};
+
+        const supabaseIdToRequestedUserId = new Map<string, string>();
+        const supabaseUserIds = (
+            await Promise.all(
+                uniqueInputUserIds.map(async (userId) => {
+                    if (isUuidLike(userId)) {
+                        supabaseIdToRequestedUserId.set(userId, userId);
+                        return userId;
+                    }
+                    const supabaseId = await resolveSupabaseUserId(userId);
+                    if (supabaseId) {
+                        supabaseIdToRequestedUserId.set(supabaseId, userId);
+                        return supabaseId;
+                    }
+                    return '';
+                })
+            )
+        ).filter(Boolean);
+
+        if (supabaseUserIds.length === 0) return {};
+        const token = await getBackendToken();
+        const params = new URLSearchParams();
+        params.set('userIds', supabaseUserIds.join(','));
+        const response = await backendFetch(`/chat/presence?${params.toString()}`, {}, token);
+        const rows = Array.isArray(response?.data) ? response.data : [];
+
+        return rows.reduce((acc, row: any) => {
+            const supabaseId = String(row?.userId || row?.user_id || '');
+            const firebaseUid = String(row?.firebaseUid || '');
+            const resolvedUserId = firebaseUid || supabaseIdToRequestedUserId.get(supabaseId) || supabaseId;
+            if (!resolvedUserId) return acc;
+            acc[resolvedUserId] = {
+                userId: resolvedUserId,
+                isOnline: Boolean(row?.isOnline),
+                lastSeenAt: row?.lastSeenAt ? String(row.lastSeenAt) : undefined,
+                visibility: row?.visibility !== false,
+                updatedAt: toIsoTimestamp(row?.updatedAt || row?.updated_at)
+            };
+            return acc;
+        }, {} as Record<string, ChatPresenceState>);
+    },
+    registerPushToken: async (pushToken: string, options: { permission?: string } = {}) => {
+        const tokenValue = String(pushToken || '').trim();
+        if (!tokenValue || !isBackendConfigured()) return false;
+        try {
+            const token = await getBackendToken();
+            await backendFetch('/push/token', {
+                method: 'POST',
+                body: JSON.stringify({
+                    token: tokenValue,
+                    platform: 'web',
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+                    permission: String(options.permission || '')
+                })
+            }, token);
+            return true;
+        } catch (error) {
+            console.warn('Unable to register push token:', error);
+            return false;
+        }
+    },
+    unregisterPushToken: async (pushToken: string) => {
+        const tokenValue = String(pushToken || '').trim();
+        if (!tokenValue || !isBackendConfigured()) return false;
+        try {
+            const token = await getBackendToken();
+            await backendFetch('/push/token', {
+                method: 'DELETE',
+                body: JSON.stringify({
+                    token: tokenValue
+                })
+            }, token);
+            return true;
+        } catch (error) {
+            console.warn('Unable to unregister push token:', error);
+            return false;
+        }
     },
 
     seedDatabase: async (user?: User) => {
@@ -2634,6 +4128,61 @@ export const serviceService = {
             avgRating: 0,
             reviews: []
         });
+    },
+    updateService: async (serviceId: string, serviceData: Partial<Service>, user: User) => {
+        if (!serviceId) throw new Error('Service ID is required for update.');
+        try {
+            const listing = await workService.updateListing(serviceId, {
+                title: serviceData.title,
+                description: serviceData.description,
+                category: serviceData.category,
+                mode: serviceData.mode || 'hybrid',
+                fulfillmentKind: serviceData.fulfillmentKind || 'hybrid',
+                currency: serviceData.currency || serviceData.pricingModels?.[0]?.currency || 'USD',
+                timezone: serviceData.timezone,
+                basePrice: serviceData.pricingModels?.[0]?.price || 0,
+                packages: (serviceData.pricingModels || []).map((model, index) => ({
+                    id: `${user.id}-${Date.now()}-${index}`,
+                    name: model.description || `Package ${index + 1}`,
+                    description: model.description || '',
+                    price: model.price,
+                    currency: model.currency || serviceData.currency || 'USD',
+                    deliveryDays: model.deliveryDays,
+                    revisions: model.revisions,
+                    type: model.type
+                })),
+                media: serviceData.imageUrls || [],
+                providerSnapshot: {
+                    id: user.id,
+                    name: user.name,
+                    avatar: user.avatar,
+                    rating: user.rating || 0,
+                    reviews: []
+                },
+                status: 'published',
+                visibility: 'public',
+                updatedAt: new Date().toISOString()
+            });
+            return mapWorkListingToService(listing);
+        } catch (error) {
+            console.warn('workService.updateListing failed, falling back to legacy service update:', error);
+        }
+
+        if (!shouldUseFirestoreFallback()) {
+            throw new Error('Unable to update service: no backend or firestore fallback available.');
+        }
+
+        await setDoc(doc(db, 'services', serviceId), {
+            ...serviceData,
+            provider: {
+                id: user.id,
+                name: user.name,
+                avatar: user.avatar,
+                rating: user.rating || 0,
+                reviews: []
+            },
+            updatedAt: new Date().toISOString()
+        }, { merge: true });
     },
     getServicesByProvider: async (userId: string): Promise<Service[]> => {
         try {

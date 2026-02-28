@@ -139,3 +139,24 @@
   }
 }
 
+.catalogue-marquee {
+  display: flex;
+  gap: 16px;
+  overflow: hidden;
+  width: 100%;
+  mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+}
+
+.catalogue-marquee-track {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalogue-marquee-track {
+    animation: none;
+  }
+}
+

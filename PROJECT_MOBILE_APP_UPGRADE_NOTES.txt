@@ -1,0 +1,125 @@
+Urban Prime - Mobile App Mode + Reliability Notes
+Date: 2026-02-26
+Scope: Mobile UX shell, onboarding skip behavior, messaging entry reliability.
+
+1) What was changed
+
+- Added a dedicated mobile app shell component:
+  - File: components/MobileAppChrome.tsx
+  - Replaces mobile header usage on public pages with:
+    - Sticky blurred bottom nav (Home, Explore, +, Search, Pixe).
+    - Top-right cart + profile controls.
+    - Persona-aware create menu from the center + button.
+    - Mobile search overlay.
+    - Mobile profile dropdown with auto-scroll support and auto-close on action.
+
+- Home icon assets wired from provided folder:
+  - Source copied from:
+    - mobile footer icons/home(clicked) .png
+    - mobile footer icons/home(unclicked) .png
+  - Canonical runtime paths:
+    - /images/mobile-nav/home-active.png
+    - /images/mobile-nav/home-inactive.png
+  - Stored under:
+    - public/images/mobile-nav/
+
+- Mobile layout wiring:
+  - File: components/Layout.tsx
+  - Desktop header remains unchanged.
+  - Mobile header is hidden on public routes and replaced by MobileAppChrome.
+  - Mobile bottom spacing added so content is not hidden behind the bottom nav.
+  - Floating widgets are hidden on mobile (kept on desktop):
+    - ComparisonBar
+    - FloatingWidget
+    - AIChatBot
+    - PixeFloatingButton
+  - BackToTop remains available.
+
+- Onboarding mobile overflow and skip behavior:
+  - Files:
+    - components/onboarding/OnboardingLayout.tsx
+    - pages/auth/OnboardingPage.tsx
+  - Layout adjusted to avoid clipping/hidden content on small screens.
+  - Skip flow now defaults intent to buyer (`buy`) when no intent selected.
+  - Skip still persists draft state and routes user to messages.
+
+- Messaging entry-point reliability:
+  - File: pages/protected/MessagesPage.tsx
+  - Added explicit "Start new chat" button in page header and empty-state panel.
+
+- Conversation participant resolution fallback:
+  - File: services/itemService.ts
+  - In thread creation, if Supabase ID mapping is missing but incoming IDs are UUIDs,
+    those UUIDs are now used directly before failing with participant resolution error.
+
+
+2) Persona logic in mobile create menu
+
+- Buyer-only/consumer-only:
+  - Upload pixe
+- Seller persona present:
+  - List product
+  - Upload pixe
+- Provider persona present:
+  - List service
+  - Upload pixe
+- Seller + Provider:
+  - List product
+  - List service
+  - Upload pixe
+
+
+3) Database impact log
+
+- No new tables were added in this change set.
+- No schema migrations were added in this change set.
+- No existing table/column definitions were changed in this change set.
+- Existing data models consumed:
+  - users / profiles / personas (already present)
+  - chat thread creation path (already present)
+
+
+4) Performance and loading strategy notes
+
+- Current frontend behavior already uses route-level code splitting (`React.lazy`) for most pages.
+- New mobile shell adds lightweight UI-only interactions with minimal network overhead.
+- Search overlay routes to existing browse query flow instead of adding new heavy endpoints.
+- Floating mobile clutter was removed to reduce main-thread work and tap conflicts.
+
+
+5) About the "10 million requests/second" target
+
+- This cannot be guaranteed by frontend changes alone.
+- To approach ultra-high throughput safely, production architecture must include:
+  - Global CDN + edge caching
+  - Stateless horizontally scaled API layer
+  - Queue-based write buffering
+  - Read replicas + partitioning strategy
+  - Rate limiting + WAF + bot mitigation
+  - Async processing for non-critical work
+  - Full observability + autoscaling policies
+- This update keeps functionality intact while reducing unnecessary client-side churn.
+
+
+6) Files touched for this upgrade
+
+- components/MobileAppChrome.tsx (new)
+- components/Layout.tsx
+- components/onboarding/OnboardingLayout.tsx
+- pages/auth/OnboardingPage.tsx
+- pages/protected/MessagesPage.tsx
+- services/itemService.ts
+- public/images/mobile-nav/home-active.png (new asset)
+- public/images/mobile-nav/home-inactive.png (new asset)
+
+7) Additional mobile nav + explore updates (latest)
+
+- Mobile bottom nav visuals changed to white glass style with soft edge fade so it blends into page content.
+- Explore tab now routes to a dedicated showcase page:
+  - Route: /explore
+  - Page: pages/public/ExploreHubPage.tsx
+  - Purpose: quick access hub for marketplace, services, communities, creator tools, and programs.
+- Nav layout tuned for narrow devices:
+  - safe-area padding
+  - max-width centered shell
+  - compact labels and icon spacing

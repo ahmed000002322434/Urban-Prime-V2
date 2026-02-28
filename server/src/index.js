@@ -7,18 +7,24 @@ import morgan from 'morgan';
 import { createClient } from '@supabase/supabase-js';
 import admin from 'firebase-admin';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const envCandidates = [
-  process.env.DOTENV_PATH,
-  path.resolve(__dirname, '../.env'),
-  path.resolve(__dirname, '../.env.local'),
-  path.resolve(__dirname, '../../.env'),
-  path.resolve(__dirname, '../../.env.local')
-].filter(Boolean);
+const envCandidates = Array.from(
+  new Set(
+    [
+      path.resolve(__dirname, '../.env'),
+      path.resolve(__dirname, '../.env.local'),
+      path.resolve(__dirname, '../../.env'),
+      path.resolve(__dirname, '../../.env.local'),
+      process.env.DOTENV_PATH
+    ]
+      .filter(Boolean)
+      .map((candidate) => path.resolve(candidate))
+  )
+);
 
 const loadedEnvPaths = [];
 for (const candidate of envCandidates) {
@@ -43,8 +49,41 @@ const toBool = (value, defaultValue) => {
   return defaultValue;
 };
 
+const normalizeOrigin = (value) => String(value || '').trim().replace(/\/$/, '').toLowerCase();
+
+const parseCommaList = (value) =>
+  String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const parseTrustProxy = (value, fallback) => {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return 1;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+
+  const asNumber = Number.parseInt(normalized, 10);
+  if (Number.isFinite(asNumber) && asNumber >= 0) return asNumber;
+  return value;
+};
+
+const secureCompare = (leftValue, rightValue) => {
+  const left = String(leftValue || '');
+  const right = String(rightValue || '');
+  if (!left || !right) return false;
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+};
+
 const {
   PORT: ENV_PORT = '5050',
+  HOST: ENV_HOST = '0.0.0.0',
   CORS_ORIGIN = '',
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
@@ -56,7 +95,20 @@ const {
   FIREBASE_PRIVATE_KEY,
   PROFILE_ONBOARDING_V2,
   UPLOADS_DIR,
-  NODE_ENV = 'development'
+  NODE_ENV = 'development',
+  TRUST_PROXY,
+  ENFORCE_AUTH_IN_PROD,
+  RATE_LIMIT_ENABLED,
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_MAX,
+  AUTH_RATE_LIMIT_MAX,
+  CORS_ALLOW_ALL,
+  CORS_ALLOW_SAME_HOST,
+  APP_PUBLIC_URL,
+  PUSH_NOTIFICATIONS_ENABLED,
+  WEB_PUSH_NOTIFICATION_ICON,
+  WEB_PUSH_NOTIFICATION_BADGE,
+  CHAT_RELIABILITY_V2
 } = process.env;
 
 const parsePort = (value, fallback = 5050) => {
@@ -65,11 +117,28 @@ const parsePort = (value, fallback = 5050) => {
 };
 
 const START_PORT = parsePort(ENV_PORT, 5050);
+const START_HOST = String(ENV_HOST || '0.0.0.0').trim() || '0.0.0.0';
 const PORT_RETRY_LIMIT = parsePort(process.env.PORT_RETRY_LIMIT ?? '20', 20);
+const IS_PRODUCTION = NODE_ENV === 'production';
+const AUTH_ENFORCED_IN_PRODUCTION = toBool(ENFORCE_AUTH_IN_PROD, true);
+const RATE_LIMITING_ENABLED = toBool(RATE_LIMIT_ENABLED, true);
+const GLOBAL_RATE_LIMIT_WINDOW_MS = parsePort(RATE_LIMIT_WINDOW_MS ?? '60000', 60000);
+const GLOBAL_RATE_LIMIT_MAX = parsePort(RATE_LIMIT_MAX ?? '240', 240);
+const AUTH_RATE_LIMIT_MAX_REQUESTS = parsePort(AUTH_RATE_LIMIT_MAX ?? '60', 60);
+const ALLOW_ALL_CORS_ORIGINS = toBool(CORS_ALLOW_ALL, !IS_PRODUCTION);
+const ALLOW_SAME_HOST_CORS = toBool(CORS_ALLOW_SAME_HOST, true);
+const TRUST_PROXY_VALUE = parseTrustProxy(TRUST_PROXY, IS_PRODUCTION ? 1 : false);
+const ALLOWED_CORS_ORIGINS = parseCommaList(CORS_ORIGIN).map((origin) => normalizeOrigin(origin));
+const PUSH_NOTIFICATIONS_ACTIVE = toBool(PUSH_NOTIFICATIONS_ENABLED, true);
+const APP_PUBLIC_URL_NORMALIZED = String(APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
+const PUSH_NOTIFICATION_ICON = String(WEB_PUSH_NOTIFICATION_ICON || '/icons/urbanprime.svg');
+const PUSH_NOTIFICATION_BADGE = String(WEB_PUSH_NOTIFICATION_BADGE || PUSH_NOTIFICATION_ICON);
 
 const PROFILE_ONBOARDING_V2_ENABLED = toBool(PROFILE_ONBOARDING_V2, true);
+const CHAT_RELIABILITY_V2_ENABLED = toBool(CHAT_RELIABILITY_V2, true);
 const FEATURE_FLAGS = {
-  profileOnboardingV2: PROFILE_ONBOARDING_V2_ENABLED
+  profileOnboardingV2: PROFILE_ONBOARDING_V2_ENABLED,
+  chatReliabilityV2: CHAT_RELIABILITY_V2_ENABLED
 };
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -94,12 +163,19 @@ try {
       credential: admin.credential.cert({
         projectId: FIREBASE_PROJECT_ID,
         clientEmail: FIREBASE_CLIENT_EMAIL,
-        privateKey: FIREBASE_PRIVATE_KEY.replace(/\n/g, '\n')
+        privateKey: FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
       })
     });
   }
 } catch (error) {
   console.warn('Firebase admin init failed:', error);
+}
+
+if (IS_PRODUCTION && AUTH_ENFORCED_IN_PRODUCTION && !BACKEND_API_KEY && !firebaseApp) {
+  console.error(
+    'Refusing to start in production without auth. Configure FIREBASE admin credentials or BACKEND_API_KEY.'
+  );
+  process.exit(1);
 }
 
 const ALLOWED_TABLES = new Set([
@@ -122,16 +198,58 @@ const uploadsRoot = path.resolve(UPLOADS_DIR || path.resolve(__dirname, '../uplo
 fs.mkdirSync(uploadsRoot, { recursive: true });
 
 const app = express();
-const corsOptions = CORS_ORIGIN
-  ? { origin: CORS_ORIGIN.split(',').map(v => v.trim()), credentials: true }
-  : { origin: true, credentials: true };
-app.use(cors(corsOptions));
+app.set('trust proxy', TRUST_PROXY_VALUE);
+app.disable('x-powered-by');
+
+const getRequestOrigin = (req) => {
+  const host = req.get('host');
+  if (!host) return '';
+  const protoHeader = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const protocol = protoHeader || req.protocol || 'http';
+  return normalizeOrigin(`${protocol}://${host}`);
+};
+
+const resolveCorsOptions = (req, callback) => {
+  const originHeader = req.header('Origin') || req.header('origin');
+  if (!originHeader) {
+    callback(null, { origin: true, credentials: true });
+    return;
+  }
+
+  if (ALLOW_ALL_CORS_ORIGINS) {
+    callback(null, { origin: true, credentials: true });
+    return;
+  }
+
+  const normalizedOrigin = normalizeOrigin(originHeader);
+  const matchesConfiguredOrigin = ALLOWED_CORS_ORIGINS.includes(normalizedOrigin);
+  const matchesSameHostOrigin = ALLOW_SAME_HOST_CORS && normalizedOrigin === getRequestOrigin(req);
+
+  callback(null, { origin: matchesConfiguredOrigin || matchesSameHostOrigin, credentials: true });
+};
+
+app.use(cors(resolveCorsOptions));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  if (IS_PRODUCTION && req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
 app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(uploadsRoot));
 
-if (!BACKEND_API_KEY && !firebaseApp && NODE_ENV === 'production') {
-  console.warn('WARNING: Backend running without auth. Set BACKEND_API_KEY or Firebase admin credentials.');
+if (!BACKEND_API_KEY && !firebaseApp && !IS_PRODUCTION) {
+  console.warn('Backend auth disabled for local development. Configure BACKEND_API_KEY or Firebase admin credentials.');
+}
+
+if (IS_PRODUCTION && !ALLOW_ALL_CORS_ORIGINS && ALLOWED_CORS_ORIGINS.length === 0) {
+  console.warn('CORS_ORIGIN is empty in production. Only same-host browser requests will be allowed.');
 }
 
 const MIME_EXTENSION_MAP = {
@@ -141,8 +259,16 @@ const MIME_EXTENSION_MAP = {
   'image/gif': 'gif',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
-  'video/quicktime': 'mov'
+  'video/quicktime': 'mov',
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav'
 };
+
+const normalizeMimeTypeValue = (value) => String(value || '').trim().toLowerCase().split(';')[0];
 
 const sanitizeBaseName = (fileName = 'asset') =>
   String(fileName)
@@ -225,6 +351,12 @@ const toNullableText = (value) => {
   if (value === null) return null;
   const text = String(value).trim();
   return text.length > 0 ? text : null;
+};
+
+const toIsoTimestamp = (value) => {
+  const dateValue = new Date(value || Date.now());
+  if (Number.isNaN(dateValue.getTime())) return new Date().toISOString();
+  return dateValue.toISOString();
 };
 
 const normalizeJsonObject = (value) => {
@@ -773,6 +905,19 @@ const applyProfilePatch = async ({
   let nextUser = userRow;
   let nextProfile = profileRow;
 
+  if (normalizedProfilePatch.preferences) {
+    normalizedProfilePatch.preferences = {
+      ...normalizeJsonObject(profileRow?.preferences),
+      ...normalizeJsonObject(normalizedProfilePatch.preferences)
+    };
+  }
+  if (normalizedProfilePatch.social_links) {
+    normalizedProfilePatch.social_links = {
+      ...normalizeJsonObject(profileRow?.social_links),
+      ...normalizeJsonObject(normalizedProfilePatch.social_links)
+    };
+  }
+
   if (Object.keys(normalizedUserPatch).length > 0) {
     const { data, error } = await supabase
       .from('users')
@@ -1075,12 +1220,311 @@ const bootstrapPersonasFromIntents = async ({ user, firebaseUid, selectedIntents
 
 const normalizeRelativePath = (fullPath) => fullPath.replace(uploadsRoot, '').replace(/^[\\/]+/, '').replace(/\\/g, '/');
 
-const requireAuth = async (req, res, next) => {
-  if (!BACKEND_API_KEY && !firebaseApp) {
-    return next();
+const hashPushToken = (token) => createHash('sha256').update(String(token || '')).digest('hex');
+
+const isPushTokenLikelyValid = (token) => {
+  const value = String(token || '').trim();
+  return value.length >= 80 && value.length <= 4096;
+};
+
+const pushCollectionForUser = (userId) => `push_tokens:${String(userId || '').trim()}`;
+
+const resolvePushOpenLink = (rawLink) => {
+  const fallbackHashPath = '/#/profile/messages';
+  const value = String(rawLink || '').trim();
+  if (!value) {
+    return APP_PUBLIC_URL_NORMALIZED ? `${APP_PUBLIC_URL_NORMALIZED}${fallbackHashPath}` : fallbackHashPath;
   }
 
-  if (BACKEND_API_KEY && req.headers['x-backend-key'] === BACKEND_API_KEY) {
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/#/')) {
+    return APP_PUBLIC_URL_NORMALIZED ? `${APP_PUBLIC_URL_NORMALIZED}${value}` : value;
+  }
+  if (value.startsWith('#/')) {
+    const normalizedHashPath = `/${value}`;
+    return APP_PUBLIC_URL_NORMALIZED ? `${APP_PUBLIC_URL_NORMALIZED}${normalizedHashPath}` : normalizedHashPath;
+  }
+
+  const pathPart = value.startsWith('/') ? value : `/${value}`;
+  if (APP_PUBLIC_URL_NORMALIZED) {
+    return `${APP_PUBLIC_URL_NORMALIZED}#${pathPart}`;
+  }
+  return `/#${pathPart}`;
+};
+
+const listPushTokenDocsForUser = async (userId) => {
+  const collectionKey = pushCollectionForUser(userId);
+  if (!collectionKey) return [];
+
+  const { data, error } = await supabase
+    .from('mirror_documents')
+    .select('doc_id,data')
+    .eq('collection', collectionKey)
+    .limit(200);
+  if (error) throw error;
+  const rows = Array.isArray(data) ? data : [];
+  return rows
+    .map((row) => ({
+      docId: String(row?.doc_id || ''),
+      token: String(row?.data?.token || '')
+    }))
+    .filter((row) => row.docId && row.token);
+};
+
+const removePushTokenDocsById = async (userId, docIds = []) => {
+  const ids = Array.from(new Set(docIds.map((entry) => String(entry || '')).filter(Boolean)));
+  if (!userId || ids.length === 0) return;
+  const collectionKey = pushCollectionForUser(userId);
+  await supabase
+    .from('mirror_documents')
+    .delete()
+    .eq('collection', collectionKey)
+    .in('doc_id', ids);
+};
+
+const sendPushToUser = async ({
+  recipientUserId,
+  title,
+  body,
+  link,
+  threadId,
+  senderFirebaseUid
+}) => {
+  if (!PUSH_NOTIFICATIONS_ACTIVE || !firebaseApp || !recipientUserId) {
+    return { sentCount: 0, attemptedCount: 0 };
+  }
+
+  const tokenDocs = await listPushTokenDocsForUser(recipientUserId);
+  if (tokenDocs.length === 0) {
+    return { sentCount: 0, attemptedCount: 0 };
+  }
+
+  const pushLink = resolvePushOpenLink(link || (threadId ? `/profile/messages/${threadId}` : '/profile/messages'));
+  const messageTitle = String(title || 'Urban Prime');
+  const messageBody = String(body || 'New message');
+  const sendPayload = {
+    tokens: tokenDocs.map((entry) => entry.token),
+    notification: {
+      title: messageTitle,
+      body: messageBody
+    },
+    data: {
+      type: 'chat_message',
+      title: messageTitle,
+      body: messageBody,
+      link: pushLink,
+      threadId: String(threadId || ''),
+      senderId: String(senderFirebaseUid || '')
+    },
+    webpush: {
+      fcmOptions: {
+        link: pushLink
+      },
+      notification: {
+        title: messageTitle,
+        body: messageBody,
+        icon: PUSH_NOTIFICATION_ICON,
+        badge: PUSH_NOTIFICATION_BADGE,
+        tag: threadId ? `chat-thread-${threadId}` : 'chat-message',
+        renotify: true,
+        actions: [
+          { action: 'reply', title: 'Reply' },
+          { action: 'mark_read', title: 'Mark read' },
+          { action: 'react', title: 'React +1' }
+        ]
+      }
+    }
+  };
+
+  const multicastResult = await admin.messaging().sendEachForMulticast(sendPayload);
+  const invalidDocIds = [];
+  multicastResult.responses.forEach((response, index) => {
+    if (response.success) return;
+    const code = String(response.error?.code || '');
+    if (code === 'messaging/invalid-registration-token' || code === 'messaging/registration-token-not-registered') {
+      const doc = tokenDocs[index];
+      if (doc?.docId) invalidDocIds.push(doc.docId);
+    }
+  });
+
+  if (invalidDocIds.length > 0) {
+    await removePushTokenDocsById(recipientUserId, invalidDocIds);
+  }
+
+  return { sentCount: multicastResult.successCount || 0, attemptedCount: tokenDocs.length };
+};
+
+const CHAT_CALL_COLLECTION_PREFIX = 'chat_calls:';
+const CHAT_PRESENCE_COLLECTION = 'chat_presence';
+const CHAT_PRESENCE_ONLINE_TTL_MS = parsePort(process.env.CHAT_PRESENCE_ONLINE_TTL_MS ?? '45000', 45000);
+
+const callCollectionForThread = (threadId) => `${CHAT_CALL_COLLECTION_PREFIX}${String(threadId || '').trim()}`;
+
+const isActiveCallStatus = (value) => ['ringing', 'accepted'].includes(String(value || '').toLowerCase());
+
+const normalizeCallMode = (value) => (String(value || '').toLowerCase() === 'video' ? 'video' : 'voice');
+
+const normalizeCallAction = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['accept', 'decline', 'silent'].includes(normalized)) return normalized;
+  return '';
+};
+
+const mapCallDocumentRow = (row, firebaseUidByUserId = new Map()) => {
+  if (!row) return null;
+  const data = normalizeJsonObject(row.data);
+  const threadId = String(data.thread_id || data.threadId || row.collection?.replace(CHAT_CALL_COLLECTION_PREFIX, '') || '').trim();
+  const initiatorUserId = String(data.initiator_user_id || data.initiatorId || '').trim();
+  const receiverUserId = String(data.receiver_user_id || data.receiverId || '').trim();
+  const acceptedByUserId = String(data.accepted_by_user_id || data.acceptedById || '').trim();
+  const silentByUserIds = (Array.isArray(data.silent_by_user_ids) ? data.silent_by_user_ids : data.silentByIds || [])
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+  const status = String(data.status || 'ringing').toLowerCase();
+
+  return {
+    id: String(row.doc_id || data.id || ''),
+    thread_id: threadId,
+    room_name: String(data.room_name || data.roomName || `urbanprime-${threadId}`),
+    mode: normalizeCallMode(data.mode),
+    status: ['ringing', 'accepted', 'declined', 'ended', 'missed'].includes(status) ? status : 'ringing',
+    initiator_user_id: initiatorUserId || null,
+    receiver_user_id: receiverUserId || null,
+    accepted_by_user_id: acceptedByUserId || null,
+    silent_by_user_ids: Array.from(new Set(silentByUserIds)),
+    reason: toNullableText(data.reason || data.end_reason || data.endReason),
+    started_at: data.started_at || data.startedAt || row.updated_at || new Date().toISOString(),
+    ended_at: data.ended_at || data.endedAt || null,
+    updated_at: data.updated_at || data.updatedAt || row.updated_at || new Date().toISOString(),
+    initiator_firebase_uid: initiatorUserId ? (firebaseUidByUserId.get(initiatorUserId) || null) : null,
+    receiver_firebase_uid: receiverUserId ? (firebaseUidByUserId.get(receiverUserId) || null) : null,
+    accepted_by_firebase_uid: acceptedByUserId ? (firebaseUidByUserId.get(acceptedByUserId) || null) : null
+  };
+};
+
+const buildFirebaseUidMap = async (userIds = []) => {
+  const ids = Array.from(new Set(userIds.map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id,firebase_uid')
+    .in('id', ids);
+  if (error) throw error;
+  const map = new Map();
+  (data || []).forEach((row) => {
+    if (!row?.id) return;
+    map.set(String(row.id), String(row.firebase_uid || row.id));
+  });
+  return map;
+};
+
+const getThreadParticipantContext = async (threadId, currentUserId) => {
+  const { data: threadRow, error: threadError } = await supabase
+    .from('chat_threads')
+    .select('id,buyer_id,seller_id')
+    .eq('id', threadId)
+    .maybeSingle();
+
+  if (threadError) {
+    return { error: threadError };
+  }
+  if (!threadRow) {
+    return { error: new Error('Conversation not found.') };
+  }
+  const participants = [String(threadRow.buyer_id || ''), String(threadRow.seller_id || '')].filter(Boolean);
+  if (!participants.includes(currentUserId)) {
+    return { error: new Error('You are not a participant in this conversation.') };
+  }
+  const receiverUserId = participants.find((id) => id !== currentUserId) || null;
+  return { threadRow, participants, receiverUserId };
+};
+
+const loadCallDocument = async (callId) => {
+  const { data, error } = await supabase
+    .from('mirror_documents')
+    .select('collection,doc_id,data,updated_at')
+    .eq('doc_id', callId)
+    .like('collection', `${CHAT_CALL_COLLECTION_PREFIX}%`)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { row: data || null, error: error || null };
+};
+
+const createRateLimiter = ({ windowMs, maxRequests, namespace, skip }) => {
+  const hitMap = new Map();
+
+  // Cleanup stale entries to keep memory bounded.
+  const sweepInterval = Math.max(windowMs, 10_000);
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of hitMap.entries()) {
+      if (value.resetAt <= now) {
+        hitMap.delete(key);
+      }
+    }
+  }, sweepInterval).unref?.();
+
+  return (req, res, next) => {
+    if (!RATE_LIMITING_ENABLED || (typeof skip === 'function' && skip(req))) {
+      return next();
+    }
+
+    const now = Date.now();
+    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    const key = `${namespace}:${clientIp}`;
+    const current = hitMap.get(key);
+
+    if (!current || current.resetAt <= now) {
+      const resetAt = now + windowMs;
+      hitMap.set(key, { count: 1, resetAt });
+      res.setHeader('X-RateLimit-Limit', String(maxRequests));
+      res.setHeader('X-RateLimit-Remaining', String(Math.max(maxRequests - 1, 0)));
+      res.setHeader('X-RateLimit-Reset', new Date(resetAt).toISOString());
+      return next();
+    }
+
+    if (current.count >= maxRequests) {
+      const retryAfterSeconds = Math.max(Math.ceil((current.resetAt - now) / 1000), 1);
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.setHeader('X-RateLimit-Limit', String(maxRequests));
+      res.setHeader('X-RateLimit-Remaining', '0');
+      res.setHeader('X-RateLimit-Reset', new Date(current.resetAt).toISOString());
+      return res.status(429).json({ error: 'Too many requests. Please retry shortly.' });
+    }
+
+    current.count += 1;
+    res.setHeader('X-RateLimit-Limit', String(maxRequests));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(maxRequests - current.count, 0)));
+    res.setHeader('X-RateLimit-Reset', new Date(current.resetAt).toISOString());
+    return next();
+  };
+};
+
+const globalRateLimiter = createRateLimiter({
+  windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,
+  maxRequests: GLOBAL_RATE_LIMIT_MAX,
+  namespace: 'global',
+  skip: (req) => req.path === '/health' || req.path.startsWith('/uploads/')
+});
+
+const strictAuthRateLimiter = createRateLimiter({
+  windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,
+  maxRequests: AUTH_RATE_LIMIT_MAX_REQUESTS,
+  namespace: 'auth'
+});
+
+app.use(globalRateLimiter);
+
+const requireAuth = async (req, res, next) => {
+  if (!BACKEND_API_KEY && !firebaseApp) {
+    if (!IS_PRODUCTION) {
+      return next();
+    }
+    return res.status(503).json({ error: 'Authentication backend is not configured.' });
+  }
+
+  if (BACKEND_API_KEY && secureCompare(req.headers['x-backend-key'], BACKEND_API_KEY)) {
     return next();
   }
 
@@ -1113,10 +1557,14 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, firebaseAdmin: Boolean(firebaseApp), featureFlags: FEATURE_FLAGS });
 });
 
-app.post('/auth/sync-user', requireAuth, async (req, res) => {
+app.post('/auth/sync-user', strictAuthRateLimiter, requireAuth, async (req, res) => {
   const { firebase_uid, email, name, avatar_url, phone } = req.body || {};
   if (!firebase_uid) {
     return res.status(400).json({ error: 'firebase_uid is required' });
+  }
+
+  if (req.user?.uid && req.user.uid !== firebase_uid) {
+    return res.status(403).json({ error: 'Cannot sync profile for another user.' });
   }
 
   const payload = { firebase_uid, email, name, avatar_url, phone };
@@ -1490,7 +1938,7 @@ app.post('/onboarding/persona-bootstrap', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/onboarding/complete', requireAuth, async (req, res) => {
+app.post('/onboarding/complete', strictAuthRateLimiter, requireAuth, async (req, res) => {
   if (!PROFILE_ONBOARDING_V2_ENABLED) {
     return res.status(409).json({
       error: 'Onboarding flow v2 is disabled.',
@@ -1642,6 +2090,556 @@ app.post('/onboarding/events', requireAuth, async (req, res) => {
     return res.status(201).json({ data });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to track onboarding event.' });
+  }
+});
+
+app.post('/push/token', requireAuth, async (req, res) => {
+  if (!PUSH_NOTIFICATIONS_ACTIVE) {
+    return res.status(200).json({ ok: true, disabled: true });
+  }
+
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const token = String(body.token || '').trim();
+    if (!isPushTokenLikelyValid(token)) {
+      return res.status(400).json({ error: 'Valid push token is required.' });
+    }
+
+    const now = new Date().toISOString();
+    const collectionKey = pushCollectionForUser(context.user.id);
+    const tokenId = hashPushToken(token);
+    const payload = {
+      token,
+      platform: String(body.platform || 'web').trim() || 'web',
+      user_agent: String(body.userAgent || req.get('user-agent') || '').slice(0, 512),
+      permission: String(body.permission || '').slice(0, 32),
+      user_id: context.user.id,
+      firebase_uid: context.firebaseUid,
+      updated_at: now
+    };
+
+    const { data, error } = await supabase
+      .from('mirror_documents')
+      .upsert({
+        collection: collectionKey,
+        doc_id: tokenId,
+        data: payload,
+        updated_at: now
+      }, {
+        onConflict: 'collection,doc_id',
+        ignoreDuplicates: false
+      })
+      .select('collection,doc_id,updated_at')
+      .maybeSingle();
+    if (error) throw error;
+
+    return res.status(201).json({ ok: true, data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to register push token.' });
+  }
+});
+
+app.delete('/push/token', requireAuth, async (req, res) => {
+  if (!PUSH_NOTIFICATIONS_ACTIVE) {
+    return res.status(200).json({ ok: true, disabled: true });
+  }
+
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const token = String(body.token || '').trim();
+    if (!isPushTokenLikelyValid(token)) {
+      return res.status(400).json({ error: 'Valid push token is required.' });
+    }
+
+    const collectionKey = pushCollectionForUser(context.user.id);
+    const tokenId = hashPushToken(token);
+    const { error } = await supabase
+      .from('mirror_documents')
+      .delete()
+      .eq('collection', collectionKey)
+      .eq('doc_id', tokenId);
+    if (error) throw error;
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to remove push token.' });
+  }
+});
+
+app.post('/push/notify-message', requireAuth, async (req, res) => {
+  if (!PUSH_NOTIFICATIONS_ACTIVE) {
+    return res.status(200).json({ ok: true, disabled: true });
+  }
+  if (!firebaseApp) {
+    return res.status(200).json({ ok: true, skipped: 'firebase_admin_unavailable' });
+  }
+
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const threadId = String(body.thread_id || body.threadId || '').trim();
+    if (!threadId) {
+      return res.status(400).json({ error: 'thread_id is required' });
+    }
+
+    const { data: threadRow, error: threadError } = await supabase
+      .from('chat_threads')
+      .select('id,buyer_id,seller_id')
+      .eq('id', threadId)
+      .maybeSingle();
+    if (threadError) throw threadError;
+    if (!threadRow) {
+      return res.status(404).json({ error: 'Conversation not found.' });
+    }
+
+    const participants = [String(threadRow.buyer_id || ''), String(threadRow.seller_id || '')].filter(Boolean);
+    if (!participants.includes(context.user.id)) {
+      return res.status(403).json({ error: 'You are not a participant in this conversation.' });
+    }
+
+    const suggestedRecipient = String(body.recipient_supabase_id || body.recipientUserId || '').trim();
+    const recipientUserId = participants.find((id) => id !== context.user.id && (!suggestedRecipient || id === suggestedRecipient));
+    if (!recipientUserId) {
+      return res.status(200).json({ ok: true, skipped: 'recipient_missing' });
+    }
+
+    const preview = String(body.preview || '').trim().slice(0, 280) || 'New message';
+    const link = String(body.link || '').trim() || `/profile/messages/${threadId}`;
+    const senderName = String(context.user.name || 'New message').trim();
+    const senderTitle = senderName ? `${senderName}` : 'Urban Prime';
+
+    const pushResult = await sendPushToUser({
+      recipientUserId,
+      title: senderTitle,
+      body: preview,
+      link,
+      threadId,
+      senderFirebaseUid: context.firebaseUid
+    });
+
+    return res.json({
+      ok: true,
+      data: {
+        sentCount: pushResult.sentCount,
+        attemptedCount: pushResult.attemptedCount
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to send push notification.' });
+  }
+});
+
+app.post('/chat/calls/start', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const threadId = String(body.threadId || body.thread_id || '').trim();
+    if (!threadId) {
+      return res.status(400).json({ error: 'threadId is required.' });
+    }
+
+    const mode = normalizeCallMode(body.mode);
+    const threadContext = await getThreadParticipantContext(threadId, context.user.id);
+    if (threadContext.error || !threadContext.threadRow) {
+      return res.status(403).json({ error: threadContext.error?.message || 'Conversation access denied.' });
+    }
+
+    const collectionKey = callCollectionForThread(threadId);
+    const existingCalls = await supabase
+      .from('mirror_documents')
+      .select('collection,doc_id,data,updated_at')
+      .eq('collection', collectionKey)
+      .order('updated_at', { ascending: false })
+      .limit(20);
+    if (existingCalls.error) throw existingCalls.error;
+
+    const activeRow = (existingCalls.data || []).find((row) => {
+      const rowData = normalizeJsonObject(row?.data);
+      return isActiveCallStatus(rowData.status) && !hasText(rowData.ended_at || rowData.endedAt);
+    });
+
+    const now = new Date().toISOString();
+    let savedCallRow = activeRow || null;
+    if (!savedCallRow) {
+      const callId = randomUUID();
+      const data = {
+        id: callId,
+        thread_id: threadId,
+        room_name: `urbanprime-${threadId}`,
+        mode,
+        status: 'ringing',
+        initiator_user_id: context.user.id,
+        receiver_user_id: threadContext.receiverUserId,
+        accepted_by_user_id: null,
+        silent_by_user_ids: [],
+        started_at: now,
+        updated_at: now,
+        ended_at: null,
+        reason: null
+      };
+
+      const upsert = await supabase
+        .from('mirror_documents')
+        .upsert({
+          collection: collectionKey,
+          doc_id: callId,
+          data,
+          updated_at: now
+        }, { onConflict: 'collection,doc_id', ignoreDuplicates: false })
+        .select('collection,doc_id,data,updated_at')
+        .maybeSingle();
+      if (upsert.error) throw upsert.error;
+      savedCallRow = upsert.data;
+
+      await supabase.from('chat_messages').insert({
+        thread_id: threadId,
+        sender_id: context.user.id,
+        message_type: 'system',
+        body: mode === 'video' ? 'Started a video call.' : 'Started a voice call.',
+        created_at: now
+      });
+      await supabase.from('chat_threads').update({ last_message_at: now }).eq('id', threadId);
+    }
+
+    const firebaseUidMap = await buildFirebaseUidMap([
+      context.user.id,
+      threadContext.receiverUserId
+    ]);
+    const response = mapCallDocumentRow(savedCallRow, firebaseUidMap);
+    return res.status(201).json({ ok: true, data: response });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to start call.' });
+  }
+});
+
+app.post('/chat/calls/:callId/respond', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const callId = String(req.params.callId || '').trim();
+    const action = normalizeCallAction(req.body?.action);
+    if (!callId || !action) {
+      return res.status(400).json({ error: 'Valid callId and action are required.' });
+    }
+
+    const callLookup = await loadCallDocument(callId);
+    if (callLookup.error) throw callLookup.error;
+    if (!callLookup.row) return res.status(404).json({ error: 'Call session not found.' });
+
+    const existingData = normalizeJsonObject(callLookup.row.data);
+    const threadId = String(existingData.thread_id || existingData.threadId || '').trim();
+    const participantIds = [
+      String(existingData.initiator_user_id || ''),
+      String(existingData.receiver_user_id || '')
+    ].filter(Boolean);
+    if (!participantIds.includes(context.user.id)) {
+      return res.status(403).json({ error: 'You are not allowed to respond to this call.' });
+    }
+
+    const now = new Date().toISOString();
+    const nextData = {
+      ...existingData,
+      id: callId,
+      thread_id: threadId,
+      updated_at: now
+    };
+
+    if (action === 'accept') {
+      nextData.status = 'accepted';
+      nextData.accepted_by_user_id = context.user.id;
+      nextData.accepted_at = now;
+      nextData.ended_at = null;
+      nextData.reason = null;
+    } else if (action === 'decline') {
+      nextData.status = 'declined';
+      nextData.ended_at = now;
+      nextData.reason = 'declined';
+    } else if (action === 'silent') {
+      const currentSilent = Array.isArray(existingData.silent_by_user_ids) ? existingData.silent_by_user_ids : [];
+      nextData.silent_by_user_ids = Array.from(new Set([...currentSilent, context.user.id]));
+    }
+
+    const updateResult = await supabase
+      .from('mirror_documents')
+      .upsert({
+        collection: callLookup.row.collection,
+        doc_id: callId,
+        data: nextData,
+        updated_at: now
+      }, { onConflict: 'collection,doc_id', ignoreDuplicates: false })
+      .select('collection,doc_id,data,updated_at')
+      .maybeSingle();
+    if (updateResult.error) throw updateResult.error;
+
+    if (threadId && action !== 'silent') {
+      const systemBody = action === 'accept' ? 'Accepted the call.' : 'Declined the call.';
+      await supabase.from('chat_messages').insert({
+        thread_id: threadId,
+        sender_id: context.user.id,
+        message_type: 'system',
+        body: systemBody,
+        created_at: now
+      });
+      await supabase.from('chat_threads').update({ last_message_at: now }).eq('id', threadId);
+    }
+
+    const firebaseUidMap = await buildFirebaseUidMap(participantIds);
+    const response = mapCallDocumentRow(updateResult.data, firebaseUidMap);
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to respond to call.' });
+  }
+});
+
+app.post('/chat/calls/:callId/end', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const callId = String(req.params.callId || '').trim();
+    if (!callId) return res.status(400).json({ error: 'callId is required.' });
+
+    const callLookup = await loadCallDocument(callId);
+    if (callLookup.error) throw callLookup.error;
+    if (!callLookup.row) return res.status(404).json({ error: 'Call session not found.' });
+
+    const existingData = normalizeJsonObject(callLookup.row.data);
+    const threadId = String(existingData.thread_id || existingData.threadId || '').trim();
+    const participantIds = [
+      String(existingData.initiator_user_id || ''),
+      String(existingData.receiver_user_id || '')
+    ].filter(Boolean);
+    if (!participantIds.includes(context.user.id)) {
+      return res.status(403).json({ error: 'You are not allowed to end this call.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const now = new Date().toISOString();
+    const nextData = {
+      ...existingData,
+      id: callId,
+      thread_id: threadId,
+      status: 'ended',
+      ended_at: now,
+      reason: toNullableText(body.reason) || 'ended',
+      updated_at: now
+    };
+
+    const updateResult = await supabase
+      .from('mirror_documents')
+      .upsert({
+        collection: callLookup.row.collection,
+        doc_id: callId,
+        data: nextData,
+        updated_at: now
+      }, { onConflict: 'collection,doc_id', ignoreDuplicates: false })
+      .select('collection,doc_id,data,updated_at')
+      .maybeSingle();
+    if (updateResult.error) throw updateResult.error;
+
+    if (threadId) {
+      await supabase.from('chat_messages').insert({
+        thread_id: threadId,
+        sender_id: context.user.id,
+        message_type: 'system',
+        body: 'Call ended.',
+        created_at: now
+      });
+      await supabase.from('chat_threads').update({ last_message_at: now }).eq('id', threadId);
+    }
+
+    const firebaseUidMap = await buildFirebaseUidMap(participantIds);
+    const response = mapCallDocumentRow(updateResult.data, firebaseUidMap);
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to end call.' });
+  }
+});
+
+app.get('/chat/calls/active', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const threadId = String(req.query.threadId || req.query.thread_id || '').trim();
+    if (!threadId) return res.status(400).json({ error: 'threadId is required.' });
+
+    const threadContext = await getThreadParticipantContext(threadId, context.user.id);
+    if (threadContext.error || !threadContext.threadRow) {
+      return res.status(403).json({ error: threadContext.error?.message || 'Conversation access denied.' });
+    }
+
+    const collectionKey = callCollectionForThread(threadId);
+    const callsResult = await supabase
+      .from('mirror_documents')
+      .select('collection,doc_id,data,updated_at')
+      .eq('collection', collectionKey)
+      .order('updated_at', { ascending: false })
+      .limit(20);
+    if (callsResult.error) throw callsResult.error;
+
+    const activeRow = (callsResult.data || []).find((row) => {
+      const rowData = normalizeJsonObject(row?.data);
+      return isActiveCallStatus(rowData.status) && !hasText(rowData.ended_at || rowData.endedAt);
+    });
+
+    if (!activeRow) return res.json({ ok: true, data: null });
+
+    const firebaseUidMap = await buildFirebaseUidMap([
+      context.user.id,
+      threadContext.receiverUserId
+    ]);
+    const response = mapCallDocumentRow(activeRow, firebaseUidMap);
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to fetch active call.' });
+  }
+});
+
+app.put('/chat/presence', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const now = new Date().toISOString();
+    const isOnline = body.isOnline === undefined ? true : Boolean(body.isOnline);
+    const hasVisibilityPatch = body.visibility !== undefined;
+    const existingPresenceResult = await supabase
+      .from('mirror_documents')
+      .select('data')
+      .eq('collection', CHAT_PRESENCE_COLLECTION)
+      .eq('doc_id', context.user.id)
+      .maybeSingle();
+    if (existingPresenceResult.error) throw existingPresenceResult.error;
+    const existingVisibility = normalizeJsonObject(existingPresenceResult.data?.data).visibility !== false;
+    const visibility = hasVisibilityPatch ? Boolean(body.visibility) : existingVisibility;
+    const lastSeenAt = isOnline
+      ? toNullableText(body.lastSeenAt || body.last_seen_at)
+      : toNullableText(body.lastSeenAt || body.last_seen_at) || now;
+
+    const data = {
+      user_id: context.user.id,
+      firebase_uid: context.firebaseUid,
+      is_online: isOnline,
+      heartbeat_at: now,
+      last_seen_at: lastSeenAt,
+      visibility,
+      updated_at: now
+    };
+
+    const upsert = await supabase
+      .from('mirror_documents')
+      .upsert({
+        collection: CHAT_PRESENCE_COLLECTION,
+        doc_id: context.user.id,
+        data,
+        updated_at: now
+      }, { onConflict: 'collection,doc_id', ignoreDuplicates: false })
+      .select('collection,doc_id,data,updated_at')
+      .maybeSingle();
+    if (upsert.error) throw upsert.error;
+
+    if (hasVisibilityPatch) {
+      const nextPreferences = {
+        ...normalizeJsonObject(context.profile?.preferences),
+        chatPresenceVisible: visibility
+      };
+      const prefUpdate = await supabase
+        .from('user_profiles')
+        .update({ preferences: nextPreferences })
+        .eq('user_id', context.user.id);
+      if (prefUpdate.error) throw prefUpdate.error;
+    }
+
+    return res.json({
+      ok: true,
+      data: {
+        userId: context.user.id,
+        firebaseUid: context.firebaseUid,
+        isOnline,
+        lastSeenAt,
+        visibility,
+        updatedAt: now
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to update presence.' });
+  }
+});
+
+app.get('/chat/presence', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const rawIds = String(req.query.userIds || req.query.user_ids || '').trim();
+    if (!rawIds) return res.json({ ok: true, data: [] });
+    const userIds = Array.from(new Set(rawIds.split(',').map((entry) => entry.trim()).filter(Boolean))).slice(0, 200);
+    if (userIds.length === 0) return res.json({ ok: true, data: [] });
+
+    const presenceResult = await supabase
+      .from('mirror_documents')
+      .select('collection,doc_id,data,updated_at')
+      .eq('collection', CHAT_PRESENCE_COLLECTION)
+      .in('doc_id', userIds);
+    if (presenceResult.error) throw presenceResult.error;
+
+    const firebaseUidMap = await buildFirebaseUidMap(userIds);
+    const nowMs = Date.now();
+    const rows = Array.isArray(presenceResult.data) ? presenceResult.data : [];
+
+    const data = rows.map((row) => {
+      const payload = normalizeJsonObject(row.data);
+      const visibility = payload.visibility !== false;
+      const heartbeatAt = Date.parse(String(payload.heartbeat_at || payload.updated_at || row.updated_at || ''));
+      const hasHeartbeat = Number.isFinite(heartbeatAt);
+      const onlineByHeartbeat = hasHeartbeat && nowMs - heartbeatAt <= CHAT_PRESENCE_ONLINE_TTL_MS;
+      const online = visibility && Boolean(payload.is_online) && onlineByHeartbeat;
+      const fallbackLastSeen = payload.last_seen_at || payload.updated_at || row.updated_at || new Date().toISOString();
+
+      return {
+        userId: String(row.doc_id || ''),
+        firebaseUid: firebaseUidMap.get(String(row.doc_id || '')) || payload.firebase_uid || null,
+        isOnline: online,
+        lastSeenAt: visibility ? toIsoTimestamp(online ? (payload.last_seen_at || payload.heartbeat_at || fallbackLastSeen) : fallbackLastSeen) : null,
+        visibility,
+        updatedAt: toIsoTimestamp(payload.updated_at || row.updated_at)
+      };
+    });
+
+    return res.json({ ok: true, data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to fetch presence.' });
   }
 });
 
@@ -2177,7 +3175,7 @@ app.patch('/personas/:id', requireAuth, async (req, res) => {
   return res.json({ data });
 });
 
-app.post('/personas/:id/switch', requireAuth, async (req, res) => {
+app.post('/personas/:id/switch', strictAuthRateLimiter, requireAuth, async (req, res) => {
   const { id } = req.params;
   if (req.user?.uid) {
     const canAccess = await userCanAccessPersona(id, req.user.uid);
@@ -3674,7 +4672,8 @@ app.post('/uploads', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'base64Data and mimeType are required' });
   }
 
-  const extension = MIME_EXTENSION_MAP[mimeType];
+  const normalizedMimeType = normalizeMimeTypeValue(mimeType);
+  const extension = MIME_EXTENSION_MAP[normalizedMimeType];
   if (!extension) {
     return res.status(400).json({ error: `Unsupported mimeType: ${mimeType}` });
   }
@@ -3718,7 +4717,7 @@ app.post('/uploads', requireAuth, async (req, res) => {
     owner_persona_id: owner_persona_id || null,
     asset_type: safeType,
     file_name: fileName || `${safeBase}.${extension}`,
-    mime_type: mimeType,
+    mime_type: normalizedMimeType,
     size_bytes: sizeBytes,
     storage_driver: 'local_disk',
     storage_path: normalizeRelativePath(fullPath),
@@ -3813,8 +4812,8 @@ app.delete('/uploads/:id', requireAuth, async (req, res) => {
 });
 
 const startServer = (port, retriesRemaining) => {
-  const server = app.listen(port, () => {
-    console.log(`Urban Prime backend listening on http://localhost:${port}`);
+  const server = app.listen(port, START_HOST, () => {
+    console.log(`Urban Prime backend listening on http://${START_HOST}:${port}`);
   });
 
   server.on('error', (error) => {

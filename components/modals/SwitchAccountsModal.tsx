@@ -11,6 +11,7 @@ const SwitchAccountsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     const { user: currentUser, switchUser } = useAuth();
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [actionError, setActionError] = useState<string | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -39,11 +40,24 @@ const SwitchAccountsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                                             <p className="font-semibold text-sm text-light-text dark:text-dark-text">{user.name}</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => switchUser(user.id)} className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 font-semibold rounded-md">
+                                    <button
+                                        onClick={async () => {
+                                            setActionError(null);
+                                            try {
+                                                await switchUser(user.id);
+                                            } catch (error) {
+                                                setActionError(error instanceof Error ? error.message : 'Unable to switch account right now.');
+                                            }
+                                        }}
+                                        className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 font-semibold rounded-md"
+                                    >
                                         Switch
                                     </button>
                                 </div>
                             ))}
+                            {actionError ? (
+                                <p className="text-xs text-red-500 mt-2">{actionError}</p>
+                            ) : null}
                             <button onClick={() => navigate('/auth')} className="w-full mt-2 p-2 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg text-gray-500 hover:border-primary hover:text-primary">
                                 <PlusIcon /> Add Account
                             </button>

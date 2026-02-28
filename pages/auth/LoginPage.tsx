@@ -97,7 +97,8 @@ const LoginPage: React.FC = () => {
         if (isAuthenticated) {
             if (!profileCompletion) return;
             setLoading(false);
-            if (isProfileOnboardingEnabled && profileCompletion && !profileCompletion.isComplete) {
+            const isMessagesDestination = String(from || '').startsWith('/profile/messages');
+            if (isProfileOnboardingEnabled && profileCompletion && !profileCompletion.isComplete && !isMessagesDestination) {
                 navigate('/auth/onboarding', { replace: true });
             } else {
                 navigate(from, { replace: true });
@@ -298,6 +299,7 @@ const LoginPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+
         </div>
     );
 };

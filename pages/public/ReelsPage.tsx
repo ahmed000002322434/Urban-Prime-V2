@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { itemService, reelService, userService } from '../../services/itemService';
+import { mockReelService } from '../../services/mockReelService';
 import { useAuth } from '../../hooks/useAuth';
 import type { Reel, User, ReelComment } from '../../types';
 import Spinner from '../../components/Spinner';
@@ -89,9 +90,20 @@ const ReelsPage: React.FC = () => {
             setIsLoading(true);
             try {
                 const reelsData = await reelService.getReelsForFeed(user?.id || 'guest');
-                setReels(reelsData.filter(r => r.status === 'published'));
+                const publishedReels = reelsData.filter(r => r.status === 'published');
+                
+                // Use mock reels if no published reels are available
+                if (publishedReels.length === 0) {
+                    const mockReels = mockReelService.getMockReels();
+                    setReels(mockReels);
+                } else {
+                    setReels(publishedReels);
+                }
             } catch (err) {
-                console.error(err);
+                console.error('Error fetching reels, using mock data:', err);
+                // Fallback to mock reels if there's an error
+                const mockReels = mockReelService.getMockReels();
+                setReels(mockReels);
             } finally {
                 setIsLoading(false);
             }

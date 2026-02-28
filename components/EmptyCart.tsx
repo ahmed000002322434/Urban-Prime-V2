@@ -8,14 +8,8 @@ import { useAuth } from '../hooks/useAuth';
 import ItemCard from './ItemCard';
 import QuickViewModal from './QuickViewModal';
 import SkeletonCard from './SkeletonCard';
-
-const CartIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 dark:text-gray-600">
-        <circle cx="9" cy="21" r="1"></circle>
-        <circle cx="20" cy="21" r="1"></circle>
-        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-    </svg>
-);
+import LottieAnimation from './LottieAnimation';
+import { uiLottieAnimations } from '../utils/uiAnimationAssets';
 
 const EmptyCart: React.FC = () => {
     const { user, isAuthenticated } = useAuth();
@@ -52,7 +46,7 @@ const EmptyCart: React.FC = () => {
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16">
                 <div className="text-center max-w-2xl mx-auto">
                     <div className="flex justify-center mb-6">
-                        <CartIcon />
+                        <LottieAnimation src={uiLottieAnimations.nothing} className="h-44 w-44" loop autoplay />
                     </div>
                     <h1 className="text-4xl font-extrabold font-display text-text-primary">Your cart is empty</h1>
                     <p className="text-text-secondary mt-4">

@@ -113,7 +113,6 @@ const AuthModal: React.FC = () => {
         setLoading(true);
         try {
             await register(regName, regEmail, regPassword, '', '');
-            navigate(from, { replace: true });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An unknown error occurred.');
         } finally {
@@ -246,6 +245,7 @@ const AuthModal: React.FC = () => {
                     </div>
                 </div>
             </div>
+
         </div>
     );
 };

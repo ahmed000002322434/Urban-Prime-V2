@@ -1,7 +1,7 @@
 
 // pages/public/HomePage.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, useScroll, useTransform, useMotionTemplate } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { itemService } from '../../services/itemService';
 import type { Item } from '../../types';
@@ -13,15 +13,86 @@ import { useTheme } from '../../hooks/useTheme';
 import Magnetic from '../../components/Magnetic';
 
 // --- Assets & Icons ---
-const ArrowRight = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>;
 const PlayIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;
 const StarIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
 
-const CATEGORIES_SHOWCASE = [
-  { id: 'luxury', title: 'Luxury', subtitle: 'Timeless', image: 'https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=800&auto=format&fit=crop', link: '/luxury', size: 'large' },
-  { id: 'electronics', title: 'Future Tech', subtitle: 'Innovation', image: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?q=80&w=800&auto=format&fit=crop', link: '/electronics', size: 'small' },
-  { id: 'fashion', title: 'Haute Couture', subtitle: 'Style', image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=800&auto=format&fit=crop', link: '/clothing', size: 'tall' },
-  { id: 'art', title: 'Fine Art', subtitle: 'Collectibles', image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?q=80&w=800&auto=format&fit=crop', link: '/art-collectibles', size: 'small' },
+type CollectionCardMeta = {
+    id: string;
+    label: string;
+    title: string;
+    image: string;
+    link: string;
+    video?: string;
+};
+
+const COLLECTION_FEATURES: CollectionCardMeta[] = [
+    {
+        id: 'best-products',
+        label: 'Curated for Your Lifestyle.',
+        title: 'Discover Products',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3X5BiWrErY17PHVSZXF5Y5RnnSjkNodxHtoRFE4fufJ-VIgqT7XW2_HvxbbE5a4tc-tYN7gszwCMtBZy5aH1E0E6JEBcW8oHuR-ERqeIywX1iqTwP4G1cD7upeGxk31npORRrU5A8A-9KxJEspxWdRX_jo1J3zX4zNwXSuxq2ySlXDTgoztOIud6_n015CX1IJzSQH4uYnpsECZyJG73CWwojr9pJ8ne6uWgPcUjp0fE3bwE_Vt-IcZoYAGk0F8S3tqgAnFDGAX8',
+        link: '/browse',
+        video: '/card-videos/product-card.mp4'
+    },
+    {
+        id: 'services',
+        label: 'Smarter Ways to Get Things Done.',
+        title: 'Explore Services',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWsp5tgC3p3JRyFnrnLY02dzWoUUikqQVXzf_DepH081Fzpa9ukvYChN4wMV3XcoBgXWcATPdcIRDn4Pwwueje_AExEXOioB-TuNsedMfMZYcWe9tKaiVIwk6dC6c8Bquw42pgHmnpZxXyKCTkOUjFr7_ZBwtnfRAWuAC1OXu1FGxNrouZusleIM66wgzhqIljj2Tunarz-iGw-zeC_xStSFwD5hXyiAuoLr469OxaPzUXYD7xU34HQGzKJRPHhq2IYqtqU2NJ8-M',
+        link: '/services/marketplace',
+        video: '/card-videos/explore-services.mp4'
+    },
+    {
+        id: 'stores',
+        label: 'Explore New Shopping Worlds.',
+        title: 'Visit Stores',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_jcgo7mD9QB9kkX9TXoddziI0XLKtFv0ot9Iu-4j4ZP9JBQWrc0f7WihNLwfeV-eZljBgSyp_R-oaXOtLAdo9a1nl5FA7z4_5Drw-6eMkVmSljE4p1kqpe9eF2oYEQnGQxEIk1AJN8iwM-hhX2wc2l4dxEHE7nML1nLoQGwnZHJCsdvQu4UuidIakldQUXHogSC_8CDwSGaVzAZtsFmdCR1KRCAX5ITUuAgN3_LuHjj-rc6AwQdFmKC5nMEP1mWNgoDWjhbimvJU',
+        link: '/stores',
+        video: '/card-videos/explore-stores.mp4'
+    }
+];
+
+const COLLECTION_CATALOGUE: CollectionCardMeta[] = [
+    {
+        id: 'luxury-assets',
+        label: 'Assets',
+        title: 'Luxury Assets',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
+        link: '/luxury',
+        video: '/card-videos/luxury-assets.mp4'
+    },
+    {
+        id: 'interiors',
+        label: 'Living',
+        title: 'Interiors',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_jcgo7mD9QB9kkX9TXoddziI0XLKtFv0ot9Iu-4j4ZP9JBQWrc0f7WihNLwfeV-eZljBgSyp_R-oaXOtLAdo9a1nl5FA7z4_5Drw-6eMkVmSljE4p1kqpe9eF2oYEQnGQxEIk1AJN8iwM-hhX2wc2l4dxEHE7nML1nLoQGwnZHJCsdvQu4UuidIakldQUXHogSC_8CDwSGaVzAZtsFmdCR1KRCAX5ITUuAgN3_LuHjj-rc6AwQdFmKC5nMEP1mWNgoDWjhbimvJU',
+        link: '/home-decor',
+        video: '/card-videos/interiors.mp4'
+    },
+    {
+        id: 'travel',
+        label: 'Journey',
+        title: 'Travel',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWsp5tgC3p3JRyFnrnLY02dzWoUUikqQVXzf_DepH081Fzpa9ukvYChN4wMV3XcoBgXWcATPdcIRDn4Pwwueje_AExEXOioB-TuNsedMfMZYcWe9tKaiVIwk6dC6c8Bquw42pgHmnpZxXyKCTkOUjFr7_ZBwtnfRAWuAC1OXu1FGxNrouZusleIM66wgzhqIljj2Tunarz-iGw-zeC_xStSFwD5hXyiAuoLr469OxaPzUXYD7xU34HQGzKJRPHhq2IYqtqU2NJ8-M',
+        link: '/events',
+        video: '/card-videos/travel.mp4'
+    },
+    {
+        id: 'accessories',
+        label: 'Details',
+        title: 'Accessories',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3X5BiWrErY17PHVSZXF5Y5RnnSjkNodxHtoRFE4fufJ-VIgqT7XW2_HvxbbE5a4tc-tYN7gszwCMtBZy5aH1E0E6JEBcW8oHuR-ERqeIywX1iqTwP4G1cD7upeGxk31npORRrU5A8A-9KxJEspxWdRX_jo1J3zX4zNwXSuxq2ySlXDTgoztOIud6_n015CX1IJzSQH4uYnpsECZyJG73CWwojr9pJ8ne6uWgPcUjp0fE3bwE_Vt-IcZoYAGk0F8S3tqgAnFDGAX8',
+        link: '/womens-accessories',
+        video: '/card-videos/accessories.mp4'
+    },
+    {
+        id: 'electronics',
+        label: 'Tech',
+        title: 'Electronics',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
+        link: '/electronics',
+        video: '/card-videos/electronics.mp4'
+    }
 ];
 
 // --- 1. HERO SECTION (Optimized Physics & Glass) ---
@@ -221,65 +292,193 @@ const Marquee: React.FC = () => (
   </div>
 );
 
-// --- 3. BENTO VAULT (CATEGORIES) ---
-const BentoVault: React.FC = () => {
+// --- 3. COLLECTION DISCOVERY (HOMEPAGE CARDS) ---
+const CollectionDiscovery: React.FC = () => {
+    const featureVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+    const catalogueVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+    const catalogueTrackRef = useRef<HTMLDivElement | null>(null);
+    const [catalogueCards, setCatalogueCards] = useState<CollectionCardMeta[]>(() => [...COLLECTION_CATALOGUE]);
+
+    useEffect(() => {
+        const videos = [
+            ...featureVideoRefs.current.filter(Boolean),
+            ...catalogueVideoRefs.current.filter(Boolean)
+        ] as HTMLVideoElement[];
+        if (videos.length === 0) return;
+
+        const playAll = () => {
+            videos.forEach((video) => {
+                video.play().catch(() => undefined);
+            });
+        };
+
+        const handleVisibility = () => {
+            if (document.hidden) {
+                videos.forEach((video) => video.pause());
+            } else {
+                playAll();
+            }
+        };
+
+        playAll();
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibility);
+            videos.forEach((video) => video.pause());
+        };
+    }, []);
+
+    useEffect(() => {
+        const track = catalogueTrackRef.current;
+        if (!track) return;
+
+        let rafId = 0;
+        let lastTime = performance.now();
+        let offset = 0;
+        const speed = 0.02; // px per ms (20px/s)
+        const gap = 16;
+
+        const step = (time: number) => {
+            const delta = time - lastTime;
+            lastTime = time;
+
+            if (!document.hidden) {
+                offset += delta * speed;
+                track.style.transform = `translateX(-${offset}px)`;
+
+                const firstCard = track.firstElementChild as HTMLElement | null;
+                if (firstCard) {
+                    const firstWidth = firstCard.getBoundingClientRect().width + gap;
+                    if (offset >= firstWidth) {
+                        offset -= firstWidth;
+                        track.style.transform = `translateX(-${offset}px)`;
+                        setCatalogueCards((prev) => {
+                            if (prev.length <= 1) return prev;
+                            return [...prev.slice(1), prev[0]];
+                        });
+                    }
+                }
+            }
+
+            rafId = requestAnimationFrame(step);
+        };
+
+        const handleVisibility = () => {
+            lastTime = performance.now();
+        };
+
+        rafId = requestAnimationFrame(step);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, []);
+
     return (
-        <section className="py-16 md:py-24 relative z-10">
-            <div className="container mx-auto px-4 md:px-8">
-                <div className="flex justify-between items-end mb-10 md:mb-16">
+        <section className="py-16 sm:py-20 md:py-28 bg-background text-text-primary relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute -top-40 -right-32 h-80 w-80 rounded-full bg-purple-700/20 blur-3xl"></div>
+                <div className="absolute -bottom-40 -left-32 h-80 w-80 rounded-full bg-cyan-600/20 blur-3xl"></div>
+            </div>
+            <div className="container mx-auto px-4 md:px-8 relative z-10">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 md:mb-14">
                     <div>
-                        <span className="text-primary text-xs font-bold uppercase tracking-[0.3em] pl-1">The Vault</span>
-                        <h2 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-text-primary mt-2 drop-shadow-sm">Curated <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-600">Collections</span></h2>
+                        <span className="text-primary text-[10px] font-bold uppercase tracking-[0.32em] block mb-3">Collection Discovery</span>
+                        <h2 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold leading-[1] tracking-tight">
+                            The <span className="italic font-normal text-text-secondary opacity-70">New</span>
+                            <br />
+                            Standard
+                        </h2>
                     </div>
-                    <Link to="/browse" className="hidden md:flex items-center gap-3 text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors border border-border px-6 py-3 rounded-full hover:bg-surface-soft">
-                        View All <ArrowRight />
-                    </Link>
+                    <p className="max-w-xs text-text-secondary text-xs md:text-sm font-serif italic leading-relaxed">
+                        "In the world of Urban Prime, ownership is a legacy, but access is the ultimate freedom."
+                    </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-auto md:h-[600px]">
-                    {CATEGORIES_SHOWCASE.map((cat, index) => {
-                         const isLarge = cat.size === 'large';
-                         const isTall = cat.size === 'tall';
-                         
-                         let colSpan = 'md:col-span-1';
-                         let rowSpan = 'md:row-span-1';
-                         if (isLarge) { colSpan = 'md:col-span-2'; rowSpan = 'md:row-span-2'; }
-                         if (isTall) { rowSpan = 'md:row-span-2'; }
-
-                         return (
-                            <Link 
-                                to={cat.link} 
-                                key={cat.id} 
-                                className={`relative group overflow-hidden rounded-3xl border border-white/20 dark:border-white/5 ${colSpan} ${rowSpan}`}
-                            >
-                                {/* Background Image with Zoom Effect */}
-                                <div className="absolute inset-0 overflow-hidden">
-                                    <img 
-                                        src={cat.image} 
-                                        alt={cat.title} 
-                                        className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110 filter grayscale-[0.2] group-hover:grayscale-0" 
+                <div className="grid grid-cols-3 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+                    {COLLECTION_FEATURES.map((card, index) => (
+                        <Link
+                            key={card.id}
+                            to={card.link}
+                            className="group flex flex-col gap-3"
+                            aria-label={card.title}
+                        >
+                            <div className="relative min-h-[220px] sm:min-h-[320px] md:min-h-[360px] lg:min-h-[420px] overflow-hidden rounded-3xl border border-border bg-surface shadow-[0_26px_60px_rgba(0,0,0,0.55)]">
+                                {card.video ? (
+                                    <video
+                                        ref={(el) => {
+                                            featureVideoRefs.current[index] = el;
+                                        }}
+                                        className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
+                                        src={card.video}
+                                        poster={card.image}
+                                        muted
+                                        loop
+                                        playsInline
+                                        preload="metadata"
                                     />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-500" />
-                                    
-                                    {/* Color Overlay on Hover */}
-                                    <div className="absolute inset-0 bg-primary/20 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                </div>
+                                ) : (
+                                    <img
+                                        src={card.image}
+                                        alt={card.title}
+                                        className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-110"
+                                    />
+                                )}
+                            </div>
+                            <div className="space-y-1">
+                                <span className="text-primary text-[8px] sm:text-[10px] uppercase tracking-[0.25em] font-semibold">{card.label}</span>
+                                <h3 className="text-sm sm:text-2xl md:text-4xl font-serif leading-tight text-text-primary">{card.title}</h3>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
 
-                                {/* Content */}
-                                <div className="absolute inset-0 p-5 sm:p-8 flex flex-col justify-end">
-                                    <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                                        <span className="text-white/70 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 block">{cat.subtitle}</span>
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-xl sm:text-2xl md:text-3xl text-white font-serif italic">{cat.title}</h3>
-                                            <div className="w-10 h-10 rounded-full border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 bg-white/10 backdrop-blur-md">
-                                                <ArrowRight />
-                                            </div>
-                                        </div>
-                                    </div>
+                <div className="flex items-center gap-4 mt-12 md:mt-16 mb-6">
+                    <h3 className="text-2xl md:text-3xl font-serif text-text-primary">Explore the Vast Catalogue</h3>
+                    <div className="h-px flex-1 bg-border"></div>
+                </div>
+
+                <div className="catalogue-marquee">
+                    <div className="catalogue-marquee-track will-change-transform" ref={catalogueTrackRef}>
+                        {catalogueCards.map((card, index) => (
+                            <Link
+                                key={card.id}
+                                to={card.link}
+                                className="group flex flex-col gap-2 min-w-[150px] sm:min-w-[190px] md:min-w-[210px] lg:min-w-[230px]"
+                                aria-label={card.title}
+                            >
+                                <div className="relative min-h-[170px] sm:min-h-[210px] md:min-h-[230px] lg:min-h-[250px] overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_50px_rgba(0,0,0,0.5)]">
+                                    {card.video ? (
+                                        <video
+                                            ref={(el) => {
+                                                catalogueVideoRefs.current[index] = el;
+                                            }}
+                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
+                                            src={card.video}
+                                            poster={card.image}
+                                            muted
+                                            loop
+                                            playsInline
+                                            preload="metadata"
+                                        />
+                                    ) : (
+                                        <img
+                                            src={card.image}
+                                            alt={card.title}
+                                            className="absolute inset-0 h-full w-full object-cover opacity-85 transition-transform duration-700 group-hover:scale-110"
+                                        />
+                                    )}
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-primary text-[8px] sm:text-[9px] uppercase tracking-[0.22em] font-semibold">{card.label}</span>
+                                    <h4 className="text-xs sm:text-lg md:text-2xl font-serif leading-tight text-text-primary">{card.title}</h4>
                                 </div>
                             </Link>
-                         );
-                    })}
+                        ))}
+                    </div>
                 </div>
             </div>
         </section>
@@ -497,7 +696,7 @@ const HomePage: React.FC = () => {
             
             <HeroSection />
             <Marquee />
-            <BentoVault />
+            <CollectionDiscovery />
             <GemstoneLounge items={flashSaleItems} />
             <FeaturedRunway 
                 products={products} 
