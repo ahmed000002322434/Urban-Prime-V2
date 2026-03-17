@@ -82,6 +82,7 @@ const AdvancedAnalyticsPage: React.FC = () => {
   const [snapshot, setSnapshot] = useState<SellerDashboardSnapshot>(defaultSnapshot);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const isSellerWorkspace = activePersona?.type === 'seller' || hasCapability('sell');
 
@@ -120,15 +121,34 @@ const AdvancedAnalyticsPage: React.FC = () => {
               month: trend.label,
               earnings: trend.value
             })),
-            categorySales: [],
-            recentOrders: [],
+            categorySales: (analyticsData.topProducts || []).slice(0, 6).map((product) => ({
+              category: product.itemTitle,
+              value: Number(product.revenue || 0)
+            })),
+            recentOrders: (analyticsData.recentOrders || []).slice(0, 40).map((order) => ({
+              id: order.id,
+              status: order.status,
+              total: order.total,
+              currency: order.currency || 'USD',
+              createdAt: order.createdAt,
+              itemCount: order.itemCount || 1,
+              quantityTotal: order.quantityTotal || 1
+            })),
             lowStockItems: [],
-            insights: [],
+            insights: (analyticsData.recommendations || analyticsData.insights || []).slice(0, 8).map((insight: any) => ({
+              id: insight.id || `insight-${Math.random()}`,
+              type: (insight.type === 'pricing' || insight.type === 'inventory' || insight.type === 'marketing')
+                ? insight.type
+                : (insight.type === 'channel' ? 'marketing' : insight.type === 'checkout' ? 'pricing' : 'inventory'),
+              message: insight.message || insight.summary || 'Optimization insight available.',
+              actionLabel: 'Review',
+              actionLink: '/store/manager/analytics'
+            })),
             setup: {
               hasStore: true,
               hasProducts: true,
               hasContent: true,
-              hasApps: false
+              hasApps: true
             }
           };
           
@@ -161,6 +181,30 @@ const AdvancedAnalyticsPage: React.FC = () => {
 
     return () => {
       cancelled = true;
+    };
+  }, [isSellerWorkspace, activePersona?.id, refreshTick]);
+
+  useEffect(() => {
+    if (!isSellerWorkspace || !activePersona?.id) return;
+
+    let refreshTimer: number | undefined;
+    const unsubscribe = analyticsService.subscribeSellerStream(
+      activePersona.id,
+      (event) => {
+        if (event.event !== 'analytics') return;
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
+          setRefreshTick((value) => value + 1);
+        }, 600);
+      },
+      (error) => {
+        console.warn('Advanced analytics stream warning:', error);
+      }
+    );
+
+    return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      unsubscribe();
     };
   }, [isSellerWorkspace, activePersona?.id]);
 
@@ -406,6 +450,30 @@ const AdvancedAnalyticsPage: React.FC = () => {
               body="Recent order analytics will appear here once sales begin."
               actionLabel="Go to products"
               actionTo="/profile/products"
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+        <h3 className="text-[20px] font-semibold text-[#1f1f1f]">AI recommendations</h3>
+        <div className="mt-3 space-y-2">
+          {snapshot.insights.length > 0 ? (
+            snapshot.insights.map((insight) => (
+              <Link
+                key={insight.id}
+                to={insight.actionLink || '/store/manager/analytics'}
+                className="block rounded-lg border border-[#dddddd] bg-[#f7f7f7] px-3 py-3 text-sm text-[#1f1f1f] hover:bg-white"
+              >
+                {insight.message}
+              </Link>
+            ))
+          ) : (
+            <EmptyPanel
+              title="No recommendations yet"
+              body="Actionable insights will appear as traffic and order patterns evolve."
+              actionLabel="Refresh analytics"
+              actionTo="/store/manager/analytics"
             />
           )}
         </div>

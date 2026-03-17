@@ -64,7 +64,7 @@ const PublicProfilePage: React.FC = () => {
 
         const loadProfile = async () => {
             const [profileRes, collectionsRes, reelsRes, reviewsRes] = await Promise.allSettled([
-                userService.getPublicProfile(id),
+                userService.getPublicProfile(id, { publishedOnly: true }),
                 userService.getPublicCollectionsForUser(id),
                 reelService.getReelsByCreator(id),
                 itemService.getReviewsForOwner(id)

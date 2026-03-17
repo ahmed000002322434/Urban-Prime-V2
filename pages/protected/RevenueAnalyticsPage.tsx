@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import analyticsService, { CheckoutEvent } from '../../services/analyticsService';
+import analyticsService from '../../services/analyticsService';
 import BackButton from '../../components/BackButton';
 import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
 
@@ -14,7 +14,6 @@ const RevenueAnalyticsPage: React.FC = () => {
     averageOrderValue: 0,
     totalOrders: 0,
     topProducts: [] as Array<{ itemId: string; title: string; revenue: number; orders: number }>,
-    checkoutData: [] as CheckoutEvent[],
     dailyRevenue: [] as Array<{ date: string; revenue: number }>
   });
 
@@ -29,33 +28,21 @@ const RevenueAnalyticsPage: React.FC = () => {
         const analytics = await analyticsService.getSellerAnalytics(activePersona.id, 30);
         
         if (analytics) {
-          // Calculate daily revenue by fetching checkout data per product
-          const dailyMap = new Map<string, number>();
-          
-          if (analytics.topProducts && analytics.topProducts.length > 0) {
-            for (const product of analytics.topProducts) {
-              // Estimate revenue from completions
-              const productRevenue = product.totalCheckouts * 50; // Estimate
-              dailyMap.set(new Date().toISOString().split('T')[0], (dailyMap.get(new Date().toISOString().split('T')[0]) || 0) + productRevenue);
-            }
-          }
-
-          const dailyRevenue = Array.from(dailyMap.entries())
-            .map(([date, revenue]) => ({ date, revenue }))
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .slice(-30);
+          const dailyRevenue = (analytics.revenueTrend || []).map((entry) => ({
+            date: entry.date,
+            revenue: entry.value
+          }));
 
           setData({
             totalRevenue: analytics.totalRevenue,
             averageOrderValue: analytics.averageOrderValue,
-            totalOrders: analytics.completedCheckouts,
+            totalOrders: analytics.totalOrders,
             topProducts: analytics.topProducts?.slice(0, 5).map(p => ({
               itemId: p.itemId,
               title: p.itemTitle,
-              revenue: p.totalCheckouts * 50,
+              revenue: Number(p.revenue || 0),
               orders: p.totalCheckouts
             })) || [],
-            checkoutData: [],
             dailyRevenue: dailyRevenue.length > 0 ? dailyRevenue : [{ date: new Date().toISOString().split('T')[0], revenue: analytics.totalRevenue }]
           });
         }

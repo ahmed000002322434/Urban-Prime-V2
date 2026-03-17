@@ -5,8 +5,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useCart } from '../hooks/useCart';
 import { useTheme } from '../hooks/useTheme';
 import { itemService, userService } from '../services/itemService';
-import type { Item, PersonaType, User } from '../types';
+import brandService from '../services/brandService';
+import type { Brand, Item, PersonaType, User } from '../types';
 import Spinner from './Spinner';
+import { cx } from './dashboard/clay/classNames';
 
 type MobileTabId = 'home' | 'explore' | 'search' | 'pixe';
 
@@ -148,6 +150,7 @@ const MobileAppChrome: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchItemResults, setSearchItemResults] = useState<Item[]>([]);
   const [searchUserResults, setSearchUserResults] = useState<User[]>([]);
+  const [searchBrandResults, setSearchBrandResults] = useState<Brand[]>([]);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const hasSearchQuery = Boolean(searchParams.get('q'));
@@ -269,6 +272,7 @@ const MobileAppChrome: React.FC = () => {
     setSearchQuery('');
     setSearchItemResults([]);
     setSearchUserResults([]);
+    setSearchBrandResults([]);
     setIsSearching(false);
   }, [isSearchOpen]);
 
@@ -278,6 +282,7 @@ const MobileAppChrome: React.FC = () => {
       setIsSearching(false);
       setSearchItemResults([]);
       setSearchUserResults([]);
+      setSearchBrandResults([]);
       return;
     }
 
@@ -285,17 +290,25 @@ const MobileAppChrome: React.FC = () => {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const [itemsPayload, usersPayload] = await Promise.all([
+        const [itemsPayload, usersPayload, brandsPayload] = await Promise.all([
           itemService.getItems({ search: searchQuery.trim() }, { page: 1, limit: 6 }).catch(() => ({ items: [], total: 0 })),
           userService.searchUsers(searchQuery.trim(), {
             excludeUserId: user?.id,
             limit: 6
-          }).catch(() => [])
+          }).catch(() => []),
+          brandService.getBrands({
+            search: searchQuery.trim(),
+            sort: 'followers',
+            limit: 6,
+            offset: 0,
+            status: 'active'
+          }).catch(() => ({ data: [] as Brand[], count: 0 }))
         ]);
 
         if (!cancelled) {
           setSearchItemResults(itemsPayload.items || []);
           setSearchUserResults(usersPayload || []);
+          setSearchBrandResults(brandsPayload.data || []);
         }
       } finally {
         if (!cancelled) setIsSearching(false);
@@ -373,288 +386,198 @@ const MobileAppChrome: React.FC = () => {
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-[70] px-3 pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden">
-        <div className={`ml-auto flex w-max items-center gap-2 rounded-full border px-2 py-1.5 backdrop-blur-xl shadow-lg ${isDarkChrome ? 'border-white/20 bg-slate-950/70 text-white shadow-black/40' : 'border-black/10 bg-white/88 text-text-primary shadow-slate-900/10'}`}>
-          <button
-            type="button"
-            onClick={() => handleNavigate('/cart')}
-            className={`relative rounded-full p-2 transition ${isDarkChrome ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
-            aria-label="Cart"
-          >
-            <CartGlyph />
-            {cartCount > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-[10px] font-bold leading-4 text-white">
-                {cartCount > 99 ? '99+' : cartCount}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-            if (!isAuthenticated) {
-              navigate('/auth');
-              return;
-            }
-            setIsProfileMenuOpen((current) => !current);
-          }}
-            className={`rounded-full p-0.5 transition ${isDarkChrome ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
-            aria-label="Profile"
-          >
-            {user?.avatar ? (
-              <img src={user.avatar} alt={user.name || 'Profile'} className="h-8 w-8 rounded-full object-cover" />
-            ) : (
-              <span className={`flex h-8 w-8 items-center justify-center rounded-full ${isDarkChrome ? 'bg-white/10' : 'bg-black/5'}`}>
-                <UserGlyph />
-              </span>
-            )}
-          </button>
-        </div>
-        <AnimatePresence>
-          {isProfileMenuOpen && isAuthenticated ? (
-            <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="ml-auto mt-2 w-[240px] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-            >
-              <div className="border-b border-border px-3 py-3">
-                <p className="truncate text-sm font-semibold text-text-primary">{user?.name || 'Urban Prime user'}</p>
-                <p className="truncate text-xs text-text-secondary">{activePersona?.type || personaType}</p>
-              </div>
-              <div
-                ref={profileMenuRef}
-                onMouseMove={handleDropdownAutoScroll}
-                className="max-h-[52vh] overflow-y-auto"
-              >
-                {profileLinks.map((link) => (
-                  <button
-                    key={link.id}
-                    type="button"
-                    onClick={() => handleProfileLink(link)}
-                    className="block w-full border-b border-border/70 px-3 py-2.5 text-left text-sm text-text-secondary transition hover:bg-surface-soft hover:text-text-primary last:border-0"
-                  >
-                    {link.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
-
+      {/* Search Overlay */}
       <AnimatePresence>
-        {isSearchOpen ? (
+        {isSearchOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] bg-black/45 px-4 pt-20 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xl md:hidden"
             onClick={() => setIsSearchOpen(false)}
           >
-            <motion.form
-              initial={{ y: 14, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 14, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onSubmit={submitSearch}
-              onClick={(event) => event.stopPropagation()}
-              className={`rounded-2xl border p-4 shadow-2xl ${isDarkChrome ? 'border-white/15 bg-slate-950/88' : 'border-border bg-surface'}`}
-            >
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">Search marketplace</p>
-              <input
-                ref={searchInputRef}
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Find products, services, users, pages..."
-                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary ${isDarkChrome ? 'border-white/15 bg-slate-900/75 text-white' : 'border-border bg-surface-soft text-text-primary'}`}
-              />
+            <div className="px-4 pt-20" onClick={(e) => e.stopPropagation()}>
+              <motion.form
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                onSubmit={submitSearch}
+                className="glass-panel p-4 shadow-2xl border-white/20"
+              >
+                <div className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 border border-white/10 focus-within:ring-2 ring-primary/50 transition-all">
+                  <SearchGlyph active={true} />
+                  <input
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search anything..."
+                    className="bg-transparent text-white outline-none w-full text-sm font-medium placeholder:text-white/40"
+                  />
+                </div>
 
-              <div className="mt-3 max-h-[42vh] space-y-3 overflow-y-auto pr-1">
-                {normalizedSearch.length < 2 ? (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Quick links</p>
-                    {quickSearchLinks.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => openSearchEntry(entry.to)}
-                        className={`block w-full rounded-lg border px-3 py-2 text-left transition ${isDarkChrome ? 'border-white/12 bg-slate-900/60 hover:border-primary/40' : 'border-border bg-surface-soft hover:border-primary/40'}`}
-                      >
-                        <p className="text-sm font-semibold text-text-primary">{entry.title}</p>
-                        <p className="text-xs text-text-secondary">{entry.subtitle}</p>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    {isSearching ? (
-                      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-soft px-3 py-2 text-sm text-text-secondary">
-                        <Spinner size="sm" />
-                        <span>Searching...</span>
-                      </div>
-                    ) : null}
-
-                    {searchItemResults.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Products</p>
-                        {searchItemResults.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => openSearchEntry(`/item/${item.id}`)}
-                            className={`block w-full rounded-lg border px-3 py-2 text-left transition ${isDarkChrome ? 'border-white/12 bg-slate-900/60 hover:border-primary/40' : 'border-border bg-surface-soft hover:border-primary/40'}`}
-                          >
-                            <p className="truncate text-sm font-semibold text-text-primary">{item.title}</p>
-                            <p className="truncate text-xs text-text-secondary">{item.category || 'Product listing'}</p>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {searchUserResults.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Users</p>
-                        {searchUserResults.map((resultUser) => (
-                          <button
-                            key={resultUser.id}
-                            type="button"
-                            onClick={() => openSearchEntry(`/user/${resultUser.id}`)}
-                            className={`block w-full rounded-lg border px-3 py-2 text-left transition ${isDarkChrome ? 'border-white/12 bg-slate-900/60 hover:border-primary/40' : 'border-border bg-surface-soft hover:border-primary/40'}`}
-                          >
-                            <p className="truncate text-sm font-semibold text-text-primary">{resultUser.name || 'User'}</p>
-                            <p className="truncate text-xs text-text-secondary">{resultUser.email || 'Marketplace profile'}</p>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {quickSearchLinks.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Pages and features</p>
-                        {quickSearchLinks.slice(0, 4).map((entry) => (
-                          <button
-                            key={entry.id}
-                            type="button"
-                            onClick={() => openSearchEntry(entry.to)}
-                            className={`block w-full rounded-lg border px-3 py-2 text-left transition ${isDarkChrome ? 'border-white/12 bg-slate-900/60 hover:border-primary/40' : 'border-border bg-surface-soft hover:border-primary/40'}`}
-                          >
-                            <p className="truncate text-sm font-semibold text-text-primary">{entry.title}</p>
-                            <p className="truncate text-xs text-text-secondary">{entry.subtitle}</p>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {!isSearching && searchItemResults.length === 0 && searchUserResults.length === 0 && quickSearchLinks.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border bg-surface-soft px-3 py-3 text-sm text-text-secondary">
-                        No quick results found. Press Search to open full browse results.
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              <div className="mt-3 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsSearchOpen(false)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold ${isDarkChrome ? 'border-white/15 text-slate-200' : 'border-border text-text-secondary'}`}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
-                  Search
-                </button>
-              </div>
-            </motion.form>
+                <div className="mt-4 max-h-[50vh] overflow-y-auto custom-scrollbar space-y-4">
+                  {normalizedSearch.length < 2 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {MOBILE_SEARCH_LINKS.map((link) => (
+                        <button
+                          key={link.id}
+                          onClick={() => openSearchEntry(link.to)}
+                          className="p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-left"
+                        >
+                          <p className="text-xs font-bold text-white truncate">{link.title}</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {isSearching && <div className="flex items-center gap-2 text-white/60 text-xs"><Spinner size="sm" /> Searching...</div>}
+                      {searchItemResults.map(item => (
+                        <button key={item.id} onClick={() => openSearchEntry(`/item/${item.id}`)} className="flex items-center gap-3 w-full p-2 hover:bg-white/5 rounded-lg transition-all">
+                          <div className="w-10 h-10 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden">
+                            <img src={item.imageUrls?.[0]} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-white truncate">{item.title}</p>
+                            <p className="text-[10px] text-white/50">{item.category}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.form>
+            </div>
           </motion.div>
-        ) : null}
+        )}
       </AnimatePresence>
 
-      <div className="fixed inset-x-0 bottom-0 z-[80] px-3 pb-[max(0.35rem,env(safe-area-inset-bottom))] md:hidden">
-        <div className={`pointer-events-none absolute inset-x-6 bottom-0 h-16 rounded-t-[1.6rem] bg-gradient-to-t blur-xl ${isDarkChrome ? 'from-slate-950/88 via-slate-950/45 to-transparent' : 'from-white/90 via-white/45 to-transparent'}`} />
-        <div className={`relative mx-auto max-w-[560px] rounded-[1.15rem] border px-2 py-2.5 backdrop-blur-xl ${isDarkChrome ? 'border-white/18 bg-slate-950/82 shadow-[0_20px_36px_-18px_rgba(0,0,0,0.75)]' : 'border-black/10 bg-white/92 shadow-[0_16px_32px_-20px_rgba(15,23,42,0.55)]'}`}>
-          <div className={`pointer-events-none absolute inset-y-0 left-0 w-10 rounded-l-[1.15rem] bg-gradient-to-r ${isDarkChrome ? 'from-slate-950 via-slate-950/58 to-transparent' : 'from-white via-white/55 to-transparent'}`} />
-          <div className={`pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-[1.15rem] bg-gradient-to-l ${isDarkChrome ? 'from-slate-950 via-slate-950/58 to-transparent' : 'from-white via-white/55 to-transparent'}`} />
-          <div className={`pointer-events-none absolute inset-x-8 -bottom-4 h-5 bg-gradient-to-b blur-sm ${isDarkChrome ? 'from-slate-900/70 to-transparent' : 'from-white/75 to-transparent'}`} />
-          <div className="relative grid grid-cols-5 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeTab === 'home' ? (isDarkChrome ? 'bg-white/10' : 'bg-primary/10') : (isDarkChrome ? 'hover:bg-white/5' : 'hover:bg-black/5')}`}
-              aria-label="Home"
-            >
-              <HomeGlyph active={activeTab === 'home'} />
-              <span className={activeTab === 'home' ? 'text-primary' : (isDarkChrome ? 'text-slate-300' : 'text-slate-500')}>Home</span>
-            </button>
+      {/* Main Bottom Nav Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-[90] flex h-[76px] items-center justify-around border-t border-white/10 bg-black/80 backdrop-blur-2xl md:hidden px-2 pb-[env(safe-area-inset-bottom)]">
+        <button 
+          onClick={() => navigate('/')}
+          className={cx("flex flex-col items-center gap-1 transition-all", activeTab === 'home' ? "text-primary scale-110" : "text-white/40")}
+        >
+          <HomeGlyph active={activeTab === 'home'} />
+          <span className="text-[9px] font-black uppercase tracking-tighter">Home</span>
+        </button>
 
-            <button
-              type="button"
-              onClick={() => navigate('/explore')}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeTab === 'explore' ? (isDarkChrome ? 'bg-white/10' : 'bg-primary/10') : (isDarkChrome ? 'hover:bg-white/5' : 'hover:bg-black/5')}`}
-              aria-label="Explore"
-            >
-              <ExploreGlyph active={activeTab === 'explore'} />
-              <span className={activeTab === 'explore' ? 'text-primary' : (isDarkChrome ? 'text-slate-300' : 'text-slate-500')}>Explore</span>
-            </button>
+        <button 
+          onClick={() => navigate('/explore')}
+          className={cx("flex flex-col items-center gap-1 transition-all", activeTab === 'explore' ? "text-primary scale-110" : "text-white/40")}
+        >
+          <ExploreGlyph active={activeTab === 'explore'} />
+          <span className="text-[9px] font-black uppercase tracking-tighter">Explore</span>
+        </button>
 
-            <div className="relative flex justify-center">
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen((current) => !current)}
-                className="relative -mt-6 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/70 bg-gradient-to-b from-primary to-teal-500 shadow-[0_12px_24px_-12px_rgba(15,185,177,0.8)]"
-                aria-label="Create"
+        <div className="relative -mt-8">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsCreateOpen(!isCreateOpen)}
+            className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-primary to-secondary p-4 shadow-lg shadow-primary/30 border-2 border-white/20"
+          >
+            <PlusGlyph open={isCreateOpen} />
+          </motion.button>
+          
+          <AnimatePresence>
+            {isCreateOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                className="absolute bottom-20 left-1/2 -translate-x-1/2 w-48 glass-panel p-2 shadow-2xl border-white/20"
               >
-                <PlusGlyph open={isCreateOpen} />
-              </button>
-              <AnimatePresence>
-                {isCreateOpen ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute bottom-14 left-1/2 w-[220px] -translate-x-1/2 rounded-2xl border border-border bg-surface p-2 shadow-2xl"
+                {createActions.map(action => (
+                  <button
+                    key={action.id}
+                    onClick={() => handleCreateAction(action.to)}
+                    className="w-full p-3 rounded-xl hover:bg-white/10 text-left transition-all"
                   >
-                    {createActions.map((action) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        onClick={() => handleCreateAction(action.to)}
-                        className="mb-1 w-full rounded-xl px-3 py-2 text-left transition hover:bg-surface-soft last:mb-0"
-                      >
-                        <p className="text-sm font-semibold text-text-primary">{action.label}</p>
-                        <p className="text-[11px] text-text-secondary">{action.description}</p>
-                      </button>
-                    ))}
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsSearchOpen(true)}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeTab === 'search' ? (isDarkChrome ? 'bg-white/10' : 'bg-primary/10') : (isDarkChrome ? 'hover:bg-white/5' : 'hover:bg-black/5')}`}
-              aria-label="Search"
-            >
-              <SearchGlyph active={activeTab === 'search'} />
-              <span className={activeTab === 'search' ? 'text-primary' : (isDarkChrome ? 'text-slate-300' : 'text-slate-500')}>Search</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate('/pixe')}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 text-[10px] font-semibold ${activeTab === 'pixe' ? (isDarkChrome ? 'bg-white/10' : 'bg-primary/10') : (isDarkChrome ? 'hover:bg-white/5' : 'hover:bg-black/5')}`}
-              aria-label="Pixe"
-            >
-              <PixeGlyph active={activeTab === 'pixe'} />
-              <span className={activeTab === 'pixe' ? 'text-primary' : (isDarkChrome ? 'text-slate-300' : 'text-slate-500')}>Pixe</span>
-            </button>
-          </div>
+                    <p className="text-xs font-black text-white">{action.label}</p>
+                    <p className="text-[9px] text-white/50">{action.description}</p>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
+        <button 
+          onClick={() => setIsSearchOpen(true)}
+          className={cx("flex flex-col items-center gap-1 transition-all", isSearchOpen ? "text-primary scale-110" : "text-white/40")}
+        >
+          <SearchGlyph active={isSearchOpen} />
+          <span className="text-[9px] font-black uppercase tracking-tighter">Search</span>
+        </button>
+
+        <button 
+          onClick={() => {
+            if (!isAuthenticated) navigate('/auth');
+            else setIsProfileMenuOpen(!isProfileMenuOpen);
+          }}
+          className={cx("flex flex-col items-center gap-1 transition-all", isProfileMenuOpen ? "text-primary scale-110" : "text-white/40")}
+        >
+          <div className={cx(
+            "h-7 w-7 rounded-full bg-gradient-to-tr from-primary to-secondary p-0.5 shadow-sm transition-all",
+            isProfileMenuOpen && "ring-2 ring-primary ring-offset-2 ring-offset-black"
+          )}>
+            <div className="h-full w-full rounded-full bg-black overflow-hidden flex items-center justify-center">
+              {user?.avatar ? (
+                <img src={user.avatar} className="w-full h-full object-cover" />
+              ) : (
+                <UserGlyph />
+              )}
+            </div>
+          </div>
+          <span className="text-[9px] font-black uppercase tracking-tighter">Profile</span>
+        </button>
       </div>
+
+      {/* Profile Menu Overlay */}
+      <AnimatePresence>
+        {isProfileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xl md:hidden"
+            onClick={() => setIsProfileMenuOpen(false)}
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute bottom-0 inset-x-0 glass-panel !rounded-t-3xl !rounded-b-none border-t border-white/20 p-6 pt-2 shadow-2xl max-h-[80vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto my-4" />
+              <div className="flex items-center gap-4 mb-6 p-4 rounded-2xl bg-white/5 border border-white/10">
+                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-primary to-secondary p-0.5">
+                  <img src={user?.avatar} className="w-full h-full rounded-full object-cover border-2 border-black" />
+                </div>
+                <div>
+                  <p className="text-lg font-black text-white">{user?.name}</p>
+                  <p className="text-xs text-white/50 uppercase font-bold tracking-widest">{personaType} Workspace</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {profileLinks.map(link => (
+                  <button
+                    key={link.id}
+                    onClick={() => handleProfileLink(link)}
+                    className={cx(
+                      "p-4 rounded-2xl border transition-all text-left group",
+                      link.id === 'logout' ? "border-red-500/30 bg-red-500/5" : "border-white/10 bg-white/5 hover:bg-white/10"
+                    )}
+                  >
+                    <p className={cx("text-sm font-black transition-all", link.id === 'logout' ? "text-red-500" : "text-white group-hover:text-primary")}>{link.label}</p>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

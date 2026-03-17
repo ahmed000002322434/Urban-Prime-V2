@@ -29,8 +29,10 @@ const getItemImage = (item: CartItem) => {
 
 const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () => void, onUpdateQty: (q: number) => void }> = ({ item, onRemove, onSave, onUpdateQty }) => {
     const { currency } = useTranslation();
-    const itemPrice = item.salePrice || item.rentalPrice || 0;
-    const isRental = item.listingType === 'rent';
+    const isRental = item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+    const itemPrice = isRental
+        ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
+        : (item.salePrice || item.price || 0);
     const returnWindow = item.returnPolicy?.windowDays || item.supplierInfo?.returnPolicy?.windowDays;
     const warranty = item.warranty?.coverage;
 
@@ -59,6 +61,11 @@ const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () =
                     {warranty && <span className="px-2 py-1 rounded-full bg-surface-soft border border-border">Warranty</span>}
                     {item.isVerified && <span className="px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/30">Verified</span>}
                 </div>
+                {isRental && item.rentalPeriod ? (
+                    <p className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                        Rental period: {new Date(item.rentalPeriod.startDate).toLocaleDateString()} - {new Date(item.rentalPeriod.endDate).toLocaleDateString()}
+                    </p>
+                ) : null}
 
                 <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
@@ -157,8 +164,11 @@ const CartPage: React.FC = () => {
                                     <HeartIcon /> Saved for Later ({savedItems.length})
                                 </h2>
                                 <div className="bg-surface rounded-xl shadow-soft border border-border divide-y divide-border">
-                                    {savedItems.map(item => {
-                                        const itemPrice = item.salePrice || item.rentalPrice || 0;
+                    {savedItems.map(item => {
+                                        const isRental = item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+                                        const itemPrice = isRental
+                                            ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
+                                            : (item.salePrice || item.price || 0);
                                         return (
                                             <div key={item.id} className="flex flex-col sm:flex-row items-center gap-4 p-4 opacity-90 hover:opacity-100 transition-opacity">
                                                 <Link to={`/item/${item.id}`} className="shrink-0">

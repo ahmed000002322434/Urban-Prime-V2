@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Explore All Brands - Tactile Grid</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563EB",
+                        "accent": "#7C3AED",
+                        "surface": "#EBEFF4",
+                        "surface-dark": "#DDE3EB",
+                        "text-primary": "#1E293B",
+                        "text-secondary": "#64748B",
+                        "indicator-on": "#10B981",
+                        "indicator-off": "#94A3B8",
+                    },
+                    fontFamily: {
+                        "sans": ["Plus Jakarta Sans", "sans-serif"],
+                        "serif": ["Instrument Serif", "serif"],
+                    },
+                    boxShadow: {
+                        'embossed': 'inset 2px 2px 5px rgba(0,0,0,0.1), inset -3px -3px 7px rgba(255,255,255,0.9)',
+                        'debossed': 'inset 4px 4px 8px rgba(0,0,0,0.15), inset -4px -4px 10px rgba(255,255,255,1)',
+                        'soft-lift': '8px 8px 16px rgba(0,0,0,0.1), -8px -8px 16px rgba(255,255,255,0.8)',
+                        'floating': '20px 20px 60px rgba(0,0,0,0.1), -20px -20px 60px rgba(255,255,255,0.8)',
+                        'knob': '6px 6px 10px rgba(0,0,0,0.15), -2px -2px 10px rgba(255,255,255,1), inset 0 0 2px rgba(255,255,255,0.5)',
+                        'led-glow': '0 0 5px #10B981, inset 0 0 2px rgba(255,255,255,0.8)',
+                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+                    },
+                    backgroundImage: {
+                        'pearlescent': 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%)',
+                        'frosted': 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 100%)',
+                    },
+                    animation: {
+                        'float': 'float 8s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
+                            '50%': { transform: 'translateY(-20px) rotate(2deg)' },
+                        }
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #EBEFF4;
+            background-image: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            color: #1E293B;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        .tactile-card {
+            background: #EBEFF4;
+            border-radius: 32px;
+            box-shadow:  20px 20px 60px #c8ccd0, -20px -20px 60px #ffffff;
+            transition: all 0.3s ease;
+            position: relative;
+            border: 1px solid rgba(255,255,255,0.6);
+        }
+        .tactile-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 25px 25px 70px #c8ccd0, -25px -25px 70px #ffffff;
+        }
+        .search-bar-inset {
+            background: #EBEFF4;
+            box-shadow: inset 6px 6px 12px #c8ccd0, inset -6px -6px 12px #ffffff;
+            border-radius: 24px;
+        }
+        .glass-pill {
+            background: rgba(235, 239, 244, 0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 4px 4px 10px rgba(0,0,0,0.05), -4px -4px 10px rgba(255,255,255,0.8);
+            border-radius: 999px;
+            transition: all 0.2s ease;
+        }
+        .glass-pill:hover, .glass-pill.active {
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.05), inset -2px -2px 5px rgba(255,255,255,0.8);
+            transform: translateY(1px);
+        }
+        .glass-pill.active {
+            border-color: rgba(37, 99, 235, 0.3);
+            color: #2563EB;
+        }
+        .logo-circle {
+            background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.9);
+            box-shadow: 6px 6px 12px rgba(0,0,0,0.08), -4px -4px 10px rgba(255,255,255,0.9);
+        }
+        .inset-text {
+            color: rgba(100, 116, 139, 0.6);
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.8);
+        }
+        .floating-shape {
+            position: absolute;
+            background: linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            z-index: -1;
+            pointer-events: none;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.05);
+        }
+        .led-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #cbd5e1;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.2);
+        }
+        .led-indicator.on {
+            background: #10B981;
+            box-shadow: 0 0 6px #10B981, inset 0 0 2px rgba(255,255,255,0.8);
+        }
+        .grid-pattern {
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+            opacity: 0.3;
+        }
+    </style>
+</head>
+<body class="font-sans text-text-primary selection:bg-primary/20 selection:text-primary relative">
+<div class="fixed inset-0 overflow-hidden pointer-events-none">
+<div class="absolute inset-0 grid-pattern pointer-events-none"></div>
+<div class="floating-shape w-96 h-96 top-[-10%] left-[-10%] animate-float" style="animation-delay: 0s;"></div>
+<div class="floating-shape w-64 h-64 bottom-[10%] right-[-5%] animate-float" style="animation-duration: 10s; animation-delay: 2s;"></div>
+<div class="floating-shape w-48 h-48 top-[40%] left-[20%] opacity-50 animate-float" style="animation-duration: 12s; animation-delay: 4s;"></div>
+</div>
+<div class="relative w-full max-w-[1600px] mx-auto p-6 md:p-12 flex flex-col gap-12 z-10">
+<header class="flex flex-col items-center justify-center space-y-8 py-10">
+<div class="text-center space-y-4">
+<span class="text-xs font-bold tracking-[0.2em] text-text-secondary uppercase inset-text">System v5.0 // Discovery Mode</span>
+<h1 class="text-5xl md:text-7xl font-serif italic text-text-primary" style="text-shadow: 2px 2px 0 #fff, 4px 4px 10px rgba(0,0,0,0.05);">
+                    Explore Brands
+                </h1>
+<p class="max-w-md mx-auto text-text-secondary font-medium inset-text">Curated selection of premium hardware and digital modules.</p>
+</div>
+<div class="w-full max-w-2xl relative group">
+<div class="absolute -inset-1 bg-gradient-to-r from-blue-100 to-purple-100 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-500"></div>
+<div class="relative tactile-card !rounded-[2rem] !shadow-floating p-2 flex items-center">
+<div class="flex-1 search-bar-inset h-14 md:h-16 flex items-center px-6 gap-4 mx-2">
+<span class="material-symbols-outlined text-text-secondary/50">search</span>
+<input class="flex-1 bg-transparent border-none text-text-primary placeholder-text-secondary/40 focus:ring-0 text-lg font-medium outline-none" placeholder="Search by name, category, or ID..." type="text"/>
+</div>
+<button class="w-14 h-14 md:w-16 md:h-16 rounded-[1.5rem] bg-[#EBEFF4] shadow-soft-lift flex items-center justify-center hover:scale-95 active:shadow-embossed transition-all text-primary mr-1">
+<span class="material-symbols-outlined text-2xl">tune</span>
+</button>
+</div>
+</div>
+<div class="flex flex-wrap justify-center gap-3 md:gap-4 max-w-4xl mx-auto">
+<button data-brand-filter="all" class="glass-pill active px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">All Brands</button>
+<button data-brand-filter="trending" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary flex items-center gap-2">
+<span class="material-symbols-outlined text-base">trending_up</span> Trending
+                </button>
+<button data-brand-filter="electronics" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">Electronics</button>
+<button data-brand-filter="fashion" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">Fashion</button>
+<button data-brand-filter="home" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">Home</button>
+<button data-brand-filter="automotive" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">Automotive</button>
+<button data-brand-filter="robotics" class="glass-pill px-6 py-2.5 text-sm font-bold tracking-wide uppercase text-text-secondary">Robotics</button>
+</div>
+</header>
+<main id="brand-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-20">
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-primary drop-shadow-sm">diamond</span>
+<div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #883A</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Lumina Core</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-primary/30 pl-3">
+                        High-fidelity lighting solutions for smart homes.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Lighting</span>
+<span class="px-2 py-1 rounded bg-green-100/50 text-[10px] font-bold uppercase text-green-700 shadow-sm border border-white/50">+12%</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-accent drop-shadow-sm">rocket_launch</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator on"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #92XB</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Aero Dynamics</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-accent/30 pl-3">
+                        Next-gen drone technology for personal use.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Tech</span>
+<span class="px-2 py-1 rounded bg-purple-100/50 text-[10px] font-bold uppercase text-purple-700 shadow-sm border border-white/50">Hot</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-emerald-500 drop-shadow-sm">eco</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator"></div>
+<div class="led-indicator on"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #44LM</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Verde Life</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-emerald-500/30 pl-3">
+                        Sustainable living modules and furniture.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Home</span>
+<span class="px-2 py-1 rounded bg-blue-100/50 text-[10px] font-bold uppercase text-blue-700 shadow-sm border border-white/50">New</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-orange-500 drop-shadow-sm">headphones</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator on"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #11AU</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Sonic Pulse</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-orange-500/30 pl-3">
+                        Audiophile grade equipment for the masses.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Audio</span>
+<span class="px-2 py-1 rounded bg-orange-100/50 text-[10px] font-bold uppercase text-orange-700 shadow-sm border border-white/50">Top Rated</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-pink-500 drop-shadow-sm">watch</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #77CH</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Chrono Set</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-pink-500/30 pl-3">
+                        Timeless designs meets modern precision.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Accessories</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-slate-600 drop-shadow-sm">terminal</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator on"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #01DV</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Dev Studio</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-slate-500/30 pl-3">
+                        Professional grade peripherals for developers.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Productivity</span>
+<span class="px-2 py-1 rounded bg-slate-300/50 text-[10px] font-bold uppercase text-slate-800 shadow-sm border border-white/50">Pro</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-teal-500 drop-shadow-sm">fitness_center</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator"></div>
+<div class="led-indicator"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #55FT</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Kinetics</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-teal-500/30 pl-3">
+                        Smart home gym equipment and tracking.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Fitness</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+<div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80">
+<div class="flex justify-between items-start">
+<div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-indigo-500 drop-shadow-sm">extension</span>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex gap-1">
+<div class="led-indicator on"></div>
+<div class="led-indicator on"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #33MD</span>
+</div>
+</div>
+<div class="space-y-2 mt-auto mb-4 relative z-10">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">ModuBlock</h3>
+<p class="text-sm text-text-secondary font-medium leading-snug line-clamp-1 border-l-2 border-indigo-500/30 pl-3">
+                        Modular furniture systems for adaptable living.
+                    </p>
+</div>
+<div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">Furniture</span>
+<span class="px-2 py-1 rounded bg-indigo-100/50 text-[10px] font-bold uppercase text-indigo-700 shadow-sm border border-white/50">Trending</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+</button>
+</div>
+<div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+</div>
+</main>
+<div class="flex justify-center pb-20">
+<button id="brand-hub-load-more" class="soft-button px-10 py-5 font-bold text-text-primary text-sm tracking-wide uppercase flex items-center gap-3 group active:scale-95 bg-[#EBEFF4] shadow-soft-lift border border-white/50 rounded-2xl transition-all hover:shadow-embossed">
+                Load More Modules
+                <span class="material-symbols-outlined text-lg text-primary animate-pulse">refresh</span>
+</button>
+</div>
+</div>
+
+
+<script>
+  (function () {
+    const grid = document.getElementById('brand-grid');
+    if (!grid) return;
+
+    const fallbackHtml = grid.innerHTML;
+    const loadMoreButton = document.getElementById('brand-hub-load-more');
+    const filterButtons = Array.from(document.querySelectorAll('[data-brand-filter]'));
+    const searchInput = document.querySelector('input[placeholder="Search by name, category, or ID..."]');
+
+    const pickColor = (index) => {
+      const colors = ['text-primary', 'text-accent', 'text-emerald-500', 'text-blue-500', 'text-rose-500', 'text-amber-500'];
+      return colors[index % colors.length];
+    };
+
+    const pickIcon = (index) => {
+      const icons = ['diamond', 'rocket_launch', 'eco', 'bolt', 'shield', 'memory', 'public'];
+      return icons[index % icons.length];
+    };
+
+    const normalize = (value) => (value || '').toString().trim().toLowerCase();
+    const toNumber = (value, fallback = 0) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const formatCompact = (value) => {
+      try {
+        return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.max(0, toNumber(value)));
+      } catch {
+        return String(Math.max(0, toNumber(value)));
+      }
+    };
+
+    const resolveBackendBase = () => {
+      const params = new URLSearchParams(window.location.search);
+      const queryBase = params.get('backend');
+      const localOverride = window.localStorage ? window.localStorage.getItem('urbanprime_backend_override_v1') : '';
+      const lastOk = window.localStorage ? window.localStorage.getItem('urbanprime_backend_last_ok_v1') : '';
+      const base = (queryBase || localOverride || lastOk || '').trim();
+      return base ? base.replace(/\/$/, '') : '';
+    };
+
+    const routeToHashHref = (route) => {
+      const normalized = route.startsWith('/') ? route : `/${route}`;
+      return `/#${normalized}`;
+    };
+
+    const navigateToRoute = (route) => {
+      const href = routeToHashHref(route);
+      const topWindowRef = (() => {
+        try {
+          return window.top || window;
+        } catch {
+          return window;
+        }
+      })();
+      topWindowRef.location.href = href;
+    };
+
+    const escapeHtml = (value) =>
+      String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const buildCard = (brand, index) => {
+      const name = escapeHtml(brand?.name || 'Brand');
+      const slug = encodeURIComponent(brand?.slug || brand?.id || '');
+      const description = escapeHtml(brand?.description || 'Premium catalog with curated product lines.');
+      const category = escapeHtml(brand?.country || brand?.verification_level || brand?.verificationLevel || 'Brand');
+      const itemCount = toNumber(brand?.stats?.itemCount || brand?.stats?.item_count || 0);
+      const trust = toNumber(brand?.trust?.overall_trust_score || brand?.trust?.overallTrustScore || 0);
+      const stat = itemCount > 0 ? `${formatCompact(itemCount)} items` : `Trust ${trust.toFixed(1)}`;
+      const idLabel = brand?.id ? String(brand.id).slice(0, 4).toUpperCase() : String(index + 1).padStart(4, '0');
+
+      return `
+        <div class="tactile-card p-6 flex flex-col justify-between h-[380px] group cursor-pointer border-t border-white/80" data-href="/brands/${slug}">
+          <div class="flex justify-between items-start">
+            <div class="w-16 h-16 rounded-full logo-circle flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+              <span class="material-symbols-outlined text-3xl ${pickColor(index)} drop-shadow-sm">${pickIcon(index)}</span>
+              <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+            </div>
+            <div class="flex flex-col items-end gap-1">
+              <div class="flex gap-1">
+                <div class="led-indicator on"></div>
+                <div class="led-indicator"></div>
+              </div>
+              <span class="text-[10px] font-mono text-text-secondary uppercase inset-text mt-1">ID: #${idLabel}</span>
+            </div>
+          </div>
+          <div class="space-y-2 mt-auto mb-4 relative z-10">
+            <h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">${name}</h3>
+            <p class="text-sm text-text-secondary font-medium leading-snug line-clamp-2 border-l-2 border-primary/30 pl-3">${description}</p>
+          </div>
+          <div class="pt-4 border-t border-slate-200/60 flex items-center justify-between">
+            <div class="flex gap-2">
+              <span class="px-2 py-1 rounded bg-slate-200/50 text-[10px] font-bold uppercase text-text-secondary shadow-sm border border-white/50">${category}</span>
+              <span class="px-2 py-1 rounded bg-green-100/50 text-[10px] font-bold uppercase text-green-700 shadow-sm border border-white/50">${escapeHtml(stat)}</span>
+            </div>
+            <button class="w-8 h-8 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center hover:scale-110 active:scale-95 transition-transform">
+              <span class="material-symbols-outlined text-sm text-text-secondary">arrow_forward</span>
+            </button>
+          </div>
+          <div class="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-300/20 to-transparent rounded-tl-[100%] pointer-events-none"></div>
+        </div>
+      `;
+    };
+
+    let allBrands = [];
+    let visibleCount = 16;
+    let activeFilter = 'all';
+
+    const toggleChipState = () => {
+      filterButtons.forEach((button) => {
+        const isActive = button.getAttribute('data-brand-filter') === activeFilter;
+        button.classList.toggle('active', isActive);
+      });
+    };
+
+    const applyFilter = () => {
+      const query = normalize(searchInput ? searchInput.value : '');
+      let filtered = [...allBrands];
+
+      if (activeFilter === 'trending') {
+        filtered = filtered.filter((brand) => {
+          const trust = toNumber(brand?.trust?.overall_trust_score || brand?.trust?.overallTrustScore || 0);
+          const followers = toNumber(brand?.stats?.followerCount || brand?.stats?.follower_count || 0);
+          return trust >= 70 || followers >= 100;
+        });
+      } else if (activeFilter !== 'all') {
+        filtered = filtered.filter((brand) => {
+          const haystack = normalize(`${brand?.name || ''} ${brand?.description || ''} ${brand?.country || ''}`);
+          return haystack.includes(activeFilter);
+        });
+      }
+
+      if (query) {
+        filtered = filtered.filter((brand) => {
+          const blob = `${brand?.name || ''} ${brand?.slug || ''} ${brand?.description || ''} ${brand?.country || ''}`;
+          return normalize(blob).includes(query);
+        });
+      }
+
+      const visible = filtered.slice(0, visibleCount);
+      if (visible.length === 0) {
+        grid.innerHTML = '<div class="col-span-full tactile-card p-8 text-center text-text-secondary font-semibold">No brands match your filters yet.</div>';
+      } else {
+        grid.innerHTML = visible.map(buildCard).join('');
+        grid.querySelectorAll('[data-href]').forEach((card) => {
+          card.addEventListener('click', () => {
+            const href = card.getAttribute('data-href');
+            if (href) navigateToRoute(href);
+          });
+        });
+      }
+
+      if (loadMoreButton) {
+        loadMoreButton.style.display = filtered.length > visible.length ? '' : 'none';
+      }
+    };
+
+    const loadBrands = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const base = resolveBackendBase();
+        const searchParam = normalize(params.get('q') || '');
+        if (searchInput && searchParam) {
+          searchInput.value = searchParam;
+        }
+
+        const urls = [];
+        if (base) urls.push(`${base}/brands?limit=300&sort=followers`);
+        urls.push('/brands?limit=300&sort=followers');
+        urls.push('/api/brands?limit=300&sort=followers');
+
+        let rows = [];
+        let lastError = null;
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) throw new Error('Failed to load brands');
+            const payload = await response.json();
+            rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+            if (rows.length) break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        if (!rows.length) throw new Error('No brand rows');
+        allBrands = rows;
+        applyFilter();
+      } catch (err) {
+        console.warn('Brand hub fallback active', err);
+        grid.innerHTML = fallbackHtml;
+        if (loadMoreButton) loadMoreButton.style.display = 'none';
+      }
+    };
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        window.clearTimeout(searchInput._brandTimer);
+        searchInput._brandTimer = window.setTimeout(() => {
+          visibleCount = 16;
+          applyFilter();
+        }, 140);
+      });
+    }
+
+    if (loadMoreButton) {
+      loadMoreButton.addEventListener('click', () => {
+        visibleCount += 16;
+        applyFilter();
+      });
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        activeFilter = button.getAttribute('data-brand-filter') || 'all';
+        visibleCount = 16;
+        toggleChipState();
+        applyFilter();
+      });
+    });
+
+    toggleChipState();
+    loadBrands();
+  })();
+</script>
+</body></html>

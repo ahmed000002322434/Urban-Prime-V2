@@ -52,6 +52,10 @@ const GiftCardsPage = lazy(() => import('./pages/public/GiftCardsPage'));
 const AffiliateLandingPage = lazy(() => import('./pages/public/AffiliateLandingPage'));
 const SellerResourceCenterPage = lazy(() => import('./pages/public/SellerResourceCenterPage'));
 const StoresDirectoryPage = lazy(() => import('./pages/public/StoresDirectoryPage'));
+const BrandsHubPage = lazy(() => import('./pages/public/BrandsHubPage'));
+const ExploreBrandsHubPage = lazy(() => import('./pages/public/ExploreBrandsHubPage'));
+const BrandDetailPage = lazy(() => import('./pages/public/BrandDetailPage'));
+const BrandCatalogPage = lazy(() => import('./pages/public/BrandCatalogPage'));
 const SellerDirectoryPage = lazy(() => import('./pages/public/SellerDirectoryPage'));
 const RenterDirectoryPage = lazy(() => import('./pages/public/RenterDirectoryPage'));
 const BuyerDirectoryPage = lazy(() => import('./pages/public/BuyerDirectoryPage'));
@@ -320,6 +324,10 @@ const AppContent: React.FC = () => {
             <Route path="affiliate-program" element={<AffiliateLandingPage />} />
             <Route path="seller-resource-center" element={<SellerResourceCenterPage />} />
             <Route path="stores" element={<StoresDirectoryPage />} />
+            <Route path="brands" element={<BrandsHubPage />} />
+            <Route path="brands/explore" element={<ExploreBrandsHubPage />} />
+            <Route path="brands/:brandSlug" element={<BrandDetailPage />} />
+            <Route path="brands/:brandSlug/*" element={<BrandCatalogPage />} />
             <Route path="sellers" element={<SellerDirectoryPage />} />
             <Route path="renters" element={<RenterDirectoryPage />} />
             <Route path="buyers" element={<BuyerDirectoryPage />} />
@@ -440,6 +448,7 @@ const AppContent: React.FC = () => {
             <Route path="lookbook" element={<LookbookPage />} />
             <Route path="style-guides" element={<StyleGuidesPage />} />
             <Route path="games" element={<GamesHubPage />} />
+            <Route path="seller/listings" element={<Navigate to="/profile/products" replace />} />
 
             {/* Protected User Routes */}
             <Route path="profile" element={<ProtectedRoute />}>

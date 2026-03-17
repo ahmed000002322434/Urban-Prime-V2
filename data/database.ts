@@ -132,9 +132,80 @@ class MockDB {
     const users = this.get<User[]>('users');
     const items: Item[] = [
 // FIX: Added missing 'status' property.
-      { id: 'item-1', title: 'Professional DSLR Camera Kit', description: 'Canon EOS 5D Mark IV with 24-70mm f/2.8L II USM Lens. Perfect for professional photography and videography.', category: 'cameras-lenses', imageUrls: ['https://picsum.photos/seed/camera1/600/400', 'https://picsum.photos/seed/camera2/600/400'], owner: users[1], reviews: [], avgRating: 4.9, listingType: 'rent', rentalPrice: 75, rentalPriceType: 'daily', stock: 1, condition: 'used-like-new', brand: 'Canon', createdAt: '2023-10-25T10:00:00Z', status: 'published', isVerified: true, isFeatured: true, questions: [{ id: 'q-1', questionText: "Does this come with a memory card?", author: {id: 'user-1', name: 'Ahmed Ali'}, date: new Date().toISOString(), answer: { text: "Yes, it includes a 64GB SD card.", helpfulVotes: 4 } }], battleWins: 10, battleAppearances: 15 },
-// FIX: Added missing 'status' property.
-      { id: 'item-2', title: 'Heavy-Duty Hammer Drill', description: 'Bosch 11255VSR Bulldog Xtreme 1-Inch Corded Rotary Hammer. Comes with a full set of bits.', category: 'drills-drivers', imageUrls: ['https://picsum.photos/seed/drill1/600/400'], owner: users[0], reviews: [], avgRating: 4.7, listingType: 'both', rentalPrice: 20, rentalPriceType: 'daily', salePrice: 150, stock: 1, condition: 'used-good', brand: 'Bosch', createdAt: '2023-10-24T11:00:00Z', status: 'published', isVerified: true, questions: [], battleWins: 5, battleAppearances: 12 },
+      { 
+        id: 'item-1', 
+        title: 'Professional DSLR Camera Kit', 
+        description: 'Canon EOS 5D Mark IV with 24-70mm f/2.8L II USM Lens. Perfect for professional photography and videography. This kit includes everything you need to start shooting high-quality content immediately.', 
+        category: 'cameras-lenses', 
+        imageUrls: ['https://picsum.photos/seed/camera1/1200/800', 'https://picsum.photos/seed/camera2/1200/800', 'https://picsum.photos/seed/camera3/1200/800'], 
+        owner: users[1], 
+        reviews: [], 
+        avgRating: 4.9, 
+        listingType: 'rent', 
+        rentalPrice: 75, 
+        rentalPriceType: 'daily', 
+        stock: 1, 
+        condition: 'used-like-new', 
+        brand: 'Canon', 
+        createdAt: '2023-10-25T10:00:00Z', 
+        status: 'published', 
+        isVerified: true, 
+        isFeatured: true,
+        features: [
+          '30.4MP Full-Frame CMOS Sensor',
+          'DIGIC 6+ Image Processor',
+          'DCI 4K Video at 30 fps; 8.8MP Still Grab',
+          '61-Point High Density Reticular AF',
+          'Dual Pixel CMOS AF and Movie Servo AF',
+          'Built-In GPS and Wi-Fi with NFC'
+        ],
+        specifications: [
+          { key: 'Sensor', value: 'Full-frame CMOS' },
+          { key: 'Resolution', value: '30.4 Megapixels' },
+          { key: 'ISO Range', value: '100-32000' },
+          { key: 'Video', value: '4K DCI' },
+          { key: 'Mount', value: 'Canon EF' }
+        ],
+        questions: [{ id: 'q-1', questionText: "Does this come with a memory card?", author: {id: 'user-1', name: 'Ahmed Ali'}, date: new Date().toISOString(), answer: { text: "Yes, it includes a 64GB SD card.", helpfulVotes: 4 } }], 
+        battleWins: 10, 
+        battleAppearances: 15 
+      },
+      { 
+        id: 'item-2', 
+        title: 'Heavy-Duty Hammer Drill', 
+        description: 'Bosch 11255VSR Bulldog Xtreme 1-Inch Corded Rotary Hammer. Comes with a full set of bits and a rugged carrying case. Ideal for masonry and concrete work.', 
+        category: 'drills-drivers', 
+        imageUrls: ['https://picsum.photos/seed/drill1/1200/800', 'https://picsum.photos/seed/drill2/1200/800'], 
+        owner: users[0], 
+        reviews: [], 
+        avgRating: 4.7, 
+        listingType: 'both', 
+        rentalPrice: 20, 
+        rentalPriceType: 'daily', 
+        salePrice: 150, 
+        stock: 1, 
+        condition: 'used-good', 
+        brand: 'Bosch', 
+        createdAt: '2023-10-24T11:00:00Z', 
+        status: 'published', 
+        isVerified: true,
+        features: [
+          '8.0 Amp motor; 0-1,300 RPM; 0-5,800 BPM',
+          'Multifunction selector: Rotation only, rotary hammer, and hammer only',
+          'Variable-speed trigger with reverse',
+          'SDS-plus bit system for tool-free bit changes',
+          'Integral clutch helps minimize torque reaction'
+        ],
+        specifications: [
+          { key: 'Power', value: '8.0 Amps' },
+          { key: 'Impact Energy', value: '2.0 ft-lbs' },
+          { key: 'Weight', value: '6.7 lbs' },
+          { key: 'Chuck Type', value: 'SDS-Plus' }
+        ],
+        questions: [], 
+        battleWins: 5, 
+        battleAppearances: 12 
+      },
 // FIX: Added missing 'status' property.
       { id: 'item-3', title: 'DJI Mavic 3 Pro Drone', description: 'Capture stunning aerial footage with this top-of-the-line drone. Includes 3 batteries and a carrying case.', category: 'drones', imageUrls: ['https://picsum.photos/seed/drone1/600/400'], owner: users[1], reviews: [], avgRating: 5.0, listingType: 'rent', rentalPrice: 120, rentalPriceType: 'daily', stock: 1, condition: 'used-like-new', brand: 'DJI', createdAt: '2023-10-22T14:00:00Z', status: 'published', isVerified: false, questions: [], battleWins: 20, battleAppearances: 22 },
       { 

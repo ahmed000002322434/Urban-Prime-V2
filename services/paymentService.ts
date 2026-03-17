@@ -15,6 +15,8 @@ import {
   QueryConstraint
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { shouldUseFirestoreFallback } from './dataMode';
+import { localDb } from './localDb';
 
 /**
  * Payment Status Types
@@ -170,6 +172,10 @@ class PaymentService {
   private platformFeePercentage = 0.10; // 10% commission
   private payoutFeePercentage = 0.01;   // 1% withdrawal fee
 
+  private shouldUseLocalFallback() {
+    return !shouldUseFirestoreFallback();
+  }
+
   /**
    * Create a payment intent
    * In real implementation, this would call Stripe/PayPal API
@@ -183,6 +189,32 @@ class PaymentService {
     approval_url?: string; // For PayPal
   }> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const paymentId = `local-pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const paymentIntentId = `pi_local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        await localDb.upsert('orders', {
+          id: paymentId,
+          amount: request.amount,
+          currency: request.currency,
+          status: 'pending',
+          paymentMethod: request.paymentMethod,
+          paymentType: request.paymentType,
+          buyerId: request.buyerId,
+          sellerId: request.sellerId,
+          listingId: request.listingId,
+          orderId: request.orderId,
+          rentalOrderId: request.rentalOrderId,
+          description: request.description,
+          createdAt: new Date().toISOString()
+        });
+        return {
+          paymentId,
+          paymentIntentId,
+          clientSecret: `${paymentIntentId}_secret_local`
+        };
+      }
+
       // Validate input
       if (request.amount <= 0) {
         throw new Error('Amount must be greater than 0');
@@ -252,6 +284,21 @@ class PaymentService {
     receiptUrl?: string
   ): Promise<PaymentRecord> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payment = await localDb.getById<PaymentRecord>('orders', paymentId);
+        const updated = {
+          ...(payment || { id: paymentId, amount: 0, currency: 'USD' }),
+          status: 'succeeded' as PaymentStatus,
+          stripeChargeId,
+          receiptUrl,
+          processedAt: Timestamp.now(),
+          succeededAt: Timestamp.now()
+        } as PaymentRecord;
+        await localDb.upsert('orders', updated);
+        return updated;
+      }
+
       const paymentRef = doc(db, this.collectionName, paymentId);
       const payment = await getDoc(paymentRef);
 
@@ -293,6 +340,20 @@ class PaymentService {
     failureMessage: string
   ): Promise<void> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payment = await localDb.getById<PaymentRecord>('orders', paymentId);
+        if (payment) {
+          await localDb.upsert('orders', {
+            ...payment,
+            status: 'failed',
+            failureMessage,
+            processedAt: Timestamp.now()
+          });
+        }
+        return;
+      }
+
       const paymentRef = doc(db, this.collectionName, paymentId);
 
       await updateDoc(paymentRef, {
@@ -317,6 +378,41 @@ class PaymentService {
     reason: string
   ): Promise<PaymentRecord> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payment = await localDb.getById<PaymentRecord>('orders', paymentId);
+        if (!payment) {
+          return {
+            id: paymentId,
+            amount: 0,
+            currency: 'USD',
+            status: 'refunded',
+            paymentMethod: 'stripe',
+            paymentType: 'sale',
+            buyerId: '',
+            sellerId: '',
+            listingId: '',
+            createdAt: Timestamp.now()
+          } as PaymentRecord;
+        }
+        const refundRecord = {
+          id: `ref_${Date.now()}`,
+          amount: refundAmount,
+          reason,
+          createdAt: Timestamp.now(),
+          status: 'pending' as const
+        };
+        const updated = {
+          ...payment,
+          amountRefunded: (payment.amountRefunded || 0) + refundAmount,
+          status: 'refunded' as PaymentStatus,
+          refunds: [...(payment.refunds || []), refundRecord],
+          refundedAt: Timestamp.now()
+        } as PaymentRecord;
+        await localDb.upsert('orders', updated);
+        return updated;
+      }
+
       const paymentRef = doc(db, this.collectionName, paymentId);
       const payment = await getDoc(paymentRef);
 
@@ -372,6 +468,11 @@ class PaymentService {
    */
   async getPayment(paymentId: string): Promise<PaymentRecord | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        return (await localDb.getById<PaymentRecord>('orders', paymentId)) || null;
+      }
+
       const paymentRef = doc(db, this.collectionName, paymentId);
       const payment = await getDoc(paymentRef);
 
@@ -396,6 +497,12 @@ class PaymentService {
    */
   async getBuyerPayments(buyerId: string): Promise<PaymentRecord[]> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payments = await localDb.list<PaymentRecord>('orders');
+        return payments.filter((payment) => payment.buyerId === buyerId);
+      }
+
       const paymentsRef = collection(db, this.collectionName);
       const q = query(
         paymentsRef,
@@ -422,6 +529,12 @@ class PaymentService {
    */
   async getSellerPayments(sellerId: string): Promise<PaymentRecord[]> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payments = await localDb.list<PaymentRecord>('orders');
+        return payments.filter((payment) => payment.sellerId === sellerId);
+      }
+
       const paymentsRef = collection(db, this.collectionName);
       const q = query(
         paymentsRef,
@@ -454,6 +567,15 @@ class PaymentService {
     currency: string;
   }> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        return {
+          totalReceived: 0,
+          totalPaidOut: 0,
+          availableBalance: 0,
+          currency: 'USD'
+        };
+      }
+
       // Get all successful payments for seller
       const payments = await this.getSellerPayments(sellerId);
 
@@ -498,6 +620,23 @@ class PaymentService {
    */
   async createPayout(request: CreatePayoutRequest): Promise<PayoutRecord> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payoutId = `local-payout-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const payoutData: PayoutRecord = {
+          id: payoutId,
+          sellerId: request.sellerId,
+          amount: request.amount,
+          currency: request.currency,
+          payoutMethod: request.payoutMethod,
+          status: 'pending',
+          relatedPaymentIds: [],
+          createdAt: Timestamp.now()
+        };
+        await localDb.upsert('payouts', payoutData);
+        return payoutData;
+      }
+
       // Get seller balance
       const balance = await this.getSellerBalance(request.sellerId);
 
@@ -549,6 +688,11 @@ class PaymentService {
    */
   async getPayout(payoutId: string): Promise<PayoutRecord | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        return (await localDb.getById<PayoutRecord>('payouts', payoutId)) || null;
+      }
+
       const payoutRef = doc(db, this.payoutsCollectionName, payoutId);
       const payout = await getDoc(payoutRef);
 
@@ -573,6 +717,12 @@ class PaymentService {
    */
   async getSellerPayouts(sellerId: string): Promise<PayoutRecord[]> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payouts = await localDb.list<PayoutRecord>('payouts');
+        return payouts.filter((payout) => payout.sellerId === sellerId);
+      }
+
       const payoutsRef = collection(db, this.payoutsCollectionName);
       const q = query(
         payoutsRef,
@@ -604,6 +754,32 @@ class PaymentService {
     failureReason?: string
   ): Promise<PayoutRecord> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const payout = await localDb.getById<PayoutRecord>('payouts', payoutId);
+        if (!payout) {
+          return {
+            id: payoutId,
+            sellerId: '',
+            amount: 0,
+            currency: 'USD',
+            payoutMethod: 'stripe',
+            status,
+            relatedPaymentIds: [],
+            createdAt: Timestamp.now()
+          } as PayoutRecord;
+        }
+        const updated = {
+          ...payout,
+          status,
+          processedAt: Timestamp.now(),
+          ...(externalId ? { stripePayoutId: externalId } : {}),
+          ...(status === 'failed' && failureReason ? { failureReason } : {})
+        } as PayoutRecord;
+        await localDb.upsert('payouts', updated);
+        return updated;
+      }
+
       const payoutRef = doc(db, this.payoutsCollectionName, payoutId);
       const payout = await getDoc(payoutRef);
 
@@ -655,6 +831,17 @@ class PaymentService {
     successRate: number;
   }> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        return {
+          totalRevenue: 0,
+          thisMonth: 0,
+          thisWeek: 0,
+          averageOrderValue: 0,
+          totalOrders: 0,
+          successRate: 0
+        };
+      }
+
       const payments = await this.getSellerPayments(sellerId);
 
       let totalRevenue = 0;

@@ -20,6 +20,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { shouldUseFirestoreFallback } from './dataMode';
+import { localDb } from './localDb';
 
 // ============================================================================
 // TYPES
@@ -101,11 +103,30 @@ class StoreBuildService {
   private readonly AFFILIATES_COLLECTION = 'affiliate_programs';
   private readonly ANALYTICS_COLLECTION = 'store_analytics';
 
+  private shouldUseLocalFallback() {
+    return !shouldUseFirestoreFallback();
+  }
+
   /**
    * Create or update store setup data
    */
   async saveStoreSetup(userId: string, storeData: Omit<StoreBuildData, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoreBuildData> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        this.validateStoreSetup(storeData);
+        const existingStore = await this.getUserStore(userId);
+        const storeDoc: StoreBuildData = {
+          ...storeData,
+          userId,
+          isPublished: false,
+          updatedAt: new Date().toISOString(),
+          createdAt: existingStore?.createdAt || new Date().toISOString(),
+        };
+        const saved = await localDb.upsert('stores', { ...storeDoc, id: existingStore?.id || storeDoc.id });
+        return { ...storeDoc, id: saved.id };
+      }
+
       // Validate required fields
       this.validateStoreSetup(storeData);
 
@@ -139,6 +160,12 @@ class StoreBuildService {
    */
   async getUserStore(userId: string): Promise<StoreBuildData | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const stores = await localDb.list<StoreBuildData>('stores');
+        return stores.find((store) => store.userId === userId) || null;
+      }
+
       const q = query(
         collection(db, this.STORES_COLLECTION),
         where('userId', '==', userId)
@@ -162,6 +189,11 @@ class StoreBuildService {
    */
   async getStore(storeId: string): Promise<StoreBuildData | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        return (await localDb.getById<StoreBuildData>('stores', storeId)) || null;
+      }
+
       const docSnap = await getDoc(doc(db, this.STORES_COLLECTION, storeId));
       if (!docSnap.exists()) return null;
 
@@ -182,6 +214,19 @@ class StoreBuildService {
       // Validate sections
       if (!Array.isArray(sections) || sections.length === 0) {
         throw new Error('At least one section must be enabled');
+      }
+
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const existingLayout = await this.getStoreLayout(storeId);
+        const layoutData: Omit<StoreLayout, 'id'> = {
+          storeId,
+          sections: sections.sort((a, b) => a.order - b.order),
+          updatedAt: new Date().toISOString(),
+          createdAt: existingLayout?.createdAt || new Date().toISOString(),
+        };
+        const saved = await localDb.upsert('storeLayouts', { ...layoutData, id: existingLayout?.id });
+        return { ...layoutData, id: saved.id };
       }
 
       const existingLayout = await this.getStoreLayout(storeId);
@@ -210,6 +255,12 @@ class StoreBuildService {
    */
   async getStoreLayout(storeId: string): Promise<StoreLayout | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const layouts = await localDb.list<StoreLayout>('storeLayouts');
+        return layouts.find((layout) => layout.storeId === storeId) || null;
+      }
+
       const q = query(
         collection(db, this.LAYOUTS_COLLECTION),
         where('storeId', '==', storeId)
@@ -241,6 +292,20 @@ class StoreBuildService {
         throw new Error('At least one platform must be selected');
       }
 
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const existingAffiliate = await this.getAffiliateProgram(storeId);
+        const affiliateDoc: Omit<AffiliateProgram, 'id'> = {
+          storeId,
+          userId,
+          ...affiliateData,
+          updatedAt: new Date().toISOString(),
+          createdAt: existingAffiliate?.createdAt || new Date().toISOString(),
+        };
+        const saved = await localDb.upsert('affiliatePrograms', { ...affiliateDoc, id: existingAffiliate?.id });
+        return { ...affiliateDoc, id: saved.id };
+      }
+
       const existingAffiliate = await this.getAffiliateProgram(storeId);
 
       const affiliateDoc: Omit<AffiliateProgram, 'id'> = {
@@ -268,6 +333,12 @@ class StoreBuildService {
    */
   async getAffiliateProgram(storeId: string): Promise<AffiliateProgram | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const programs = await localDb.list<AffiliateProgram>('affiliatePrograms');
+        return programs.find((program) => program.storeId === storeId) || null;
+      }
+
       const q = query(
         collection(db, this.AFFILIATES_COLLECTION),
         where('storeId', '==', storeId)
@@ -297,6 +368,17 @@ class StoreBuildService {
       // Validate store is complete
       this.validateStoreSetup(store);
 
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const updated = await localDb.upsert('stores', {
+          ...store,
+          isPublished: true,
+          publishedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        return updated as StoreBuildData;
+      }
+
       const docRef = doc(db, this.STORES_COLLECTION, storeId);
       await updateDoc(docRef, {
         isPublished: true,
@@ -315,6 +397,18 @@ class StoreBuildService {
    */
   async unpublishStore(storeId: string): Promise<void> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const store = await this.getStore(storeId);
+        if (!store) return;
+        await localDb.upsert('stores', {
+          ...store,
+          isPublished: false,
+          updatedAt: new Date().toISOString()
+        });
+        return;
+      }
+
       const docRef = doc(db, this.STORES_COLLECTION, storeId);
       await updateDoc(docRef, {
         isPublished: false,
@@ -330,6 +424,12 @@ class StoreBuildService {
    */
   async getStoreAnalytics(storeId: string): Promise<StoreAnalytics | null> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const analytics = await localDb.list<StoreAnalytics>('storeAnalytics');
+        return analytics.find((entry) => entry.storeId === storeId) || null;
+      }
+
       const q = query(
         collection(db, this.ANALYTICS_COLLECTION),
         where('storeId', '==', storeId)
@@ -354,6 +454,25 @@ class StoreBuildService {
   async updateStoreAnalytics(storeId: string, analyticsData: Partial<Omit<StoreAnalytics, 'id' | 'storeId'>>): Promise<StoreAnalytics> {
     try {
       const existing = await this.getStoreAnalytics(storeId);
+
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        const analyticsDoc: Omit<StoreAnalytics, 'id'> = {
+          storeId,
+          totalRentals: analyticsData.totalRentals || existing?.totalRentals || 0,
+          totalRevenue: analyticsData.totalRevenue || existing?.totalRevenue || 0,
+          averageOrderValue: analyticsData.averageOrderValue || existing?.averageOrderValue || 0,
+          conversionRate: analyticsData.conversionRate || existing?.conversionRate || 0,
+          returnRate: analyticsData.returnRate || existing?.returnRate || 0,
+          topItems: analyticsData.topItems || existing?.topItems || [],
+          customerCount: analyticsData.customerCount || existing?.customerCount || 0,
+          averageRating: analyticsData.averageRating || existing?.averageRating || 0,
+          weeklyData: analyticsData.weeklyData || existing?.weeklyData || [],
+          updatedAt: new Date().toISOString(),
+        };
+        const saved = await localDb.upsert('storeAnalytics', { ...analyticsDoc, id: existing?.id });
+        return saved as StoreAnalytics;
+      }
 
       const analyticsDoc: Omit<StoreAnalytics, 'id'> = {
         storeId,
@@ -386,6 +505,21 @@ class StoreBuildService {
    */
   async deleteStore(storeId: string): Promise<void> {
     try {
+      if (this.shouldUseLocalFallback()) {
+        await localDb.init();
+        await localDb.remove('stores', storeId);
+        const layouts = await localDb.list<StoreLayout>('storeLayouts');
+        const layout = layouts.find((entry) => entry.storeId === storeId);
+        if (layout?.id) await localDb.remove('storeLayouts', layout.id);
+        const affiliates = await localDb.list<AffiliateProgram>('affiliatePrograms');
+        const affiliate = affiliates.find((entry) => entry.storeId === storeId);
+        if (affiliate?.id) await localDb.remove('affiliatePrograms', affiliate.id);
+        const analytics = await localDb.list<StoreAnalytics>('storeAnalytics');
+        const analyticsRow = analytics.find((entry) => entry.storeId === storeId);
+        if (analyticsRow?.id) await localDb.remove('storeAnalytics', analyticsRow.id);
+        return;
+      }
+
       const batch = writeBatch(db);
 
       // Delete store

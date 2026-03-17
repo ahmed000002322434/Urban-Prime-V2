@@ -210,7 +210,7 @@ const CreateOfferModal: React.FC<{ onClose: () => void; onSend: (offer: Omit<Cus
                             <input type="number" value={duration} onChange={e => setDuration(e.target.value)} required className="w-full p-2 border rounded-lg dark:bg-dark-background dark:border-gray-600 dark:text-white" />
                         </div>
                     </div>
-                    <button type="submit" className="w-full py-3 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:opacity-90 mt-4">Send Offer</button>
+                    <button type="submit" className="clay-button clay-button-primary clay-size-lg is-interactive w-full mt-4">Send Offer</button>
                 </form>
             </div>
         </div>

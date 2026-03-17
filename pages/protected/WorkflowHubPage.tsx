@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { ClayCard, ClaySectionHeader } from '../../components/dashboard/clay';
 
 type WorkflowAction = {
   title: string;
@@ -17,7 +18,7 @@ type WorkflowSection = {
 const ActionCard: React.FC<WorkflowAction> = ({ title, description, to }) => (
   <Link
     to={to}
-    className="rounded-xl border border-[#d8d8d8] bg-white p-4 transition-colors hover:bg-[#fafafa]"
+    className="clay-card clay-size-md is-interactive"
   >
     <p className="text-base font-semibold text-[#1f1f1f]">{title}</p>
     <p className="mt-1 text-sm text-[#666]">{description}</p>
@@ -174,15 +175,15 @@ const WorkflowHubPage: React.FC = () => {
 
   return (
     <div className="dashboard-page space-y-5">
-      <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
-        <h1 className="text-2xl font-semibold text-[#1f1f1f]">Workflow hub</h1>
-        <p className="mt-1 text-sm text-[#666]">
-          All operational pages are grouped here so each workflow is one click away.
-        </p>
-      </div>
+      <ClayCard size="lg">
+        <ClaySectionHeader
+          title="Workflow hub"
+          subtitle="All operational pages are grouped here so each workflow is one click away."
+        />
+      </ClayCard>
 
       {sections.map((section) => (
-        <section key={section.title} className="rounded-xl border border-[#d8d8d8] bg-[#f6f6f7] p-4">
+        <section key={section.title} className="clay-card clay-size-md">
           <div className="mb-3">
             <h2 className="text-lg font-semibold text-[#1f1f1f]">{section.title}</h2>
             <p className="text-sm text-[#666]">{section.subtitle}</p>

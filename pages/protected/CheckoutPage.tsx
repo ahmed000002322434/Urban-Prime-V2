@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
 import { itemService, userService } from '../../services/itemService';
-import analyticsService from '../../services/analyticsService';
 import type { PaymentMethod, Address } from '../../types';
 import Spinner from '../../components/Spinner';
 import BackButton from '../../components/BackButton';
@@ -116,6 +115,35 @@ const CheckoutPage: React.FC = () => {
              showNotification("Please select a payment method.");
              return;
         }
+        const hasInvalidRentalWindow = cartItems.some((item) => {
+            const isRentMode = item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+            if (!isRentMode) return false;
+            const start = String(item.rentalPeriod?.startDate || '').trim();
+            const end = String(item.rentalPeriod?.endDate || '').trim();
+            if (!start || !end) return true;
+            const startMs = Date.parse(`${start}T00:00:00`);
+            const endMs = Date.parse(`${end}T00:00:00`);
+            return !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs;
+        });
+        if (hasInvalidRentalWindow) {
+            showNotification("One or more rental items are missing valid rental dates. Please update dates on the item page and try again.");
+            return;
+        }
+        const rentalItems = cartItems.filter((item) => item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent'));
+        for (const rentalItem of rentalItems) {
+            const start = String(rentalItem.rentalPeriod?.startDate || '').trim();
+            const end = String(rentalItem.rentalPeriod?.endDate || '').trim();
+            try {
+                const available = await itemService.checkAvailability(rentalItem.id, start, end);
+                if (!available) {
+                    showNotification(`${rentalItem.title} is no longer available for the selected dates. Please update your rental period.`);
+                    return;
+                }
+            } catch {
+                showNotification(`We could not verify rental availability for ${rentalItem.title}. Please try again.`);
+                return;
+            }
+        }
 
         setIsLoading(true);
         try {
@@ -145,22 +173,7 @@ const CheckoutPage: React.FC = () => {
                 }
             );
 
-            // 3. Track checkout analytics for each item
-            for (const item of cartItems) {
-                if (item.ownerPersonaId) {
-                    const itemTotal = item.salePrice * (item.quantity || 1);
-                    analyticsService.recordCheckout(
-                        item.id,
-                        user.id,
-                        user.name || selectedAddress?.name || 'Customer',
-                        orderId,
-                        itemTotal,
-                        'completed'
-                    ).catch(error => console.warn('Analytics checkout tracking failed:', error));
-                }
-            }
-
-            // 4. Clear Cart & Navigate
+            // 3. Clear Cart & Navigate
             clearCart();
             navigate('/order-confirmation', { state: { orderId } });
 

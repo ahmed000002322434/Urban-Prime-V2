@@ -11,9 +11,9 @@ import LottieAnimation from '../../components/LottieAnimation';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
 const FormCard: React.FC<{title: string, children: React.ReactNode, className?: string}> = ({title, children, className}) => (
-    <div className={`bg-white dark:bg-dark-surface p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 ${className}`}>
-        <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-dark-text border-b dark:border-gray-600 pb-2">{title}</h3>
-        <div className="space-y-4 text-gray-700 dark:text-gray-300">{children}</div>
+    <div className={`clay-card clay-size-lg ${className}`}>
+        <h3 className="text-lg font-semibold mb-4 text-text-primary border-b border-border pb-2">{title}</h3>
+        <div className="space-y-4 text-text-secondary">{children}</div>
     </div>
 );
 
@@ -185,15 +185,15 @@ const OrderDetailsPage: React.FC = () => {
 
     return (
         <div className="space-y-6 animate-fade-in-up">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Order Details</h1>
+            <h1 className="text-2xl font-bold text-text-primary">Order Details</h1>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     {/* Status & Actions Card */}
-                    <div className="bg-white dark:bg-dark-surface p-6 rounded-lg shadow-md border-l-4 border-primary">
+                    <div className="clay-card clay-size-lg border-l-4 border-primary">
                         <div className="flex justify-between items-center mb-4">
                             <div>
                                 <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Status</p>
-                                <p className="text-xl font-bold text-gray-900 dark:text-white capitalize">{booking.status.replace('_', ' ')}</p>
+                                <p className="text-xl font-bold text-text-primary capitalize">{booking.status.replace('_', ' ')}</p>
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Payment</p>
@@ -205,9 +205,9 @@ const OrderDetailsPage: React.FC = () => {
                         
                         {/* Tracking Info for Buyer */}
                         {isBuyer && booking.status === 'shipped' && booking.trackingNumber && (
-                             <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                                 <p className="text-sm text-gray-500 mb-1">Tracking Number</p>
-                                <p className="text-lg font-mono font-bold text-gray-900 dark:text-white mb-3">{booking.trackingNumber}</p>
+                                <p className="text-lg font-mono font-bold text-text-primary mb-3">{booking.trackingNumber}</p>
                                 <button 
                                     onClick={() => navigate(`/profile/track-delivery/${booking.id}`)}
                                     className="text-primary font-bold text-sm hover:underline flex items-center gap-1"
@@ -219,13 +219,13 @@ const OrderDetailsPage: React.FC = () => {
 
                         {/* Actions */}
                         {isBuyer && booking.status === 'shipped' && (
-                             <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                             <div className="mt-6 pt-6 border-t border-gray-100">
                                 <h4 className="font-bold mb-2">Item Received?</h4>
                                 <p className="text-sm text-gray-600 mb-4">Please verify you have received your item to complete the order.</p>
                                 <button 
                                     onClick={handleConfirmReceipt} 
                                     disabled={isProcessing}
-                                    className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors shadow-lg flex justify-center items-center gap-2"
+                                    className="clay-button clay-button-primary clay-size-lg is-interactive w-full justify-center"
                                 >
                                     {isProcessing ? <Spinner size="sm" className="text-white"/> : 'I Have Received My Item'}
                                 </button>
@@ -234,11 +234,11 @@ const OrderDetailsPage: React.FC = () => {
 
                         {/* Seller Actions for Rental Return */}
                         {isSeller && booking.type === 'rent' && booking.status === 'delivered' && (
-                            <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                            <div className="mt-6 pt-6 border-t border-gray-100">
                                 <button 
                                     onClick={handleReturnItem}
                                     disabled={isProcessing}
-                                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700"
+                                    className="clay-button clay-button-secondary clay-size-lg is-interactive w-full justify-center"
                                 >
                                     Mark as Returned
                                 </button>
@@ -247,26 +247,26 @@ const OrderDetailsPage: React.FC = () => {
 
                         {/* Security Deposit Management (Seller View) */}
                         {isSeller && booking.status === 'returned' && hasDeposit && booking.depositStatus === 'held' && (
-                             <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                                <div className="flex items-center gap-2 mb-4 text-blue-800 dark:text-blue-300">
+                             <div className="mt-6 pt-6 border-t border-gray-100 bg-blue-50 p-4 rounded-lg">
+                                <div className="flex items-center gap-2 mb-4 text-blue-800">
                                     <ShieldCheckIcon />
                                     <h4 className="font-bold">Security Deposit Action Required</h4>
                                 </div>
-                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                                <p className="text-sm text-gray-600 mb-4">
                                     The item has been returned. Please inspect it. You can release the full deposit back to the buyer or claim a portion for damages.
                                 </p>
                                 <div className="flex gap-4">
                                     <button 
                                         onClick={handleReleaseDeposit} 
                                         disabled={isProcessing}
-                                        className="flex-1 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700"
+                                        className="clay-button clay-button-primary clay-size-md is-interactive flex-1"
                                     >
                                         Release Full Deposit
                                     </button>
                                     <button 
                                         onClick={() => setIsClaimModalOpen(true)} 
                                         disabled={isProcessing}
-                                        className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700"
+                                        className="clay-button clay-button-primary clay-size-md clay-tone-danger is-interactive flex-1"
                                     >
                                         Claim Deposit
                                     </button>
@@ -287,7 +287,7 @@ const OrderDetailsPage: React.FC = () => {
                         
                         {/* Completed State */}
                         {(booking.status === 'completed' || booking.status === 'delivered' || booking.status === 'returned') && (
-                            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-800 dark:text-green-300 text-sm font-medium flex items-center gap-2">
+                            <div className="mt-4 p-3 bg-green-50 rounded-lg text-green-800 text-sm font-medium flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                                 Order/Rental cycle active or completed
                             </div>
@@ -304,8 +304,8 @@ const OrderDetailsPage: React.FC = () => {
                             <>
                                 <p className="text-sm">Manage shipping and returns for this order.</p>
                                 <div className="flex gap-2">
-                                    <input value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder="Enter tracking number" className="w-full p-2 border rounded-md dark:bg-dark-background dark:border-gray-600" />
-                                    <button onClick={handleAddTracking} className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md whitespace-nowrap">Save Tracking</button>
+                                    <input value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder="Enter tracking number" className="clay-input w-full" />
+                                    <button onClick={handleAddTracking} className="clay-button clay-button-primary clay-size-md is-interactive whitespace-nowrap">Save Tracking</button>
                                 </div>
                             </>
                         ) : (
@@ -313,7 +313,7 @@ const OrderDetailsPage: React.FC = () => {
                                 {booking.status === 'confirmed' || booking.status === 'shipped' ? (
                                      <button 
                                         onClick={() => navigate(`/profile/track-delivery/${booking.id}`)}
-                                        className="w-full py-3 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                                        className="clay-button clay-button-primary clay-size-lg is-interactive w-full justify-center"
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                                         Track Delivery Live
@@ -333,14 +333,14 @@ const OrderDetailsPage: React.FC = () => {
                         <div className="flex items-center gap-4">
                             <img src={item.imageUrls[0]} alt={item.title} className="w-16 h-16 rounded-md object-cover" />
                             <div>
-                                <Link to={`/item/${item.id}`} className="font-bold hover:underline text-gray-900 dark:text-white">{item.title}</Link>
+                                <Link to={`/item/${item.id}`} className="font-bold hover:underline text-text-primary">{item.title}</Link>
                                 <p className="text-lg font-bold">${booking.totalPrice.toFixed(2)}</p>
                             </div>
                         </div>
                          <p className="text-sm"><strong>Order ID:</strong> {booking.id.split('-')[1]}</p>
                          <p className="text-sm"><strong>Date:</strong> {new Date(booking.startDate).toLocaleDateString()}</p>
                          <p className="text-sm"><strong>{isSeller ? 'Buyer' : 'Seller'}:</strong> {otherUser?.name || 'N/A'}</p>
-                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                         <div className="mt-4 pt-4 border-t border-gray-200">
                              <div className="flex justify-between text-sm mb-1">
                                  <span>Subtotal</span>
                                  <span>${booking.totalPrice.toFixed(2)}</span>
@@ -363,12 +363,12 @@ const OrderDetailsPage: React.FC = () => {
             {/* Claim Deposit Modal */}
             {isClaimModalOpen && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsClaimModalOpen(false)}>
-                    <div className="bg-white dark:bg-dark-surface w-full max-w-md rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+                    <div className="clay-card clay-size-lg w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold mb-4 text-red-600 flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                             Claim Security Deposit
                         </h2>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                        <p className="text-sm text-gray-600 mb-4">
                             You are requesting to withhold funds from the ${booking.securityDeposit} deposit due to damages or late fees.
                         </p>
                         
@@ -380,7 +380,7 @@ const OrderDetailsPage: React.FC = () => {
                                     max={booking.securityDeposit}
                                     value={claimAmount}
                                     onChange={e => setClaimAmount(e.target.value)}
-                                    className="w-full p-2 border rounded-md"
+                                    className="clay-input"
                                     placeholder={`Max ${booking.securityDeposit}`}
                                     required
                                 />
@@ -390,7 +390,7 @@ const OrderDetailsPage: React.FC = () => {
                                 <textarea 
                                     value={claimReason}
                                     onChange={e => setClaimReason(e.target.value)}
-                                    className="w-full p-2 border rounded-md"
+                                    className="clay-input"
                                     placeholder="Describe damage or reason..."
                                     rows={3}
                                     required
@@ -409,8 +409,8 @@ const OrderDetailsPage: React.FC = () => {
                             </div>
                             
                             <div className="flex gap-2 pt-2">
-                                <button type="button" onClick={() => setIsClaimModalOpen(false)} className="flex-1 py-2 bg-gray-200 text-gray-800 font-bold rounded-lg">Cancel</button>
-                                <button type="submit" disabled={isProcessing} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:opacity-50">
+                                <button type="button" onClick={() => setIsClaimModalOpen(false)} className="clay-button clay-button-ghost clay-size-md is-interactive flex-1">Cancel</button>
+                                <button type="submit" disabled={isProcessing} className="clay-button clay-button-primary clay-size-md clay-tone-danger is-interactive flex-1">
                                     {isProcessing ? 'Processing...' : 'Submit Claim'}
                                 </button>
                             </div>

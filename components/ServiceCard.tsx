@@ -11,13 +11,13 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
     const hasHourly = service.pricingModels.some(p => p.type === 'hourly');
 
     return (
-        <div className="relative group flex flex-col bg-surface/60 backdrop-blur-xl rounded-2xl shadow-soft border border-border/40 hover:shadow-xl transition-all duration-300 h-full overflow-hidden">
+        <div className="relative group flex flex-col glass-panel glass-panel-hover h-full overflow-hidden">
             <Link to={`/service/${service.id}`} className="block">
-                <div className="relative overflow-hidden aspect-video bg-gray-100">
+                <div className="relative overflow-hidden aspect-video bg-gray-100/10">
                     <img src={service.imageUrls[0]} alt={service.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 </div>
             </Link>
-            <div className="p-4 flex flex-col flex-grow bg-surface">
+            <div className="p-4 flex flex-col flex-grow">
                 <div className="flex-grow">
                     <h3 className="font-bold text-base text-text-primary line-clamp-2 leading-snug font-display">
                         <Link to={`/service/${service.id}`} className="hover:text-primary transition-colors">{service.title}</Link>
@@ -31,7 +31,7 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
                     <StarRating rating={service.avgRating} size="sm" />
                     <span className="text-[10px] text-text-secondary font-medium">({service.reviews.length})</span>
                 </div>
-                <div className="flex justify-between items-end border-t pt-3 border-gray-100 dark:border-gray-700">
+                <div className="flex justify-between items-end border-t pt-3 border-white/10">
                     <div>
                         <p className="text-xs text-text-secondary">Starting from</p>
                         <p className="font-extrabold text-lg text-text-primary tracking-tight">
@@ -39,7 +39,7 @@ const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
                             {hasHourly && isFinite(startingPrice) && <span className="text-xs font-normal text-text-secondary capitalize ml-0.5">/hr</span>}
                         </p>
                     </div>
-                    <Link to={`/service/${service.id}`} className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg text-xs font-bold hover:opacity-80 transition-colors shadow-md">
+                    <Link to={`/service/${service.id}`} className="px-4 py-2 glass-button rounded-lg text-xs font-bold hover:opacity-80 transition-colors shadow-md">
                         View
                     </Link>
                 </div>

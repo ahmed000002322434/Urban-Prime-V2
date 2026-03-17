@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { itemService, serviceService, userService, reelService } from '../../services/itemService';
 import type { Item, Category, Service, ChatThread, Reel, User } from '../../types';
 import ItemCard from '../../components/ItemCard';
@@ -717,13 +717,18 @@ const BrowsePage: React.FC = () => {
 
                         <div className="mt-4 flex flex-wrap gap-2 text-xs">
                             {allBrands.slice(0, 6).map(brand => (
-                                <button
+                                <Link
                                     key={brand}
-                                    onClick={() => setFilters(p => ({ ...p, query: brand, page: 1 }))}
+                                    to={`/brands/${brand.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
+                                    onClick={(event) => {
+                                        if (!brand) return;
+                                        setFilters(p => ({ ...p, query: brand, page: 1 }));
+                                        if (!brand.trim()) event.preventDefault();
+                                    }}
                                     className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary"
                                 >
                                     {brand}
-                                </button>
+                                </Link>
                             ))}
                             <button onClick={() => setFilters(p => ({ ...p, query: 'limited', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Limited</button>
                             <button onClick={() => setFilters(p => ({ ...p, query: 'verified', page: 1 }))} className="rounded-full border border-border px-3 py-1 text-text-secondary hover:border-primary hover:text-text-primary">Verified</button>

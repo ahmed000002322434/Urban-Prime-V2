@@ -7,7 +7,13 @@ import { itemService } from '../services/itemService';
 interface CartContextType {
   cartGroups: CartGroup[];
   savedItems: CartItem[];
-  addItemToCart: (item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string; endDate: string }) => void;
+  addItemToCart: (
+    item: Item,
+    quantity: number,
+    subscription?: SubscriptionDetails,
+    rentalPeriod?: { startDate: string; endDate: string },
+    transactionMode?: 'sale' | 'rent'
+  ) => void;
   updateItemQuantity: (itemId: string, quantity: number) => void;
   removeItemFromCart: (itemId: string) => void;
   saveForLater: (itemId: string) => void;
@@ -65,11 +71,20 @@ const removeStoredState = (key: string) => {
   }
 };
 
+const resolveTransactionMode = (item: Pick<CartItem, 'listingType' | 'transactionMode'>): 'sale' | 'rent' => {
+  if (item.listingType === 'rent') return 'rent';
+  if (item.listingType === 'both') return item.transactionMode === 'rent' ? 'rent' : 'sale';
+  return 'sale';
+};
+
+const isRentCartItem = (item: Pick<CartItem, 'listingType' | 'transactionMode'>) => resolveTransactionMode(item) === 'rent';
+
 const cartItemKey = (item: CartItem) => {
-  if (item.listingType === 'rent' && item.rentalPeriod) {
-    return `${item.id}::${item.rentalPeriod.startDate}::${item.rentalPeriod.endDate}`;
+  const mode = resolveTransactionMode(item);
+  if (mode === 'rent' && item.rentalPeriod) {
+    return `${item.id}::rent::${item.rentalPeriod.startDate}::${item.rentalPeriod.endDate}`;
   }
-  return item.id;
+  return `${item.id}::${mode}`;
 };
 
 const mergeCartLists = (base: CartItem[], incoming: CartItem[]): CartItem[] => {
@@ -143,13 +158,43 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [storageReady, storageKey, cartItems, savedItems, couponCode, discountPercent]);
 
   const addItemToCart = useCallback(
-    (item: Item, quantity: number, subscription?: SubscriptionDetails, rentalPeriod?: { startDate: string; endDate: string }) => {
+    (
+      item: Item,
+      quantity: number,
+      subscription?: SubscriptionDetails,
+      rentalPeriod?: { startDate: string; endDate: string },
+      transactionMode?: 'sale' | 'rent'
+    ) => {
       const alreadyInCart = cartItems.some((i) => i.id === item.id);
       setCartItems((prev) => {
+        const resolvedMode: 'sale' | 'rent' =
+          item.listingType === 'rent'
+            ? 'rent'
+            : item.listingType === 'both'
+              ? (transactionMode === 'rent' ? 'rent' : 'sale')
+              : 'sale';
+        const incomingItem: CartItem = {
+          ...item,
+          quantity,
+          subscription,
+          rentalPeriod,
+          transactionMode: resolvedMode
+        };
         const existingItem = prev.find((i) => i.id === item.id);
 
         if (existingItem) {
-          if (item.listingType === 'rent') {
+          const existingMode = resolveTransactionMode(existingItem);
+          if (item.listingType === 'both' && existingMode !== resolvedMode) {
+            showNotification(`Listing mode switched to ${resolvedMode}.`);
+            return prev.map((i) => (i.id === item.id ? { ...incomingItem, quantity: Math.max(1, quantity) } : i));
+          }
+          if (resolvedMode === 'rent') {
+            const existingKey = cartItemKey(existingItem);
+            const incomingKey = cartItemKey(incomingItem);
+            if (existingKey !== incomingKey) {
+              showNotification('Rental period updated in your cart.');
+              return prev.map((i) => (i.id === item.id ? { ...incomingItem, quantity: Math.max(1, quantity) } : i));
+            }
             showNotification('This item is already in your cart.');
             return prev;
           }
@@ -162,7 +207,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         showNotification('Item added to cart!');
-        return [...prev, { ...item, quantity, subscription, rentalPeriod }];
+        return [...prev, incomingItem];
       });
 
       if (!alreadyInCart && item.owner?.id && item.owner.id !== user?.id) {
@@ -275,9 +320,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { cartCount, cartTotal, discountAmount } = useMemo(() => {
     const count = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
     const subtotal = cartItems.reduce((acc, item) => {
-      let price = item.salePrice || item.rentalPrice || 0;
+      const rentMode = isRentCartItem(item);
+      let price = rentMode
+        ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
+        : (item.salePrice || item.price || 0);
 
-      if (item.listingType === 'rent' && item.rentalPeriod && item.rentalRates?.daily) {
+      if (rentMode && item.rentalPeriod && item.rentalRates?.daily) {
         const start = new Date(item.rentalPeriod.startDate);
         const end = new Date(item.rentalPeriod.endDate);
         const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));

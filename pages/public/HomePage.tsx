@@ -23,6 +23,7 @@ type CollectionCardMeta = {
     image: string;
     link: string;
     video?: string;
+    cta?: string;
 };
 
 const COLLECTION_FEATURES: CollectionCardMeta[] = [
@@ -32,7 +33,8 @@ const COLLECTION_FEATURES: CollectionCardMeta[] = [
         title: 'Discover Products',
         image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3X5BiWrErY17PHVSZXF5Y5RnnSjkNodxHtoRFE4fufJ-VIgqT7XW2_HvxbbE5a4tc-tYN7gszwCMtBZy5aH1E0E6JEBcW8oHuR-ERqeIywX1iqTwP4G1cD7upeGxk31npORRrU5A8A-9KxJEspxWdRX_jo1J3zX4zNwXSuxq2ySlXDTgoztOIud6_n015CX1IJzSQH4uYnpsECZyJG73CWwojr9pJ8ne6uWgPcUjp0fE3bwE_Vt-IcZoYAGk0F8S3tqgAnFDGAX8',
         link: '/browse',
-        video: '/card-videos/product-card.mp4'
+        video: '/card-videos/product-card.mp4',
+        cta: 'Browse'
     },
     {
         id: 'services',
@@ -40,7 +42,8 @@ const COLLECTION_FEATURES: CollectionCardMeta[] = [
         title: 'Explore Services',
         image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWsp5tgC3p3JRyFnrnLY02dzWoUUikqQVXzf_DepH081Fzpa9ukvYChN4wMV3XcoBgXWcATPdcIRDn4Pwwueje_AExEXOioB-TuNsedMfMZYcWe9tKaiVIwk6dC6c8Bquw42pgHmnpZxXyKCTkOUjFr7_ZBwtnfRAWuAC1OXu1FGxNrouZusleIM66wgzhqIljj2Tunarz-iGw-zeC_xStSFwD5hXyiAuoLr469OxaPzUXYD7xU34HQGzKJRPHhq2IYqtqU2NJ8-M',
         link: '/services/marketplace',
-        video: '/card-videos/explore-services.mp4'
+        video: '/card-videos/explore-services.mp4',
+        cta: 'Engage'
     },
     {
         id: 'stores',
@@ -48,7 +51,17 @@ const COLLECTION_FEATURES: CollectionCardMeta[] = [
         title: 'Visit Stores',
         image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_jcgo7mD9QB9kkX9TXoddziI0XLKtFv0ot9Iu-4j4ZP9JBQWrc0f7WihNLwfeV-eZljBgSyp_R-oaXOtLAdo9a1nl5FA7z4_5Drw-6eMkVmSljE4p1kqpe9eF2oYEQnGQxEIk1AJN8iwM-hhX2wc2l4dxEHE7nML1nLoQGwnZHJCsdvQu4UuidIakldQUXHogSC_8CDwSGaVzAZtsFmdCR1KRCAX5ITUuAgN3_LuHjj-rc6AwQdFmKC5nMEP1mWNgoDWjhbimvJU',
         link: '/stores',
-        video: '/card-videos/explore-stores.mp4'
+        video: '/card-videos/explore-stores.mp4',
+        cta: 'Enter'
+    },
+    {
+        id: 'brands',
+        label: 'Canonical Brand Intelligence.',
+        title: 'Explore Brand Hub',
+        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
+        link: '/brands/explore',
+        video: '/card-videos/electronics.mp4',
+        cta: 'Launch'
     }
 ];
 
@@ -336,7 +349,7 @@ const CollectionDiscovery: React.FC = () => {
         let rafId = 0;
         let lastTime = performance.now();
         let offset = 0;
-        const speed = 0.02; // px per ms (20px/s)
+        const speed = 0.007; // px per ms (~7px/s)
         const gap = 16;
 
         const step = (time: number) => {
@@ -378,7 +391,7 @@ const CollectionDiscovery: React.FC = () => {
     }, []);
 
     return (
-        <section className="py-16 sm:py-20 md:py-28 bg-background text-text-primary relative overflow-hidden">
+        <section className="py-16 sm:py-20 md:py-28 bg-background text-text-primary relative overflow-hidden skeuo-showcase-zone">
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute -top-40 -right-32 h-80 w-80 rounded-full bg-purple-700/20 blur-3xl"></div>
                 <div className="absolute -bottom-40 -left-32 h-80 w-80 rounded-full bg-cyan-600/20 blur-3xl"></div>
@@ -398,39 +411,49 @@ const CollectionDiscovery: React.FC = () => {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-3 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+                <div className="skeuo-feature-row">
                     {COLLECTION_FEATURES.map((card, index) => (
                         <Link
                             key={card.id}
                             to={card.link}
-                            className="group flex flex-col gap-3"
+                            className="group skeuo-card-link skeuo-card-link-top skeuo-feature-item flex flex-col"
                             aria-label={card.title}
                         >
-                            <div className="relative min-h-[220px] sm:min-h-[320px] md:min-h-[360px] lg:min-h-[420px] overflow-hidden rounded-3xl border border-border bg-surface shadow-[0_26px_60px_rgba(0,0,0,0.55)]">
-                                {card.video ? (
-                                    <video
-                                        ref={(el) => {
-                                            featureVideoRefs.current[index] = el;
-                                        }}
-                                        className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
-                                        src={card.video}
-                                        poster={card.image}
-                                        muted
-                                        loop
-                                        playsInline
-                                        preload="metadata"
-                                    />
-                                ) : (
-                                    <img
-                                        src={card.image}
-                                        alt={card.title}
-                                        className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-110"
-                                    />
-                                )}
-                            </div>
-                            <div className="space-y-1">
-                                <span className="text-primary text-[8px] sm:text-[10px] uppercase tracking-[0.25em] font-semibold">{card.label}</span>
-                                <h3 className="text-sm sm:text-2xl md:text-4xl font-serif leading-tight text-text-primary">{card.title}</h3>
+                            <div className="skeuo-panel-shell">
+                                <div className="skeuo-panel-head">
+                                    <span className="skeuo-head-dots">
+                                        <span></span>
+                                        <span></span>
+                                    </span>
+                                    <span className="skeuo-mod">MOD-0{index + 1}</span>
+                                </div>
+                                <div className="skeuo-card-media skeuo-feature-media relative overflow-hidden rounded-2xl">
+                                    {card.video ? (
+                                        <video
+                                            ref={(el) => {
+                                                featureVideoRefs.current[index] = el;
+                                            }}
+                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
+                                            src={card.video}
+                                            poster={card.image}
+                                            muted
+                                            loop
+                                            playsInline
+                                            preload="metadata"
+                                        />
+                                    ) : (
+                                        <img
+                                            src={card.image}
+                                            alt={card.title}
+                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-110"
+                                        />
+                                    )}
+                                </div>
+                                <div className="skeuo-text-under skeuo-text-under-top space-y-1">
+                                    <span className="skeuo-kicker text-primary text-[8px] sm:text-[10px] uppercase tracking-[0.25em] font-semibold">{card.label}</span>
+                                    <h3 className="skeuo-title text-sm sm:text-lg md:text-xl font-serif leading-tight text-text-primary">{card.title}</h3>
+                                </div>
+                                <span className="skeuo-panel-cta">{card.cta ?? 'Engage'}</span>
                             </div>
                         </Link>
                     ))}
@@ -447,10 +470,10 @@ const CollectionDiscovery: React.FC = () => {
                             <Link
                                 key={card.id}
                                 to={card.link}
-                                className="group flex flex-col gap-2 min-w-[150px] sm:min-w-[190px] md:min-w-[210px] lg:min-w-[230px]"
+                                className="catalogue-card-lane skeuo-card-link skeuo-card-link-sm group flex flex-col gap-1.5 min-w-[118px] sm:min-w-[142px] md:min-w-[160px] lg:min-w-[175px]"
                                 aria-label={card.title}
                             >
-                                <div className="relative min-h-[170px] sm:min-h-[210px] md:min-h-[230px] lg:min-h-[250px] overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_50px_rgba(0,0,0,0.5)]">
+                                <div className="skeuo-card-media skeuo-card-media-sm relative min-h-[120px] sm:min-h-[145px] md:min-h-[160px] lg:min-h-[180px] overflow-hidden rounded-2xl">
                                     {card.video ? (
                                         <video
                                             ref={(el) => {
@@ -472,9 +495,9 @@ const CollectionDiscovery: React.FC = () => {
                                         />
                                     )}
                                 </div>
-                                <div className="space-y-1">
-                                    <span className="text-primary text-[8px] sm:text-[9px] uppercase tracking-[0.22em] font-semibold">{card.label}</span>
-                                    <h4 className="text-xs sm:text-lg md:text-2xl font-serif leading-tight text-text-primary">{card.title}</h4>
+                                <div className="skeuo-text-under skeuo-text-under-sm space-y-1">
+                                    <span className="skeuo-kicker text-primary text-[8px] sm:text-[9px] uppercase tracking-[0.22em] font-semibold">{card.label}</span>
+                                    <h4 className="skeuo-title skeuo-title-sm text-[11px] sm:text-[13px] md:text-base font-serif leading-tight text-text-primary">{card.title}</h4>
                                 </div>
                             </Link>
                         ))}

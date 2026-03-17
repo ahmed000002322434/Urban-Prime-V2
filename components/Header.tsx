@@ -477,12 +477,37 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const unreadCount = notifications.filter(n => !n.isRead).length;
 
     useEffect(() => {
-        const handleScroll = () => {
+        const isItemRoute = location.pathname.startsWith('/item/');
+
+        const handleWindowScroll = () => {
+            if (isItemRoute) return;
             setIsScrolled(window.scrollY > 50);
         };
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+
+        const handleItemFrameScroll = (event: MessageEvent) => {
+            if (!isItemRoute) return;
+            if (event.origin !== window.location.origin) return;
+
+            const payload = event.data;
+            if (!payload || payload.type !== 'urbanprime:item-detail-scroll') return;
+
+            const scrollY = Number(payload.scrollY) || 0;
+            setIsScrolled(scrollY > 50);
+        };
+
+        if (isItemRoute) {
+            setIsScrolled(false);
+            window.addEventListener('message', handleItemFrameScroll);
+        } else {
+            handleWindowScroll();
+            window.addEventListener('scroll', handleWindowScroll);
+        }
+
+        return () => {
+            window.removeEventListener('scroll', handleWindowScroll);
+            window.removeEventListener('message', handleItemFrameScroll);
+        };
+    }, [location.pathname]);
 
     const fetchNotifications = useCallback(async () => {
         if (!user) return;
@@ -723,7 +748,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const mobileIconBtnClass = 'p-1.5 rounded-full hover:bg-surface-soft text-text-primary';
 
     const searchVariants = {
-        hidden: { opacity: 0, y: -10, scale: 0.95 },
+        hidden: { opacity: 0, y: -5, scale: 0.98 },
         visible: { opacity: 1, y: 0, scale: 1 },
     };
 
@@ -891,7 +916,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} overflow-x-auto overflow-y-visible no-scrollbar`}>
+                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} flex-wrap justify-center`}>
                             <NavLink to="/deals" className={getMobileNavLinkClass}>{t('header.deals')}</NavLink>
                             <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
                                 <span className="text-purple-500"><GenieIcon /></span> Genie
@@ -934,7 +959,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                 placeholder="Search products, pages, and features..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full h-11 px-4 rounded-full bg-surface-soft text-text-primary border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="w-full h-14 px-5 text-base rounded-full bg-surface-soft text-text-primary border border-border focus:outline-none focus:ring-2 focus:ring-primary"
                                 autoFocus
                             />
                         </form>
@@ -1014,11 +1039,12 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     animate="visible"
                     exit="hidden"
                     variants={searchVariants}
-                    transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 350 }}
                     style={{
                         position: 'fixed',
                         top: `${searchPosition.top}px`,
                         left: `${searchPosition.left}px`,
+                        transformOrigin: 'top center',
                     }}
                     className={`z-40 w-[640px] bg-surface/90 backdrop-blur-md shadow-lg border border-border/80
                         ${showSearchPanel ? 'rounded-2xl p-4' : 'h-12 p-1 rounded-full'}`}

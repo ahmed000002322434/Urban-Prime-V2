@@ -41,21 +41,21 @@ const JobRequestCard: React.FC<{ request: Job; onAccept: () => void; onDecline: 
     >
         <div className="flex justify-between items-start mb-4">
             <div className="flex gap-4">
-                <img src={request.customer.avatar} alt={request.customer.name} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-white/10" />
+                <img src={request.customer?.avatar || '/icons/user-placeholder.svg'} alt={request.customer?.name || 'Customer'} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-white/10" />
                 <div>
-                    <h4 className="font-bold text-lg text-text-primary">{request.service?.title}</h4>
+                    <h4 className="font-bold text-lg text-text-primary">{request.service?.title || 'Untitled Service'}</h4>
                     <p className="text-sm text-text-secondary flex items-center gap-1">
-                        {request.customer.name} <span>&middot;</span> <MapPinIcon /> 2.5km away
+                        {request.customer?.name || 'Anonymous'} <span>&middot;</span> <MapPinIcon /> 2.5km away
                     </p>
                 </div>
             </div>
             <div className="text-right">
                 <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wider">New Request</span>
-                <p className="text-xl font-black text-primary mt-1">${request.price}</p>
+                <p className="text-xl font-black text-primary mt-1">${request.price || 0}</p>
             </div>
         </div>
         <div className="bg-surface-soft p-3 rounded-lg mb-4 text-sm text-text-secondary font-mono">
-             <p>{new Date(request.scheduledTime).toLocaleDateString()} @ {new Date(request.scheduledTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+             <p>{request.scheduledTime ? new Date(request.scheduledTime).toLocaleDateString() : 'TBD'} @ {request.scheduledTime ? new Date(request.scheduledTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'TBD'}</p>
         </div>
         <div className="flex gap-3">
             <button onClick={onAccept} className="flex-1 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-xl hover:opacity-90 transition-opacity">Accept Job</button>
@@ -73,11 +73,11 @@ const ActiveJobCard: React.FC<{ job: Job; onComplete: () => void }> = ({ job, on
          <div className="flex justify-between items-start mb-2">
             <div className="flex gap-3">
                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center text-green-600 dark:text-green-400 font-bold">
-                    {job.customer.name.charAt(0)}
+                    {job.customer?.name?.charAt(0) || '?'}
                 </div>
                 <div>
-                    <h4 className="font-bold text-text-primary">{job.service?.title}</h4>
-                    <p className="text-sm text-text-secondary">Client: {job.customer.name}</p>
+                    <h4 className="font-bold text-text-primary">{job.service?.title || 'Untitled Service'}</h4>
+                    <p className="text-sm text-text-secondary">Client: {job.customer?.name || 'Anonymous'}</p>
                 </div>
             </div>
             <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-[10px] font-black px-2 py-1 rounded-full uppercase">In Progress</span>
@@ -99,7 +99,7 @@ const ServiceRow: React.FC<{ service: Service }> = ({ service }) => (
         <div className="flex items-center gap-4">
             <img src={service.imageUrls?.[0] || '/icons/urbanprime.svg'} alt={service.title} className="w-16 h-16 rounded-lg object-cover border border-border" />
             <div>
-                <h4 className="font-bold text-text-primary">{service.title}</h4>
+                <h4 className="font-bold text-text-primary">{service.title || 'Untitled Service'}</h4>
                 <p className="text-sm text-text-secondary font-mono">
                     ${(service.pricingModels?.[0]?.price || 0)}/{service.pricingModels?.[0]?.type === 'hourly' ? 'hr' : 'job'}
                 </p>
@@ -122,10 +122,10 @@ const ProposalRow: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
         <div className="flex items-start justify-between gap-4">
             <div>
                 <p className="text-xs font-black tracking-wider uppercase text-text-secondary">Proposal</p>
-                <h4 className="font-bold text-text-primary">{proposal.title}</h4>
+                <h4 className="font-bold text-text-primary">{proposal.title || 'Untitled Proposal'}</h4>
                 <p className="text-sm text-text-secondary mt-1 line-clamp-2">{proposal.coverLetter || 'No cover letter provided.'}</p>
                 <p className="text-sm font-mono text-text-secondary mt-2">
-                    ${proposal.priceTotal.toLocaleString()} {proposal.currency} | {proposal.deliveryDays || 0} days
+                    ${(proposal.priceTotal || 0).toLocaleString()} {proposal.currency || 'USD'} | {proposal.deliveryDays || 0} days
                 </p>
             </div>
             <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
@@ -145,7 +145,7 @@ const ProviderDashboardPage: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'overview' | 'requests' | 'active' | 'services' | 'proposals'>('overview');
-    const [stats, setStats] = useState<any>(null);
+    const [stats, setStats] = useState<any>({ earnings: 0, activeJobs: 0, jobsCompleted: 0, rating: 0 });
     const [requests, setRequests] = useState<Job[]>([]);
     const [activeJobs, setActiveJobs] = useState<Job[]>([]);
     const [services, setServices] = useState<Service[]>([]);
@@ -157,17 +157,17 @@ const ProviderDashboardPage: React.FC = () => {
         setIsLoading(true);
         try {
             const [statsData, reqs, active, servs, proposalRows] = await Promise.all([
-                providerService.getProviderStats(user.id),
-                providerService.getIncomingRequests(user.id),
-                providerService.getActiveJobs(user.id),
-                serviceService.getServicesByProvider(user.id),
-                proposalService.getProviderProposals(user.id)
+                providerService.getProviderStats(user.id).catch(() => ({ earnings: 0, activeJobs: 0, jobsCompleted: 0, rating: 0 })),
+                providerService.getIncomingRequests(user.id).catch(() => []),
+                providerService.getActiveJobs(user.id).catch(() => []),
+                serviceService.getServicesByProvider(user.id).catch(() => []),
+                proposalService.getProviderProposals(user.id).catch(() => [])
             ]);
-            setStats(statsData);
-            setRequests(reqs);
-            setActiveJobs(active);
-            setServices(servs);
-            setProposals(proposalRows);
+            setStats(statsData || { earnings: 0, activeJobs: 0, jobsCompleted: 0, rating: 0 });
+            setRequests(reqs || []);
+            setActiveJobs(active || []);
+            setServices(servs || []);
+            setProposals(proposalRows || []);
         } catch (e) {
             console.error(e);
         } finally {

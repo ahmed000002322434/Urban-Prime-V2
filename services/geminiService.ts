@@ -3,8 +3,39 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { Store, Review, User, Item, TrendAnalysis, GenieResponse } from '../types';
 import type { StoreLayout, StoreSEO } from '../storeTypes';
 
-// Initializing the GoogleGenAI client with the API key from environment variables.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const AI_UNAVAILABLE_MESSAGE = 'AI unavailable: configure VITE_GEMINI_API_KEY.';
+
+const getApiKey = () => {
+    const viteKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+    if (viteKey) return viteKey;
+    if (typeof process !== 'undefined') {
+        return (process.env as any)?.API_KEY as string | undefined;
+    }
+    return undefined;
+};
+
+let aiClient: GoogleGenAI | null = null;
+const getAiClient = () => {
+    const apiKey = getApiKey();
+    if (!apiKey) return null;
+    if (!aiClient) {
+        aiClient = new GoogleGenAI({ apiKey });
+    }
+    return aiClient;
+};
+
+const requireAiClient = () => {
+    const client = getAiClient();
+    if (!client) {
+        throw new Error(AI_UNAVAILABLE_MESSAGE);
+    }
+    return client;
+};
+
+const safeGenerateContent = async (params: Parameters<GoogleGenAI['models']['generateContent']>[0]) => {
+    const client = requireAiClient();
+    return client.models.generateContent(params);
+};
 
 /**
  * Validates and parses JSON returned by the AI, stripping markdown code blocks if present.
@@ -41,19 +72,18 @@ export const askAboutShaiza = async (question: string): Promise<string> => {
         Be empathetic, professional, and slightly poetic, reflecting the friendship between Ahmed and Shaiza.
     `;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: {
-                systemInstruction: "You are the Urban Prime Historian. You provide brief, truthful insights into the founders' past based ONLY on provided context."
-            }
-        });
-        return response.text?.trim() || "Information is currently unavailable.";
-    } catch (error) {
-        console.error("AI Failure:", error);
-        return "The Genie is currently resting. Please try again later.";
+    const response = await safeGenerateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+            systemInstruction: "You are the Urban Prime Historian. You provide brief, truthful insights into the founders' past based ONLY on provided context."
+        }
+    });
+    const text = response.text?.trim();
+    if (!text) {
+        throw new Error('AI returned an empty response.');
     }
+    return text;
 };
 
 /**
@@ -67,17 +97,12 @@ export const generateStoreLayout = async (prompt: string, category: string): Pro
     Return ONLY a valid JSON object matching the StoreLayout schema.
     `;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: systemPrompt,
-            config: { responseMimeType: "application/json" }
-        });
-        return validateJson(response.text);
-    } catch (error) {
-        console.error("AI Designer Failure:", error);
-        throw error;
-    }
+    const response = await safeGenerateContent({
+        model: "gemini-3-flash-preview",
+        contents: systemPrompt,
+        config: { responseMimeType: "application/json" }
+    });
+    return validateJson(response.text);
 };
 
 /**
@@ -99,28 +124,23 @@ export const generateStoreSEO = async (storeName: string, description: string, p
     { "metaTitle": "string", "metaDescription": "string", "socialImage": "string" }
     `;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: { 
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        metaTitle: { type: Type.STRING },
-                        metaDescription: { type: Type.STRING },
-                        socialImage: { type: Type.STRING }
-                    },
-                    required: ["metaTitle", "metaDescription", "socialImage"]
-                }
+    const response = await safeGenerateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { 
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    metaTitle: { type: Type.STRING },
+                    metaDescription: { type: Type.STRING },
+                    socialImage: { type: Type.STRING }
+                },
+                required: ["metaTitle", "metaDescription", "socialImage"]
             }
-        });
-        return validateJson(response.text);
-    } catch (error) {
-        console.error("SEO AI Failure:", error);
-        throw error;
-    }
+        }
+    });
+    return validateJson(response.text);
 };
 
 /**
@@ -128,11 +148,15 @@ export const generateStoreSEO = async (storeName: string, description: string, p
  */
 export const refineTextWithAI = async (text: string, context: string): Promise<string> => {
     const prompt = `Refine this text for a professional store: "${text}". Context: ${context}`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
     });
-    return response.text?.trim() || text;
+    const refined = response.text?.trim();
+    if (!refined) {
+        throw new Error('AI returned an empty response.');
+    }
+    return refined;
 };
 
 // FIX: Added missing generateCommunityPrompt function.
@@ -141,11 +165,15 @@ export const refineTextWithAI = async (text: string, context: string): Promise<s
  */
 export const generateCommunityPrompt = async (): Promise<string> => {
     const prompt = "Generate a short, inspiring prompt to encourage users to share their favorite rental or shopping story on Urban Prime.";
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
     });
-    return response.text?.trim() || "Share a story about your favorite experience!";
+    const text = response.text?.trim();
+    if (!text) {
+        throw new Error('AI returned an empty response.');
+    }
+    return text;
 };
 
 // FIX: Added missing generateImageFromPrompt function.
@@ -153,11 +181,10 @@ export const generateCommunityPrompt = async (): Promise<string> => {
  * Generates an image based on a text prompt using the nano banana series model.
  */
 export const generateImageFromPrompt = async (prompt: string): Promise<string> => {
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: 'gemini-2.5-flash-image',
         contents: [{ text: prompt }]
     });
-
     for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
             return `data:image/png;base64,${part.inlineData.data}`;
@@ -176,7 +203,7 @@ export const sendMessageToChat = async (text: string, history: any[], mode: stri
         projectPlanner: "You are the AI Project Planner. Help users create checklists of rental items for their projects."
     };
 
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: text,
         config: {
@@ -184,7 +211,11 @@ export const sendMessageToChat = async (text: string, history: any[], mode: stri
             // history would ideally be passed if using ai.chats, but for direct generateContent we simulate context.
         }
     });
-    return response.text || "";
+    const reply = response.text?.trim();
+    if (!reply) {
+        throw new Error('AI returned an empty response.');
+    }
+    return reply;
 };
 
 // FIX: Added missing getDisputeSuggestion function.
@@ -198,11 +229,15 @@ export const getDisputeSuggestion = async (renterClaim: string, ownerResponse: s
     Owner Response: "${ownerResponse}"
     Provide a fair, neutral, and professional resolution suggestion.
     `;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
     });
-    return response.text || "I recommend both parties communicate further to reach an agreement.";
+    const text = response.text?.trim();
+    if (!text) {
+        throw new Error('AI returned an empty response.');
+    }
+    return text;
 };
 
 // FIX: Added missing editStorefrontWithAI function.
@@ -218,7 +253,7 @@ export const editStorefrontWithAI = async (currentStorefront: Store, prompt: str
     Return JSON: { "updatedStorefront": {}, "aiResponse": "string" }
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-pro-preview",
         contents: systemPrompt,
         config: { responseMimeType: "application/json" }
@@ -233,7 +268,7 @@ export const editStorefrontWithAI = async (currentStorefront: Store, prompt: str
  */
 export const generateListingDetailsFromImage = async (base64: string, mimeType: string): Promise<any> => {
     const prompt = "Analyze this image and provide a product title, description, and suggested category for a marketplace listing. Return as JSON.";
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: {
             parts: [
@@ -263,7 +298,7 @@ export const generateListingDetailsFromImage = async (base64: string, mimeType: 
  */
 export const suggestPrice = async (title: string, category: string): Promise<{ price: number; justification: string }> => {
     const prompt = `Suggest a fair marketplace rental price per day for: "${title}" in category "${category}". Return JSON with 'price' (number) and 'justification' (string).`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { 
@@ -293,7 +328,7 @@ export const generateStorefront = async (creationData: any, userItems: Item[], u
     
     Return JSON with: slug, brandingKit (palette, fontPairing, logoDescription), layout, banner (text), pages (array of slug, title, content components).
     `;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-pro-preview",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -307,7 +342,7 @@ export const generateStorefront = async (creationData: any, userItems: Item[], u
  */
 export const analyzeMarketTrends = async (): Promise<TrendAnalysis> => {
     const prompt = "Analyze current global and local e-commerce trends for a multi-category rental and sales marketplace. Return trendingCategories, hotProducts, and hiddenGems as JSON.";
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -321,7 +356,7 @@ export const analyzeMarketTrends = async (): Promise<TrendAnalysis> => {
  */
 export const removeBackgroundWithAI = async (base64: string, mimeType: string): Promise<string> => {
     const prompt = "Remove the background from this image and return the main subject on a transparent background.";
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
             parts: [
@@ -330,7 +365,6 @@ export const removeBackgroundWithAI = async (base64: string, mimeType: string): 
             ]
         }
     });
-
     for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
             return `data:image/png;base64,${part.inlineData.data}`;
@@ -344,7 +378,7 @@ export const removeBackgroundWithAI = async (base64: string, mimeType: string): 
  * Edits an image based on a natural language instruction.
  */
 export const editImageWithPrompt = async (base64: string, mimeType: string, prompt: string): Promise<string> => {
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
             parts: [
@@ -353,7 +387,6 @@ export const editImageWithPrompt = async (base64: string, mimeType: string, prom
             ]
         }
     });
-
     for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
             return `data:image/png;base64,${part.inlineData.data}`;
@@ -368,7 +401,7 @@ export const editImageWithPrompt = async (base64: string, mimeType: string, prom
  */
 export const translateObject = async (obj: any, targetLang: string): Promise<any> => {
     const prompt = `Translate all string values in this object to ${targetLang}. Preserve the keys and JSON structure. OBJECT: ${JSON.stringify(obj)}`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -382,7 +415,7 @@ export const translateObject = async (obj: any, targetLang: string): Promise<any
  */
 export const generateCaptions = async (itemTitles: string[]): Promise<{ captions: string[] }> => {
     const prompt = `Generate 3 catchy, viral social media captions for a short video showcasing: ${itemTitles.join(', ')}. Return as JSON array of strings in 'captions' field.`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { 
@@ -405,7 +438,7 @@ export const generateCaptions = async (itemTitles: string[]): Promise<{ captions
  */
 export const generateHashtags = async (caption: string): Promise<{ hashtags: string[] }> => {
     const prompt = `Generate 5-8 trending and relevant hashtags for this caption: "${caption}". Return as JSON array of strings in 'hashtags' field.`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { 
@@ -448,7 +481,7 @@ export const interactWithUrbanGenie = async (base64: string, mimeType: string, p
         parts.push({ inlineData: { data: base64, mimeType: mimeType } });
     }
 
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-pro-preview",
         contents: { parts },
         config: {
@@ -457,6 +490,9 @@ export const interactWithUrbanGenie = async (base64: string, mimeType: string, p
             tools: [{ googleSearch: {} }]
         }
     });
+    if (!response.text) {
+        throw new Error('AI returned an empty response.');
+    }
     // Returning raw response object because the UI needs candidates[0].groundingMetadata
     return {
         text: response.text,
@@ -470,11 +506,15 @@ export const interactWithUrbanGenie = async (base64: string, mimeType: string, p
  */
 export const generateProfessionalBio = async (title: string): Promise<string> => {
     const prompt = `Write a professional, trustworthy, and engaging bio for a service provider specializing in: "${title}".`;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
     });
-    return response.text?.trim() || "";
+    const text = response.text?.trim();
+    if (!text) {
+        throw new Error('AI returned an empty response.');
+    }
+    return text;
 };
 
 // FIX: Added missing generateStoreDesign function.
@@ -489,7 +529,7 @@ export const generateStoreDesign = async (prompt: string, currentStore: Store): 
     
     Return ONLY the updated fragments as JSON.
     `;
-    const response = await ai.models.generateContent({
+    const response = await safeGenerateContent({
         model: "gemini-3-flash-preview",
         contents: systemPrompt,
         config: { responseMimeType: "application/json" }

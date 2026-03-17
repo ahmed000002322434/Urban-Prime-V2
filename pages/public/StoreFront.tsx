@@ -13,12 +13,32 @@ import EditableTextSection from '../../components/builder/sections/EditableTextS
 import LottieAnimation from '../../components/LottieAnimation';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
+const toBrandSlug = (value: string) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
 const StoreFront: React.FC = () => {
     const { storeSlug } = useParams<{ storeSlug: string }>();
     const [layout, setLayout] = useState<StoreLayout | null>(null);
     const [storeBase, setStoreBase] = useState<Store | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const topBrands = React.useMemo(() => {
+        const counts = new Map<string, number>();
+        (storeBase?.products || []).forEach((product: any) => {
+            const brand = String(product?.brand || '').trim();
+            if (!brand) return;
+            counts.set(brand, (counts.get(brand) || 0) + 1);
+        });
+        return [...counts.entries()]
+            .sort((left, right) => right[1] - left[1])
+            .slice(0, 4)
+            .map(([name]) => ({ name, slug: toBrandSlug(name) }));
+    }, [storeBase?.products]);
 
     useEffect(() => {
         const fetchStore = async () => {
@@ -65,10 +85,19 @@ const StoreFront: React.FC = () => {
                     <meta property="og:type" content="website" />
                 </Helmet>
 
-                <nav className="h-16 bg-white/80 backdrop-blur-md border-b sticky top-0 z-50 flex items-center px-6">
-                    <h1 className="text-xl font-black uppercase tracking-tighter" style={{ color: layout.theme.primaryColor }}>
+                <nav className="min-h-16 bg-white/80 backdrop-blur-md border-b sticky top-0 z-50 flex flex-wrap items-center gap-2 px-6 py-2">
+                    <h1 className="text-xl font-black uppercase tracking-tighter mr-2" style={{ color: layout.theme.primaryColor }}>
                         {storeBase?.name}
                     </h1>
+                    {topBrands.map((brand) => (
+                        <Link
+                            key={brand.slug}
+                            to={`/brands/${brand.slug}`}
+                            className="rounded-full border border-black/10 bg-white/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-700 hover:border-black/30"
+                        >
+                            {brand.name}
+                        </Link>
+                    ))}
                 </nav>
 
                 <main>

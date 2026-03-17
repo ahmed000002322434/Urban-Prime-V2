@@ -28,7 +28,8 @@ const OrderSummaryCard: React.FC<OrderSummaryCardProps> = ({ isCheckout = false,
     
     // Calculate Security Deposit Total
     const totalDeposit = cartItems.reduce((sum, item) => {
-        if (item.listingType === 'rent' && item.securityDeposit) {
+        const isRentMode = item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+        if (isRentMode && item.securityDeposit) {
             return sum + (item.securityDeposit * item.quantity);
         }
         return sum;

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 import AIChatBot from './AIChatBot';
@@ -13,6 +13,7 @@ import PixeFloatingButton from './PixeFloatingButton';
 import { useTheme } from '../hooks/useTheme';
 import OmniDashboard from './omni/OmniDashboard';
 import MobileAppChrome from './MobileAppChrome';
+import { useCart } from '../hooks/useCart';
 
 const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ message, onClose }) => (
     <div className="bg-primary text-white text-center p-2 text-sm font-semibold relative z-[60]">
@@ -24,7 +25,9 @@ const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ messag
 
 const Layout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
+  const { addItemToCart } = useCart();
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [showBanner, setShowBanner] = useState(true);
   const [isOmniOpen, setIsOmniOpen] = useState(false);
@@ -33,8 +36,53 @@ const Layout: React.FC = () => {
     adminService.getSiteSettings().then(setSiteSettings);
   }, []);
 
+  useEffect(() => {
+    const handleItemDetailAction = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data;
+      if (!payload || payload.type !== 'urbanprime:item-detail-action') return;
+
+      const action = String(payload.action || '').trim();
+      if (!action) return;
+
+      if (action === 'place_bid') {
+        const itemId = encodeURIComponent(String(payload.itemId || ''));
+        const sellerId = encodeURIComponent(String(payload.sellerId || ''));
+        const amount = encodeURIComponent(String(payload.amount || ''));
+        navigate(`/chat-with-us?itemId=${itemId}&sellerId=${sellerId}&bid=${amount}`);
+        return;
+      }
+
+      const item = payload.item;
+      if (!item || typeof item !== 'object' || !('id' in item)) return;
+
+      const quantity = Math.max(1, Math.floor(Number(payload.quantity) || 1));
+      const transactionMode = payload.transactionMode === 'rent' ? 'rent' : 'sale';
+      const rentalPeriod =
+        payload.rentalPeriod &&
+        typeof payload.rentalPeriod === 'object' &&
+        payload.rentalPeriod.startDate &&
+        payload.rentalPeriod.endDate
+          ? {
+              startDate: String(payload.rentalPeriod.startDate),
+              endDate: String(payload.rentalPeriod.endDate)
+            }
+          : undefined;
+
+      addItemToCart(item as any, quantity, undefined, rentalPeriod, transactionMode);
+
+      if (action === 'buy_now' || action === 'rent_now') {
+        navigate('/checkout');
+      }
+    };
+
+    window.addEventListener('message', handleItemDetailAction);
+    return () => window.removeEventListener('message', handleItemDetailAction);
+  }, [addItemToCart, navigate]);
+
   const isStoreCreationFlow = location.pathname.startsWith('/create-store') || location.pathname.startsWith('/store/preview') || location.pathname.startsWith('/store/generating');
   const isListItemPage = location.pathname.includes('/profile/products/new');
+  const isItemDetailRoute = location.pathname.startsWith('/item/');
   const isReelsPage = location.pathname === '/reels';
   const isInspirationPage = location.pathname.startsWith('/inspiration');
   const isDashboardRoute = location.pathname.startsWith('/profile');
@@ -48,11 +96,10 @@ const Layout: React.FC = () => {
   
   const isHomePage = location.pathname === '/';
   const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute;
-  const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute;
+  const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isItemDetailRoute;
   const showMobileChrome =
     !isReelsPage &&
     !isInspirationPage &&
-    !isDashboardRoute &&
     !isStoreCreationFlow &&
     !isAuthRoute &&
     !isAdminRoute;
@@ -63,6 +110,7 @@ const Layout: React.FC = () => {
   const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
   const headerSpacing = showHeader && !isHomePage ? 'md:pt-24' : '';
   const mobileChromeSpacing = showMobileChrome ? 'pb-[6.25rem]' : '';
+  const mainOverflowClass = '';
 
   return (
     <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative overflow-x-hidden`}>
@@ -72,7 +120,7 @@ const Layout: React.FC = () => {
           <Header onOpenOmni={() => setIsOmniOpen(true)} />
         </div>
       ) : null}
-      <main className={`flex-grow relative z-10 ${mainBgClass} ${headerSpacing} ${mobileChromeSpacing}`}>
+      <main className={`flex-grow relative z-10 ${mainBgClass} ${headerSpacing} ${mobileChromeSpacing} ${mainOverflowClass}`}>
         <div>
           <Outlet />
         </div>
@@ -81,12 +129,12 @@ const Layout: React.FC = () => {
       {/* Omni Interface */}
       <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
 
-      {!isDashboardRoute ? (
+      {!isDashboardRoute && !isItemDetailRoute ? (
         <div className="hidden md:block">
           <ComparisonBar />
         </div>
       ) : null}
-      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute ? (
+      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && !isItemDetailRoute ? (
         <div className="hidden md:block">
           <FloatingWidget />
         </div>
@@ -100,12 +148,12 @@ const Layout: React.FC = () => {
           <Footer />
         )
       ) : null}
-      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute ? (
+      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && !isItemDetailRoute ? (
         <div className="hidden md:block">
           <AIChatBot />
         </div>
       ) : null}
-      {!isReelsPage && !isDashboardRoute ? (
+      {!isReelsPage && !isDashboardRoute && !isItemDetailRoute ? (
         <div className="hidden md:block">
           <PixeFloatingButton />
         </div>

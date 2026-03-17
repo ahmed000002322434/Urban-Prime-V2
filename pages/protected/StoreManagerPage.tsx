@@ -264,7 +264,7 @@ const StoreManagerPage: React.FC = () => {
                   className="p-6 bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg text-white font-bold hover:shadow-lg transition-all group"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => navigate('/seller/listings')}
+                  onClick={() => navigate('/profile/products/new')}
                 >
                   <div className="text-3xl mb-2 group-hover:scale-125 transition-transform">📦</div>
                   <p>Add New Listing</p>

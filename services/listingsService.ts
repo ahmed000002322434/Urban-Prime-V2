@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy listing stack.
+ * Active listing workflows (create/edit/lifecycle/profile visibility) must use `itemService`.
+ * Retained temporarily for backward compatibility only.
+ */
 import {
   collection,
   addDoc,

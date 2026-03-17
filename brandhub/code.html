@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Hyper-Tactile Brand Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2563EB",
+                        "accent": "#7C3AED",
+                        "surface": "#EBEFF4",
+                        "surface-dark": "#DDE3EB",
+                        "text-primary": "#1E293B",
+                        "text-secondary": "#64748B",
+                        "indicator-on": "#10B981",
+                        "indicator-off": "#94A3B8",
+                    },
+                    fontFamily: {
+                        "sans": ["Plus Jakarta Sans", "sans-serif"],
+                        "serif": ["Instrument Serif", "serif"],
+                    },
+                    boxShadow: {
+                        'embossed': 'inset 2px 2px 5px rgba(0,0,0,0.1), inset -3px -3px 7px rgba(255,255,255,0.9)',
+                        'debossed': 'inset 4px 4px 8px rgba(0,0,0,0.15), inset -4px -4px 10px rgba(255,255,255,1)',
+                        'soft-lift': '8px 8px 16px rgba(0,0,0,0.1), -8px -8px 16px rgba(255,255,255,0.8)',
+                        'floating': '20px 20px 60px rgba(0,0,0,0.1), -20px -20px 60px rgba(255,255,255,0.8)',
+                        'knob': '6px 6px 10px rgba(0,0,0,0.15), -2px -2px 10px rgba(255,255,255,1), inset 0 0 2px rgba(255,255,255,0.5)',
+                        'led-glow': '0 0 5px #10B981, inset 0 0 2px rgba(255,255,255,0.8)',
+                        'screen-inset': 'inset 2px 2px 6px rgba(0,0,0,0.6), inset -1px -1px 2px rgba(255,255,255,0.1)',
+                    },
+                    backgroundImage: {
+                        'brushed-metal': 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+                        'matte-plastic': 'linear-gradient(to bottom right, #f8fafc, #e2e8f0)',
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'scroll': 'scroll 40s linear infinite',
+                        'led-pulse': 'led-pulse 2s infinite',
+                        'knob-turn': 'knob-turn 3s ease-in-out infinite alternate',
+                        'scan': 'scan 8s linear infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        scroll: {
+                            '0%': { transform: 'translateX(0)' },
+                            '100%': { transform: 'translateX(-50%)' },
+                        },
+                        'led-pulse': {
+                            '0%, 100%': { opacity: '1', boxShadow: '0 0 5px #10B981' },
+                            '50%': { opacity: '0.6', boxShadow: '0 0 2px #10B981' },
+                        },
+                         'knob-turn': {
+                            '0%': { transform: 'rotate(-45deg)' },
+                            '100%': { transform: 'rotate(45deg)' },
+                        },
+                        scan: {
+                            '0%': { top: '0%', opacity: '0' },
+                            '10%': { opacity: '1' },
+                            '90%': { opacity: '1' },
+                            '100%': { top: '100%', opacity: '0' },
+                        }
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #EBEFF4;
+            color: #1E293B;
+            overflow-x: hidden;
+        }
+        .tactile-card {
+            background: #EBEFF4;
+            border-radius: 32px;
+            box-shadow:  20px 20px 60px #c8ccd0, -20px -20px 60px #ffffff;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .tactile-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 25px 25px 70px #c8ccd0, -25px -25px 70px #ffffff;
+        }
+        .concave-surface {
+            background: #EBEFF4;
+            border-radius: 50%;
+            box-shadow: inset 20px 20px 60px #c8ccd0, inset -20px -20px 60px #ffffff;
+        }
+        .soft-button {
+            border-radius: 16px;
+            background: #EBEFF4;
+            box-shadow:  5px 5px 10px #c8ccd0, -5px -5px 10px #ffffff;
+            border: 1px solid rgba(255,255,255,0.4);
+            transition: all 0.1s ease;
+        }
+        .soft-button:active, .soft-button.active {
+            box-shadow: inset 5px 5px 10px #c8ccd0, inset -5px -5px 10px #ffffff;
+            transform: scale(0.98);
+        }
+        .knob-base {
+            border-radius: 50%;
+            background: linear-gradient(145deg, #ffffff, #d3d7db);
+            box-shadow:  8px 8px 16px #c8ccd0, -8px -8px 16px #ffffff;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .knob-face {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            background: #EBEFF4;
+            box-shadow: inset 2px 2px 5px #c8ccd0, inset -2px -2px 5px #ffffff;
+        }
+        .knob-indicator {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform-origin: 50% 175%;width: 4px;
+            height: 12px;
+            background: #2563EB;
+            border-radius: 2px;
+            box-shadow: 0 0 2px rgba(37, 99, 235, 0.5);
+        }
+        .inset-text {
+            color: rgba(0,0,0,0.3);
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.8);
+        }
+        .etched-text {
+            color: #EBEFF4;
+            text-shadow: -1px -1px 1px rgba(0,0,0,0.2), 1px 1px 1px rgba(255,255,255,0.9);
+            background-color: #EBEFF4; 
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+        .speaker-grille {
+            background-image: radial-gradient(#1e293b 15%, transparent 16%); 
+            background-size: 8px 8px;
+            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.1);
+        }
+        .infinite-slider-track {
+            display: flex;
+            width: fit-content;
+            animation: scroll 60s linear infinite;
+        }
+        .infinite-slider-track:hover {
+            animation-play-state: paused;
+        }
+        .screen-panel {
+            background: #0f172a;
+            box-shadow: inset 4px 4px 10px rgba(0,0,0,0.8), inset -1px -1px 2px rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        .screen-glass {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%);
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+        .led {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #94A3B8;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        .led.active {
+            background: #10B981;
+            box-shadow: 0 0 6px #10B981, inset 0 0 2px rgba(255,255,255,0.8);
+        }
+        .product-scroller {
+             mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+             -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+        }
+        .live-ticker-item {
+            animation: ticker 20s linear infinite;
+        }
+        @keyframes ticker {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-50%); }
+        }
+    </style>
+</head>
+<body class="font-sans text-text-primary selection:bg-primary/20 selection:text-primary overflow-x-hidden">
+<div class="relative w-full max-w-[1600px] mx-auto p-6 md:p-12 flex flex-col gap-24 lg:gap-32">
+<section class="flex flex-col lg:flex-row items-center justify-between min-h-[70vh] gap-12 py-10 relative">
+<div class="text-left space-y-10 max-w-2xl relative z-10 lg:order-1 order-2">
+<div class="flex items-center gap-4">
+<div class="led active animate-led-pulse"></div>
+<span class="text-xs font-bold tracking-widest text-text-secondary uppercase inset-text">System v5.0 // Online</span>
+</div>
+<div class="relative p-8 -ml-8">
+<div class="absolute inset-0 rounded-[3rem] shadow-debossed opacity-50"></div>
+<h1 class="relative text-6xl md:text-8xl lg:text-9xl tracking-tight leading-[0.85] select-none">
+<span class="font-serif italic font-light block mb-2 text-text-primary/80" style="text-shadow: 1px 1px 0 #fff;">Tactile</span>
+<span class="font-extrabold block text-slate-300 etched-text drop-shadow-sm">Fidelity.</span>
+</h1>
+</div>
+<p class="text-xl md:text-2xl text-text-secondary font-medium max-w-lg leading-relaxed inset-text pl-2">
+                The physical interface for digital brand discovery. <br/>Molded from data, refined by touch.
+            </p>
+<div class="flex flex-wrap gap-6 pt-4">
+<button id="brand-hub-start-engine" class="soft-button px-10 py-5 font-bold text-text-primary text-sm tracking-wide uppercase flex items-center gap-3 group active:scale-95" type="button">
+                    Start Engine
+                    <span class="material-symbols-outlined text-lg text-primary">power_settings_new</span>
+</button>
+<div class="flex gap-4 items-center">
+<div class="w-12 h-12 rounded-full shadow-embossed flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+<span class="material-symbols-outlined text-text-secondary">grid_view</span>
+</div>
+<div class="w-12 h-12 rounded-full shadow-embossed flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors">
+<span class="material-symbols-outlined text-text-secondary">tune</span>
+</div>
+</div>
+</div>
+</div>
+<div class="relative w-full max-w-md lg:max-w-xl aspect-square flex items-center justify-center lg:order-2 order-1 perspective-[1000px]">
+<div class="w-full h-full bg-[#EBEFF4] rounded-[3rem] shadow-floating flex items-center justify-center relative border border-white overflow-hidden">
+<div class="absolute w-[80%] h-[80%] concave-surface flex items-center justify-center"></div>
+<div class="absolute left-6 top-1/2 -translate-y-1/2 h-32 w-8 speaker-grille rounded-full opacity-20"></div>
+<div class="absolute right-6 top-1/2 -translate-y-1/2 h-32 w-8 speaker-grille rounded-full opacity-20"></div>
+<div class="w-48 h-48 knob-base relative z-10 group cursor-pointer animate-float">
+<div class="knob-face flex items-center justify-center relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-tr from-slate-200 to-transparent opacity-50"></div>
+<span class="material-symbols-outlined text-6xl text-slate-400 drop-shadow-sm inset-text" style="text-shadow: 1px 1px 0 rgba(255,255,255,1);">storefront</span>
+</div>
+<div class="absolute inset-[-5px] rounded-full border border-blue-500/20 animate-pulse"></div>
+<div class="absolute inset-[-15px] rounded-full border border-slate-300/30 border-dashed animate-[spin_10s_linear_infinite]"></div>
+</div>
+<div class="absolute top-12 flex gap-12">
+<div class="flex flex-col items-center gap-2">
+<div class="w-12 h-12 knob-base cursor-pointer hover:scale-105 transition-transform group">
+<div class="knob-face relative flex items-center justify-center">
+<span class="material-symbols-outlined text-xs text-text-secondary">shopping_bag</span>
+</div>
+</div>
+<span class="text-[9px] font-bold uppercase tracking-widest inset-text">Cart</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-12 h-12 knob-base cursor-pointer hover:scale-105 transition-transform">
+<div class="knob-face relative flex items-center justify-center">
+<span class="material-symbols-outlined text-xs text-text-secondary">sell</span>
+</div>
+</div>
+<span class="text-[9px] font-bold uppercase tracking-widest inset-text">Deals</span>
+</div>
+</div>
+<div class="absolute bottom-12 w-48 h-12 screen-panel rounded-lg flex items-center justify-center gap-3">
+<div class="screen-glass"></div>
+<span class="font-mono text-emerald-500 text-sm tracking-widest animate-pulse">STORE ACTIVE</span>
+</div>
+</div>
+</div>
+</section>
+<div class="w-full max-w-5xl mx-auto relative z-20 -mt-10">
+<div class="tactile-card p-4 flex flex-col md:flex-row items-center gap-6 border border-white/50">
+<div class="flex-1 w-full bg-[#EBEFF4] shadow-debossed rounded-2xl h-16 flex items-center px-6 gap-4">
+<span class="material-symbols-outlined text-text-secondary opacity-50">search</span>
+<input id="brand-hub-search-input" class="flex-1 bg-transparent border-none text-text-primary placeholder-text-secondary/40 focus:ring-0 text-lg font-medium" placeholder="Tune into frequency..." type="text"/>
+</div>
+<div class="h-8 w-[2px] bg-slate-200 shadow-[1px_0_0_#fff] hidden md:block"></div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-center gap-1">
+<button class="w-14 h-8 bg-slate-200 rounded-full shadow-inner relative cursor-pointer group">
+<div class="absolute left-1 top-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform group-hover:translate-x-1"></div>
+</button>
+<span class="text-[9px] font-bold text-text-secondary uppercase">Filter</span>
+</div>
+<div class="flex flex-col items-center gap-1">
+<button class="w-14 h-8 bg-primary rounded-full shadow-inner relative cursor-pointer">
+<div class="absolute right-1 top-1 w-6 h-6 bg-white rounded-full shadow-md"></div>
+</button>
+<span class="text-[9px] font-bold text-primary uppercase">Active</span>
+</div>
+</div>
+<a id="brand-hub-scan-index" href="/#/brands/explore" class="soft-button !bg-primary !text-white !border-none px-8 h-16 rounded-2xl font-bold shadow-[6px_6px_12px_rgba(37,99,235,0.3),-6px_-6px_12px_rgba(255,255,255,0.5)] hover:translate-y-[-2px] active:translate-y-[1px] active:shadow-inner transition-all flex items-center gap-2">
+<span>Scan Index</span>
+</a>
+</div>
+</div>
+<section class="space-y-12 overflow-hidden py-10">
+<div class="flex items-end justify-between px-2 max-w-[1440px] mx-auto">
+<div>
+<span class="text-xs font-bold tracking-widest text-primary uppercase mb-2 block pl-1 inset-text">Module Array</span>
+<h2 class="text-4xl font-serif italic text-text-primary flex items-center gap-3" style="text-shadow: 1px 1px 0 #fff;">
+                    Brand Modules
+                </h2>
+</div>
+<div class="flex gap-3">
+<button class="w-12 h-12 rounded-full bg-[#EBEFF4] shadow-soft-lift flex items-center justify-center hover:scale-95 active:shadow-embossed transition-all">
+<span class="material-symbols-outlined text-text-secondary">arrow_back</span>
+</button>
+<button class="w-12 h-12 rounded-full bg-[#EBEFF4] shadow-soft-lift flex items-center justify-center hover:scale-95 active:shadow-embossed transition-all">
+<span class="material-symbols-outlined text-text-secondary">arrow_forward</span>
+</button>
+</div>
+</div>
+<div class="relative w-full product-scroller">
+<div id="brand-module-track" class="infinite-slider-track gap-10 px-10 py-10">
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led active"></div>
+<div class="led"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-01</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative group">
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB1y6VbGdwu0amW5oosafunxZ2_QHjufK0pObawyco1UfExL0e1k0Iw8bITVM6NArc03RHGM6YtN0P8aEqAzM1HIOfa5oPbxFhzswiLeqOfrRdBec-yWgSZo_sLIcjjvPGWze5x4fPtEkQL3PVREshYeaXqt0xvOfLMsnPI7ptC0VpSyrnIJ49oRN6R02wBa9og3BIXdliojj7AmN6GkVtW2pzTLK2Kmff3fu6bn_3qR3oa2YvWWPo4IpDODEYjJat5tsPBs0ZpeZKa');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-emerald-400 font-mono text-xs mb-1">&gt; SIGNAL_STRONG</p>
+<h3 class="text-white font-bold text-xl tracking-wide">TECH_CORE</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Series A</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary">memory</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led active"></div>
+<div class="led active"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-02</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDvdxZqzab0yCYzOyE5rlmko9rt2m-EJSQfa7KNJwa4r_505UcLMTiFj3n5G6txdX0JBhDQ9zDyWX76NWPKm7K_fB6JginxjHpHzmZlYBWjEAy9cxhrNzW-0fWn8LwV7XhsLmgJENk6bKL3vXlRL0UF8uR9gOSN84i9dK4SwZtW9njHvhyWal1i_7zQhQyoKEbOwfa3lmgn0idxfI43r1wkMyFAMF7HcyWriVEJohV4ribIqDsf3CsN9wzJgkKvfg6D_ijmKVOFyHmi');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-purple-400 font-mono text-xs mb-1">&gt; MODE_LUXE</p>
+<h3 class="text-white font-bold text-xl tracking-wide">COUTURE</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Fashion</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-accent">styler</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led"></div>
+<div class="led active"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-03</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD-oq4AuT6GFeRbko2lITQDILnP-g_yRXwXM1ypiuWFJYtigYiFV7z1AOzudtM8RAsvieSRTNz3Y9TdIOZvXKZZ0i8jPON_JrGCEi6Uj46qYWRa8A8pdV4Qd-6NPIwzQ5GeFx062qGvF8sOxQghaCyFvPHFSARNIb-1ZXpSy3ZOAmtmE9zuiNhIEvDYl9PmZrUBDx38qNjOIiUBeZReN5ZaB_oQnARvVglz9Bbdqxi2SO8nZppsFFWDHZc-OpwF_zW3m4piXw31h3bX');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-blue-400 font-mono text-xs mb-1">&gt; SPACE_OPT</p>
+<h3 class="text-white font-bold text-xl tracking-wide">LIVING</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Interior</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-blue-500">chair</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led active"></div>
+<div class="led active"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-04</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCJnObxfmV8kMEUGvZvSWzoIdlYkAeTbffFs7kofv6WrfF6P4k82k5Mt2sk51sFf6veyOTN_TriC3W17Ij6zF8nO2F2cxHcwOH5X0YFsyengQJpnv0-sq14-7eydRvhpwO9S1iWozWjPs9Aw--2up_w4MGEpamGfZX5P-eU_qoxDE5-hA1jHXmBl3f6N9tB_7m9fMsUl9IWi28eoPvl0KruvLNXQhWeVtb_6Jm0KWGTTBWazyuWjGibugUwhiZ_EwZzEJTTT-rfVygz');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-red-400 font-mono text-xs mb-1">&gt; RPM_MAX</p>
+<h3 class="text-white font-bold text-xl tracking-wide">AUTO</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Motor</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-red-500">directions_car</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led active"></div>
+<div class="led active"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-05</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative">
+<div class="absolute inset-0 bg-slate-800 opacity-90"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-6xl text-slate-500 opacity-50">watch</span>
+</div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-amber-400 font-mono text-xs mb-1">&gt; TIME_SYNC</p>
+<h3 class="text-white font-bold text-xl tracking-wide">CHRONO</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Watches</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-amber-500">schedule</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led"></div>
+<div class="led active"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-06</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative">
+<div class="absolute inset-0 bg-slate-800 opacity-90"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-6xl text-slate-500 opacity-50">sports_esports</span>
+</div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-pink-400 font-mono text-xs mb-1">&gt; GAME_ON</p>
+<h3 class="text-white font-bold text-xl tracking-wide">GAMING</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Electronics</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-pink-500">joystick</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+<div class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0">
+<div class="flex justify-between items-start">
+<div class="flex gap-2">
+<div class="led active"></div>
+<div class="led"></div>
+</div>
+<span class="text-[10px] font-mono text-text-secondary inset-text">MOD-01</span>
+</div>
+<div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative group">
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB1y6VbGdwu0amW5oosafunxZ2_QHjufK0pObawyco1UfExL0e1k0Iw8bITVM6NArc03RHGM6YtN0P8aEqAzM1HIOfa5oPbxFhzswiLeqOfrRdBec-yWgSZo_sLIcjjvPGWze5x4fPtEkQL3PVREshYeaXqt0xvOfLMsnPI7ptC0VpSyrnIJ49oRN6R02wBa9og3BIXdliojj7AmN6GkVtW2pzTLK2Kmff3fu6bn_3qR3oa2YvWWPo4IpDODEYjJat5tsPBs0ZpeZKa');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+<div class="screen-glass"></div>
+<div class="absolute bottom-4 left-4">
+<p class="text-emerald-400 font-mono text-xs mb-1">&gt; SIGNAL_STRONG</p>
+<h3 class="text-white font-bold text-xl tracking-wide">TECH_CORE</h3>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex justify-between items-center px-2">
+<span class="text-xs font-bold text-text-secondary uppercase">Series A</span>
+<div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary">memory</span>
+</div>
+</div>
+<button class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed active:translate-y-[1px] transition-all border border-white/50 uppercase tracking-widest">
+                            Engage
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="space-y-12 max-w-[1440px] mx-auto px-6">
+<div class="flex items-end gap-6">
+<div>
+<span class="text-xs font-bold tracking-widest text-primary uppercase mb-2 block pl-1 inset-text">Elite Tier</span>
+<h2 class="text-4xl font-serif italic text-text-primary" style="text-shadow: 1px 1px 0 #fff;">Apex Hardware</h2>
+</div>
+<div class="h-[2px] flex-1 bg-slate-200 shadow-[0_1px_0_#fff] self-center mb-3 rounded-full"></div>
+</div>
+<div id="brand-apex-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+<div class="tactile-card p-8 border-t border-white/80">
+<div class="flex justify-between items-start mb-6">
+<div class="w-24 h-24 rounded-2xl screen-panel p-1 relative shadow-inner">
+<img alt="Apex Electronics" class="w-full h-full object-cover rounded-xl opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcw0wYJdCWew_xCiU2tSGZX2UUtSKQbexf5AsNk0mQqkffmmRryuewaqi53klUjWU1jawdxCgn7C_bCfXqm_3j1PNruD9kkiKGYdTVevajm-HxrftHmWJ-tebpMQXPoZl3mATfWYgJvzYJngokbIYN_iqtIsYGol1JpEsM_DPHYv86HUIkmMlVL2RWh2o6VSbzAlnxXy77RQdWRt2jDdjAzP5vucTvbs_7alxN7vuqtwt8ahJVX70xQJITELGEcNsv2SyRXrppPv-6"/>
+<div class="screen-glass"></div>
+</div>
+<div class="flex flex-col items-end gap-3">
+<div class="w-12 h-6 rounded-full bg-slate-200 shadow-inner flex items-center p-1">
+<div class="w-4 h-4 rounded-full bg-[#10B981] shadow-md ml-auto"></div>
+</div>
+<span class="text-[9px] font-bold text-text-secondary uppercase inset-text">Verified</span>
+</div>
+</div>
+<div class="space-y-4 mb-8">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Apex Electronics</h3>
+<p class="text-sm text-text-secondary leading-relaxed font-medium line-clamp-2 pl-1 border-l-2 border-slate-300/50">Pioneering the future of consumer robotics and smart home ecosystems.</p>
+<div class="relative pt-2">
+<div class="h-2 w-full bg-slate-200 rounded-full shadow-inner overflow-hidden">
+<div class="h-full w-[85%] bg-primary shadow-[0_0_10px_rgba(37,99,235,0.4)]"></div>
+</div>
+<div class="flex justify-between mt-2">
+<span class="text-[9px] font-bold text-text-secondary uppercase">Growth</span>
+<span class="text-[9px] font-bold text-primary font-mono">+24%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="tactile-card p-8 border-t border-white/80">
+<div class="flex justify-between items-start mb-6">
+<div class="w-24 h-24 rounded-2xl screen-panel p-1 relative shadow-inner">
+<img alt="Vogue Collective" class="w-full h-full object-cover rounded-xl opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9aWF8RSv26rq4MoI58j84HNlWMIeP4g-IJX1B1VNuLyrywyXxHpKnkuu1EJ5jXlPCoJZjISK7BJas0SEl4RP2FfZr5e0qnc3Mk9WTb6nRCvOVgieU1a36YuH0nCWDqWWMPS7VeiBG_fp8ZvsfBrJlsMZzzmvOnUHS9yk8HdyO7OEwuiveoc1CUzaVB3JIwxc_gW4Ja-ZSWrXNKEevb9zra0zphV6YQcXVf8RpJkiikc5ETK0rkEJYvm23V0AlRB0_MSIx6eaHOa3X"/>
+<div class="screen-glass"></div>
+</div>
+<div class="flex flex-col items-end gap-3">
+<div class="w-12 h-6 rounded-full bg-slate-200 shadow-inner flex items-center p-1">
+<div class="w-4 h-4 rounded-full bg-[#7C3AED] shadow-md ml-auto"></div>
+</div>
+<span class="text-[9px] font-bold text-text-secondary uppercase inset-text">Verified</span>
+</div>
+</div>
+<div class="space-y-4 mb-8">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Vogue Collective</h3>
+<p class="text-sm text-text-secondary leading-relaxed font-medium line-clamp-2 pl-1 border-l-2 border-slate-300/50">Curated luxury fashion from the streets of Milan to Tokyo.</p>
+<div class="relative pt-2">
+<div class="h-2 w-full bg-slate-200 rounded-full shadow-inner overflow-hidden">
+<div class="h-full w-[92%] bg-accent shadow-[0_0_10px_rgba(124,58,237,0.4)]"></div>
+</div>
+<div class="flex justify-between mt-2">
+<span class="text-[9px] font-bold text-text-secondary uppercase">Growth</span>
+<span class="text-[9px] font-bold text-accent font-mono">+18%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="tactile-card p-8 border-t border-white/80">
+<div class="flex justify-between items-start mb-6">
+<div class="w-24 h-24 rounded-2xl screen-panel p-1 relative shadow-inner">
+<img alt="Nordic Home" class="w-full h-full object-cover rounded-xl opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4DJPiAuMT1KvQcKi2EWMNDvT1_gvVA4KVtSnpGvJrR8YGEFBslDe7OE-J4V-lGhutloA7kOVmuOBdtrbbj25LqqMekaQC6gV2BsHFxPMVxMcuXhr9bRgiPETnIOPaloTH_9KIs_kHhRcfBHGqcAYrxK_9mGJKxRrLD4lgH9uPc3AGqCI1MlU3Ttob7tjveFKpG0E-ThgRE5c4qehcGi8Gtz90X_b0xWTSLiY2k8BcWk-2TXSU4Nb6fQF68rM-Ps7HbZv0gx3CMMA9"/>
+<div class="screen-glass"></div>
+</div>
+<div class="flex flex-col items-end gap-3">
+<div class="w-12 h-6 rounded-full bg-slate-200 shadow-inner flex items-center p-1">
+<div class="w-4 h-4 rounded-full bg-emerald-500 shadow-md ml-auto"></div>
+</div>
+<span class="text-[9px] font-bold text-text-secondary uppercase inset-text">Verified</span>
+</div>
+</div>
+<div class="space-y-4 mb-8">
+<h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow: 1px 1px 0 #fff;">Nordic Home</h3>
+<p class="text-sm text-text-secondary leading-relaxed font-medium line-clamp-2 pl-1 border-l-2 border-slate-300/50">Sustainable furniture design that brings nature into your living space.</p>
+<div class="relative pt-2">
+<div class="h-2 w-full bg-slate-200 rounded-full shadow-inner overflow-hidden">
+<div class="h-full w-[78%] bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
+</div>
+<div class="flex justify-between mt-2">
+<span class="text-[9px] font-bold text-text-secondary uppercase">Growth</span>
+<span class="text-[9px] font-bold text-emerald-600 font-mono">+42%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-[1440px] mx-auto px-6">
+<div class="tactile-card p-10 flex flex-col md:flex-row items-center gap-10 relative overflow-hidden h-[300px]">
+<div class="absolute top-4 left-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute top-4 right-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute bottom-4 left-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute bottom-4 right-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="flex-shrink-0 relative z-10 w-full md:w-1/2 h-full flex items-center justify-center border-r border-slate-200/50 pr-6">
+<div class="relative w-full h-40 overflow-hidden">
+<div class="absolute inset-0 z-10 bg-gradient-to-b from-[#EBEFF4] via-transparent to-[#EBEFF4] pointer-events-none"></div>
+<div id="brand-live-ticker" class="live-ticker-item space-y-4">
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-blue-600">check_circle</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">Auth. Verified</div>
+<div class="text-slate-400">#8834-A just now</div>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-emerald-600">shopping_cart</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">Purchased</div>
+<div class="text-slate-400">Mod-02 Item • 2s ago</div>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-purple-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-purple-600">verified</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">New Listing</div>
+<div class="text-slate-400">Nordic Chair • 5s ago</div>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-blue-600">check_circle</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">Auth. Verified</div>
+<div class="text-slate-400">#8834-A just now</div>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-emerald-600">shopping_cart</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">Purchased</div>
+<div class="text-slate-400">Mod-02 Item • 2s ago</div>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+<div class="w-8 h-8 rounded bg-purple-100 flex items-center justify-center"><span class="material-symbols-outlined text-xs text-purple-600">verified</span></div>
+<div class="text-xs">
+<div class="font-bold text-slate-700">New Listing</div>
+<div class="text-slate-400">Nordic Chair • 5s ago</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="flex-1 text-center md:text-left z-10">
+<h3 class="text-3xl font-serif italic text-text-primary mb-3" style="text-shadow: 1px 1px 0 #fff;">Live Activity</h3>
+<p class="text-text-secondary text-base leading-relaxed inset-text">Real-time product verification and engagement stream.</p>
+<div class="mt-6 flex gap-2 justify-center md:justify-start">
+<div class="w-2 h-2 rounded-full bg-primary shadow-led-glow"></div>
+<div class="w-2 h-2 rounded-full bg-primary shadow-led-glow opacity-50"></div>
+<div class="w-2 h-2 rounded-full bg-primary shadow-led-glow opacity-30"></div>
+</div>
+</div>
+</div>
+<div class="tactile-card p-10 flex flex-col md:flex-row items-center gap-10 relative overflow-hidden h-[300px]">
+<div class="absolute top-4 left-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute top-4 right-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute bottom-4 left-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="absolute bottom-4 right-4 w-3 h-3 rounded-full bg-slate-300 shadow-inner flex items-center justify-center"><div class="w-2 h-[1px] bg-slate-400 rotate-45"></div></div>
+<div class="flex-shrink-0 relative z-10">
+<div class="w-48 h-48 rounded-full concave-surface flex items-center justify-center relative border border-white/20">
+<div class="w-32 h-32 rounded-full shadow-embossed bg-[#EBEFF4] flex items-center justify-center">
+<span class="material-symbols-outlined text-6xl text-accent drop-shadow-sm">monitoring</span>
+</div>
+<div class="absolute inset-0 animate-spin" style="animation-duration: 4s;">
+<div class="absolute top-4 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-accent shadow-[0_0_10px_rgba(124,58,237,0.6)]"></div>
+</div>
+</div>
+</div>
+<div class="flex-1 text-center md:text-left z-10">
+<h3 class="text-3xl font-serif italic text-text-primary mb-3" style="text-shadow: 1px 1px 0 #fff;">Price Intelligence</h3>
+<p id="brand-price-intel-copy" class="text-text-secondary text-base leading-relaxed inset-text">Real-time market analysis updated every millisecond.</p>
+<div class="mt-6 flex gap-2 justify-center md:justify-start">
+<div class="w-2 h-2 rounded-full bg-accent shadow-led-glow"></div>
+<div class="w-2 h-2 rounded-full bg-accent shadow-led-glow opacity-50"></div>
+<div class="w-2 h-2 rounded-full bg-accent shadow-led-glow opacity-30"></div>
+</div>
+</div>
+</div>
+</section>
+<section class="pb-24 max-w-[1440px] mx-auto px-6">
+<div class="text-center mb-16 space-y-4">
+<span class="text-xs font-bold tracking-widest text-primary uppercase inline-block py-1 px-3 rounded-full bg-[#EBEFF4] shadow-embossed border border-white/50">Why Choose Tactile</span>
+<h2 class="text-5xl font-serif italic tracking-tight text-text-primary" style="text-shadow: 1px 1px 0 #fff;">Core Benefits</h2>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="tactile-card p-10 group hover:bg-[#F1F5F9] border border-white/60">
+<div class="w-20 h-20 rounded-2xl shadow-soft-lift flex items-center justify-center mb-8 group-hover:scale-105 transition-transform bg-[#EBEFF4]">
+<span class="material-symbols-outlined text-4xl text-primary inset-text">hub</span>
+</div>
+<h3 class="text-2xl font-bold text-text-primary mb-4 font-serif italic" style="text-shadow: 1px 1px 0 #fff;">Centralized Hub</h3>
+<p class="text-text-secondary text-sm leading-relaxed inset-text">Manage all your favorite luxury brands in one dashboard.</p>
+</div>
+<div class="tactile-card p-10 group hover:bg-[#F1F5F9] border border-white/60">
+<div class="w-20 h-20 rounded-2xl shadow-soft-lift flex items-center justify-center mb-8 group-hover:scale-105 transition-transform bg-[#EBEFF4]">
+<span class="material-symbols-outlined text-4xl text-emerald-600 inset-text">verified_user</span>
+</div>
+<h3 class="text-2xl font-bold text-text-primary mb-4 font-serif italic" style="text-shadow: 1px 1px 0 #fff;">Buyer Protection</h3>
+<p class="text-text-secondary text-sm leading-relaxed inset-text">Our iron-clad guarantee covers every purchase.</p>
+</div>
+<div class="tactile-card p-10 group hover:bg-[#F1F5F9] border border-white/60">
+<div class="w-20 h-20 rounded-2xl shadow-soft-lift flex items-center justify-center mb-8 group-hover:scale-105 transition-transform bg-[#EBEFF4]">
+<span class="material-symbols-outlined text-4xl text-purple-600 inset-text">rocket_launch</span>
+</div>
+<h3 class="text-2xl font-bold text-text-primary mb-4 font-serif italic" style="text-shadow: 1px 1px 0 #fff;">Express Logistics</h3>
+<p class="text-text-secondary text-sm leading-relaxed inset-text">From the atelier to your door in record time.</p>
+</div>
+</div>
+</section>
+</div>
+<script>
+  (function () {
+    const searchInput = document.getElementById('brand-hub-search-input');
+    const startEngineButton = document.getElementById('brand-hub-start-engine');
+    const moduleTrack = document.getElementById('brand-module-track');
+    const apexGrid = document.getElementById('brand-apex-grid');
+    const liveTicker = document.getElementById('brand-live-ticker');
+    const priceIntelCopy = document.getElementById('brand-price-intel-copy');
+    const scanIndexLink = document.getElementById('brand-hub-scan-index');
+
+    if (!moduleTrack || !apexGrid) return;
+
+    const defaultModuleHtml = moduleTrack.innerHTML;
+    const defaultApexHtml = apexGrid.innerHTML;
+    const defaultTickerHtml = liveTicker ? liveTicker.innerHTML : '';
+
+    const normalize = (value) => String(value || '').trim().toLowerCase();
+    const escapeHtml = (value) =>
+      String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const resolveBackendBase = () => {
+      const params = new URLSearchParams(window.location.search);
+      const queryBase = params.get('backend');
+      const localOverride = window.localStorage ? window.localStorage.getItem('urbanprime_backend_override_v1') : '';
+      const lastOk = window.localStorage ? window.localStorage.getItem('urbanprime_backend_last_ok_v1') : '';
+      const base = (queryBase || localOverride || lastOk || '').trim();
+      return base ? base.replace(/\/$/, '') : '';
+    };
+
+    const routeToHashHref = (route) => {
+      const normalized = route.startsWith('/') ? route : `/${route}`;
+      return `/#${normalized}`;
+    };
+
+    const navigateToRoute = (route) => {
+      const href = routeToHashHref(route);
+      const topWindowRef = (() => {
+        try {
+          return window.top || window;
+        } catch {
+          return window;
+        }
+      })();
+      topWindowRef.location.href = href;
+    };
+
+    const pickImage = (brand) =>
+      brand?.cover_url ||
+      brand?.logo_url ||
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuDvdxZqzab0yCYzOyE5rlmko9rt2m-EJSQfa7KNJwa4r_505UcLMTiFj3n5G6txdX0JBhDQ9zDyWX76NWPKm7K_fB6JginxjHpHzmZlYBWjEAy9cxhrNzW-0fWn8LwV7XhsLmgJENk6bKL3vXlRL0UF8uR9gOSN84i9dK4SwZtW9njHvhyWal1i_7zQhQyoKEbOwfa3lmgn0idxfI43r1wkMyFAMF7HcyWriVEJohV4ribIqDsf3CsN9wzJgkKvfg6D_ijmKVOFyHmi';
+
+    const scoreToSignal = (score) => {
+      const numeric = Number(score || 0);
+      if (numeric >= 85) return { text: 'SIGNAL_MAX', tone: 'text-emerald-400' };
+      if (numeric >= 70) return { text: 'SIGNAL_STABLE', tone: 'text-blue-400' };
+      if (numeric >= 50) return { text: 'SIGNAL_ACTIVE', tone: 'text-purple-400' };
+      return { text: 'SIGNAL_TRACE', tone: 'text-amber-300' };
+    };
+
+    const pickModIcon = (index) => {
+      const icons = ['memory', 'diamond', 'chair', 'auto_awesome', 'devices_other', 'sports_esports'];
+      return icons[index % icons.length];
+    };
+
+    const bindCardNavigation = (root) => {
+      root.querySelectorAll('[data-brand-href]').forEach((card) => {
+        card.addEventListener('click', () => {
+          const href = card.getAttribute('data-brand-href');
+          if (href) navigateToRoute(href);
+        });
+      });
+    };
+
+    const renderModules = (brands) => {
+      const list = brands.slice(0, 10);
+      if (list.length === 0) return;
+      moduleTrack.innerHTML = list
+        .map((brand, index) => {
+          const trust = Number(brand?.trust?.overall_trust_score || 0);
+          const signal = scoreToSignal(trust);
+          const name = escapeHtml(brand?.name || 'Brand');
+          const slug = encodeURIComponent(brand?.slug || '');
+          const line = escapeHtml(brand?.country || brand?.verification_level || 'Global');
+          const image = escapeHtml(pickImage(brand));
+          const moduleId = String(index + 1).padStart(2, '0');
+          return `
+            <article class="group relative w-[320px] h-[480px] bg-[#EBEFF4] rounded-[2rem] shadow-floating border border-white/60 p-6 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 flex-shrink-0" data-brand-href="/brands/${slug}">
+              <div class="flex justify-between items-start">
+                <div class="flex gap-2"><div class="led active"></div><div class="led"></div></div>
+                <span class="text-[10px] font-mono text-text-secondary inset-text">MOD-${moduleId}</span>
+              </div>
+              <div class="h-[200px] w-full rounded-xl screen-panel overflow-hidden relative group">
+                <div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay" style="background-image:url('${image}')"></div>
+                <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+                <div class="screen-glass"></div>
+                <div class="absolute bottom-4 left-4">
+                  <p class="${signal.tone} font-mono text-xs mb-1">&gt; ${signal.text}</p>
+                  <h3 class="text-white font-bold text-xl tracking-wide">${name}</h3>
+                </div>
+              </div>
+              <div class="space-y-4">
+                <div class="flex justify-between items-center px-2">
+                  <span class="text-xs font-bold text-text-secondary uppercase">${line}</span>
+                  <div class="w-10 h-10 rounded-full bg-[#EBEFF4] shadow-knob flex items-center justify-center">
+                    <span class="material-symbols-outlined text-sm text-primary">${pickModIcon(index)}</span>
+                  </div>
+                </div>
+                <a href="${routeToHashHref(`/brands/${slug}`)}" class="w-full py-4 rounded-xl bg-[#EBEFF4] shadow-soft-lift font-bold text-sm text-text-primary hover:shadow-embossed transition-all border border-white/50 uppercase tracking-widest text-center block">
+                  Engage
+                </a>
+              </div>
+            </article>`;
+        })
+        .join('');
+      bindCardNavigation(moduleTrack);
+    };
+
+    const renderApex = (brands) => {
+      const top = [...brands]
+        .sort((left, right) => Number(right?.trust?.overall_trust_score || 0) - Number(left?.trust?.overall_trust_score || 0))
+        .slice(0, 3);
+      if (top.length === 0) return;
+
+      apexGrid.innerHTML = top
+        .map((brand) => {
+          const trust = Number(brand?.trust?.overall_trust_score || 0);
+          const growth = Math.max(8, Math.min(98, Math.round(trust)));
+          const name = escapeHtml(brand?.name || 'Brand');
+          const description = escapeHtml(brand?.description || 'Canonical brand profile across listings and stores.');
+          const image = escapeHtml(pickImage(brand));
+          const slug = encodeURIComponent(brand?.slug || '');
+          return `
+            <article class="tactile-card p-8 border-t border-white/80">
+              <div class="flex justify-between items-start mb-6">
+                <div class="w-24 h-24 rounded-2xl screen-panel p-1 relative shadow-inner">
+                  <img alt="${name}" class="w-full h-full object-cover rounded-xl opacity-80" src="${image}" />
+                  <div class="screen-glass"></div>
+                </div>
+                <div class="flex flex-col items-end gap-3">
+                  <div class="w-12 h-6 rounded-full bg-slate-200 shadow-inner flex items-center p-1">
+                    <div class="w-4 h-4 rounded-full bg-[#10B981] shadow-md ml-auto"></div>
+                  </div>
+                  <span class="text-[9px] font-bold text-text-secondary uppercase inset-text">Verified</span>
+                </div>
+              </div>
+              <div class="space-y-4 mb-8">
+                <h3 class="text-2xl font-bold text-text-primary tracking-tight" style="text-shadow:1px 1px 0 #fff;">${name}</h3>
+                <p class="text-sm text-text-secondary leading-relaxed font-medium line-clamp-2 pl-1 border-l-2 border-slate-300/50">${description}</p>
+                <div class="relative pt-2">
+                  <div class="h-2 w-full bg-slate-200 rounded-full shadow-inner overflow-hidden">
+                    <div class="h-full bg-primary shadow-[0_0_10px_rgba(37,99,235,0.4)]" style="width:${growth}%"></div>
+                  </div>
+                  <div class="flex justify-between mt-2">
+                    <span class="text-[9px] font-bold text-text-secondary uppercase">Trust</span>
+                    <span class="text-[9px] font-bold text-primary font-mono">${trust.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+              <a href="${routeToHashHref(`/brands/${slug}`)}" class="soft-button px-4 py-3 w-full text-center font-bold text-xs uppercase tracking-widest">Open Brand</a>
+            </article>
+          `;
+        })
+        .join('');
+    };
+
+    const renderTicker = (brands) => {
+      if (!liveTicker) return;
+      const entries = brands.slice(0, 6).flatMap((brand) => {
+        const name = escapeHtml(brand?.name || 'Brand');
+        const items = Number(brand?.stats?.itemCount || 0);
+        return [
+          {
+            icon: 'check_circle',
+            iconWrap: 'bg-blue-100',
+            iconTone: 'text-blue-600',
+            title: 'Auth. Verified',
+            subtitle: `${name} identity synchronized`
+          },
+          {
+            icon: 'inventory_2',
+            iconWrap: 'bg-emerald-100',
+            iconTone: 'text-emerald-600',
+            title: 'Catalog Updated',
+            subtitle: `${items} mapped listings`
+          }
+        ];
+      });
+      if (entries.length === 0) return;
+      liveTicker.innerHTML = [...entries, ...entries]
+        .map((entry) => `
+          <div class="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-white shadow-sm">
+            <div class="w-8 h-8 rounded ${entry.iconWrap} flex items-center justify-center">
+              <span class="material-symbols-outlined text-xs ${entry.iconTone}">${entry.icon}</span>
+            </div>
+            <div class="text-xs">
+              <div class="font-bold text-slate-700">${entry.title}</div>
+              <div class="text-slate-400">${entry.subtitle}</div>
+            </div>
+          </div>
+        `)
+        .join('');
+    };
+
+    const updatePriceCopy = (brands) => {
+      if (!priceIntelCopy || brands.length === 0) return;
+      const avgTrust = brands.reduce((sum, brand) => sum + Number(brand?.trust?.overall_trust_score || 0), 0) / brands.length;
+      const totalItems = brands.reduce((sum, brand) => sum + Number(brand?.stats?.itemCount || 0), 0);
+      priceIntelCopy.textContent = `Tracking ${brands.length} brands and ${totalItems} mapped listings. Avg trust score ${avgTrust.toFixed(1)}.`;
+    };
+
+    let allBrands = [];
+
+    const loadBrands = async () => {
+      try {
+        const base = resolveBackendBase();
+        const urls = [];
+        if (base) urls.push(`${base}/brands?limit=60&sort=trust`);
+        urls.push('/brands?limit=60&sort=trust');
+        urls.push('/api/brands?limit=60&sort=trust');
+
+        let rows = [];
+        let lastError = null;
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) throw new Error(`Unable to load brands: ${response.status}`);
+            const payload = await response.json();
+            rows = Array.isArray(payload?.data) ? payload.data : [];
+            if (rows.length) break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        if (rows.length === 0) throw lastError || new Error('No brand data returned');
+
+        allBrands = rows;
+        renderModules(rows);
+        renderApex(rows);
+        renderTicker(rows);
+        updatePriceCopy(rows);
+      } catch (error) {
+        console.warn('Brand hub data load failed, using static fallback.', error);
+        moduleTrack.innerHTML = defaultModuleHtml;
+        apexGrid.innerHTML = defaultApexHtml;
+        if (liveTicker) liveTicker.innerHTML = defaultTickerHtml;
+      }
+    };
+
+    const openExploreWithSearch = () => {
+      const query = normalize(searchInput ? searchInput.value : '');
+      const target = query
+        ? `/brands/explore?q=${encodeURIComponent(query)}`
+        : '/brands/explore';
+      navigateToRoute(target);
+    };
+
+    if (startEngineButton) {
+      startEngineButton.addEventListener('click', openExploreWithSearch);
+    }
+    if (scanIndexLink) {
+      scanIndexLink.addEventListener('click', (event) => {
+        if (!searchInput || !normalize(searchInput.value)) return;
+        event.preventDefault();
+        openExploreWithSearch();
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          openExploreWithSearch();
+        }
+      });
+    }
+
+    loadBrands();
+  })();
+</script>
+</body></html>

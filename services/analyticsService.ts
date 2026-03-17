@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { auth } from '../firebase';
-import { backendFetch, isBackendConfigured } from './backendClient';
+import { backendFetch, isBackendConfigured, resolveBackendBaseUrl } from './backendClient';
 
 // Get Firebase Auth token for backend requests
 const getBackendToken = async (): Promise<string | undefined> => {
@@ -22,6 +22,38 @@ const getBackendToken = async (): Promise<string | undefined> => {
     return await auth.currentUser.getIdToken();
   } catch {
     return undefined;
+  }
+};
+
+const parseSseFrame = (frame: string): SellerAnalyticsStreamEvent | null => {
+  if (!frame || !frame.trim()) return null;
+  const lines = frame.split('\n');
+  let event = 'message';
+  let dataText = '';
+
+  lines.forEach((line) => {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim() || 'message';
+      return;
+    }
+    if (line.startsWith('data:')) {
+      const chunk = line.slice(5).trimStart();
+      dataText = dataText ? `${dataText}\n${chunk}` : chunk;
+    }
+  });
+
+  if (!dataText) return null;
+
+  try {
+    return {
+      event,
+      data: JSON.parse(dataText)
+    };
+  } catch {
+    return {
+      event,
+      data: dataText
+    };
   }
 };
 
@@ -39,6 +71,8 @@ export interface ListingAnalytics {
   cartAddData: CartAddEvent[];
   checkoutData: CheckoutEvent[];
   topReferrers: ReferrerData[];
+  revenue?: number;
+  unitsSold?: number;
 }
 
 export interface ViewEvent {
@@ -93,9 +127,39 @@ export interface SellerAnalyticsDashboard {
   viewsTrend: TrendData[];
   ordersTrend: TrendData[];
   revenueTrend: TrendData[];
+  unitsTrend?: TrendData[];
   cartAbandonmentRate: number;
   totalCartAdds: number;
+  totalCheckoutStarts?: number;
   completedCheckouts: number;
+  uniqueVisitors?: number;
+  uniqueBuyers?: number;
+  conversionRateEventBased?: number;
+  conversionRateVisitorBased?: number;
+  totalTrustedViews?: number;
+  trustedConversionRate?: number;
+  realtimeMetrics?: RealTimeMetric[];
+  recentOrders?: Array<{
+    id: string;
+    status: string;
+    currency: string;
+    total: number;
+    quantityTotal: number;
+    createdAt: string;
+    itemCount?: number;
+  }>;
+  funnel?: FunnelAnalytics;
+  insights?: InsightMessage[];
+  anomalies?: AnomalySignal[];
+  trendAcceleration?: TrendAccelerationSignal[];
+  attribution?: AttributionSignal[];
+  forecasts?: ForecastSignal[];
+  journeys?: JourneyAnalytics;
+  recommendations?: RecommendationSignal[];
+  cohorts?: CohortSignal[];
+  trust?: TrustOverview;
+  generatedAt?: string;
+  timezone?: string;
 }
 
 export interface TrendData {
@@ -110,6 +174,115 @@ export interface RealTimeMetric {
   change: number;
   changePercent: number;
   trend: 'up' | 'down' | 'stable';
+}
+
+export interface FunnelAnalytics {
+  stages: Array<{ stage: string; count: number; percentage: number }>;
+  dropOffStage: string;
+  dropOffRate: number;
+  eventBasedConversionRate: number;
+  visitorBasedConversionRate: number;
+}
+
+export interface InsightMessage {
+  id: string;
+  severity: 'positive' | 'info' | 'warning' | 'critical' | string;
+  type: string;
+  message: string;
+  metric?: number;
+}
+
+export interface AnomalySignal {
+  id: string;
+  severity: string;
+  type: string;
+  message: string;
+  value?: number;
+  baseline?: number;
+}
+
+export interface TrendAccelerationSignal {
+  window: string;
+  metric: string;
+  current: number;
+  previous: number;
+  accelerationRatio: number;
+}
+
+export interface AttributionSignal {
+  channel: string;
+  deviceType: string;
+  source: string;
+  views: number;
+  carts: number;
+  checkouts: number;
+  revenue: number;
+  uniqueVisitors: number;
+  conversionRate: number;
+  cartAbandonmentRate: number;
+}
+
+export interface ForecastSignal {
+  horizonDays: number;
+  expectedRevenue: number;
+  expectedUnits: number;
+  expectedViews: number;
+  confidence: number;
+  summary: string;
+}
+
+export interface JourneyAnalytics {
+  topSuccessfulPaths: Array<{ path: string; count: number }>;
+  topDropOffPaths: Array<{ path: string; count: number }>;
+}
+
+export interface RecommendationSignal {
+  id: string;
+  type: string;
+  priority: string;
+  score: number;
+  message: string;
+  expectedImpact?: string;
+}
+
+export interface CohortSignal {
+  cohort: string;
+  channel: string;
+  visitors: number;
+  returningVisitors: number;
+  convertedVisitors: number;
+  repeatRate: number;
+  conversionRate: number;
+}
+
+export interface TrustOverview {
+  totalEvents: number;
+  trustedEvents: number;
+  highTrust: number;
+  mediumTrust: number;
+  lowTrust: number;
+  lowTrustRate: number;
+}
+
+export interface SellerIntelligenceSnapshot {
+  insights: InsightMessage[];
+  funnel: FunnelAnalytics;
+  forecasts: ForecastSignal[];
+  journeys: JourneyAnalytics;
+  anomalies: AnomalySignal[];
+  trendAcceleration: TrendAccelerationSignal[];
+  attribution: AttributionSignal[];
+  recommendations: RecommendationSignal[];
+  cohorts: CohortSignal[];
+  trust: TrustOverview;
+  realtimeMetrics: RealTimeMetric[];
+  generatedAt?: string;
+  timezone?: string;
+}
+
+export interface SellerAnalyticsStreamEvent {
+  event: string;
+  data: any;
 }
 
 // --- ANALYTICS SERVICE ---
@@ -381,7 +554,11 @@ const analyticsService = {
   },
 
   // Get full seller dashboard analytics
-  getSellerAnalytics: async (sellerId: string, daysBack: number = 30): Promise<SellerAnalyticsDashboard | null> => {
+  getSellerAnalytics: async (
+    sellerId: string,
+    daysBack: number = 30,
+    timezone?: string
+  ): Promise<SellerAnalyticsDashboard | null> => {
     if (!sellerId) return null;
 
     const cutoffDate = new Date();
@@ -390,7 +567,8 @@ const analyticsService = {
     if (isBackendConfigured()) {
       try {
         const token = await getBackendToken();
-        const response = await backendFetch(`/analytics/sellers/${sellerId}?days=${daysBack}`, {}, token);
+        const query = timezone ? `?days=${daysBack}&timezone=${encodeURIComponent(timezone)}` : `?days=${daysBack}`;
+        const response = await backendFetch(`/analytics/sellers/${sellerId}${query}`, {}, token);
         if (response?.data) {
           return response.data;
         }
@@ -731,6 +909,228 @@ const analyticsService = {
       console.error('Failed to get abandoned carts:', error);
       return [];
     }
+  },
+
+  getSellerIntelligence: async (sellerId: string, daysBack: number = 30): Promise<SellerIntelligenceSnapshot | null> => {
+    if (!sellerId) return null;
+    if (!isBackendConfigured()) return null;
+
+    try {
+      const token = await getBackendToken();
+      const response = await backendFetch(`/analytics/intelligence/${sellerId}?days=${daysBack}`, {}, token);
+      return response?.data || null;
+    } catch (error) {
+      console.warn('Backend intelligence fetch failed:', error);
+      return null;
+    }
+  },
+
+  getCohortAnalytics: async (sellerId: string, daysBack: number = 90): Promise<CohortSignal[]> => {
+    if (!sellerId || !isBackendConfigured()) return [];
+    try {
+      const token = await getBackendToken();
+      const response = await backendFetch(`/analytics/cohorts/${sellerId}?days=${daysBack}`, {}, token);
+      return Array.isArray(response?.data) ? response.data : [];
+    } catch (error) {
+      console.warn('Backend cohort fetch failed:', error);
+      return [];
+    }
+  },
+
+  submitRecommendationFeedback: async (
+    sellerId: string,
+    recommendationId: string,
+    action: 'accepted' | 'dismissed' | 'ignored',
+    type: string = 'general',
+    context: Record<string, unknown> = {}
+  ): Promise<boolean> => {
+    if (!sellerId || !recommendationId || !isBackendConfigured()) return false;
+    try {
+      const token = await getBackendToken();
+      await backendFetch(`/analytics/recommendations/${sellerId}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({
+          recommendationId,
+          action,
+          type,
+          context
+        })
+      }, token);
+      return true;
+    } catch (error) {
+      console.warn('Recommendation feedback failed:', error);
+      return false;
+    }
+  },
+
+  createExperiment: async (
+    sellerPersonaId: string,
+    name: string,
+    variants: Array<{ id?: string; label: string; weight?: number; config?: Record<string, unknown> }>,
+    target: string = 'listing',
+    metric: string = 'conversion_rate'
+  ): Promise<any | null> => {
+    if (!sellerPersonaId || !name || !Array.isArray(variants) || variants.length < 2 || !isBackendConfigured()) return null;
+    try {
+      const token = await getBackendToken();
+      const response = await backendFetch('/analytics/experiments', {
+        method: 'POST',
+        body: JSON.stringify({
+          sellerPersonaId,
+          name,
+          variants,
+          target,
+          metric
+        })
+      }, token);
+      return response?.data || null;
+    } catch (error) {
+      console.warn('Create experiment failed:', error);
+      return null;
+    }
+  },
+
+  getExperiments: async (sellerPersonaId: string): Promise<any[]> => {
+    if (!sellerPersonaId || !isBackendConfigured()) return [];
+    try {
+      const token = await getBackendToken();
+      const response = await backendFetch(`/analytics/experiments/${sellerPersonaId}`, {}, token);
+      return Array.isArray(response?.data) ? response.data : [];
+    } catch (error) {
+      console.warn('Fetch experiments failed:', error);
+      return [];
+    }
+  },
+
+  assignExperimentVariant: async (experimentId: string, visitorId: string): Promise<any | null> => {
+    if (!experimentId || !visitorId || !isBackendConfigured()) return null;
+    try {
+      const response = await backendFetch(`/analytics/experiments/${experimentId}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ visitorId })
+      });
+      return response?.data || null;
+    } catch (error) {
+      console.warn('Experiment assignment failed:', error);
+      return null;
+    }
+  },
+
+  recordExperimentEvent: async (
+    experimentId: string,
+    variantId: string,
+    eventName: string,
+    visitorId: string,
+    amount: number = 0,
+    metadata: Record<string, unknown> = {}
+  ): Promise<boolean> => {
+    if (!experimentId || !variantId || !visitorId || !isBackendConfigured()) return false;
+    try {
+      await backendFetch(`/analytics/experiments/${experimentId}/event`, {
+        method: 'POST',
+        body: JSON.stringify({
+          variantId,
+          eventName,
+          visitorId,
+          amount,
+          metadata
+        })
+      });
+      return true;
+    } catch (error) {
+      console.warn('Experiment event failed:', error);
+      return false;
+    }
+  },
+
+  getExperimentResults: async (experimentId: string): Promise<any | null> => {
+    if (!experimentId || !isBackendConfigured()) return null;
+    try {
+      const token = await getBackendToken();
+      const response = await backendFetch(`/analytics/experiments/${experimentId}/results`, {}, token);
+      return response?.data || null;
+    } catch (error) {
+      console.warn('Experiment results failed:', error);
+      return null;
+    }
+  },
+
+  subscribeSellerStream: (
+    sellerId: string,
+    onMessage: (message: SellerAnalyticsStreamEvent) => void,
+    onError?: (error: Error) => void
+  ): (() => void) => {
+    if (!sellerId || !isBackendConfigured()) {
+      return () => {};
+    }
+
+    let closed = false;
+    let reconnectTimer: number | undefined;
+    let controller: AbortController | null = null;
+
+    const connect = async () => {
+      if (closed) return;
+
+      try {
+        const baseUrl = await resolveBackendBaseUrl();
+        if (!baseUrl) throw new Error('Backend URL unavailable for realtime stream.');
+
+        controller = new AbortController();
+        const token = await getBackendToken();
+        const headers: Record<string, string> = {
+          Accept: 'text/event-stream'
+        };
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const response = await fetch(`${baseUrl}/analytics/stream/${encodeURIComponent(sellerId)}`, {
+          method: 'GET',
+          headers,
+          signal: controller.signal
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Realtime stream failed with status ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!closed) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split('\n\n');
+          buffer = frames.pop() || '';
+
+          frames.forEach((frame) => {
+            const parsed = parseSseFrame(frame);
+            if (parsed) onMessage(parsed);
+          });
+        }
+
+        if (!closed) {
+          reconnectTimer = window.setTimeout(() => {
+            void connect();
+          }, 3000);
+        }
+      } catch (error) {
+        if (closed) return;
+        onError?.(error instanceof Error ? error : new Error('Realtime stream failed'));
+        reconnectTimer = window.setTimeout(() => {
+          void connect();
+        }, 5000);
+      }
+    };
+
+    void connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (controller) controller.abort();
+    };
   }
 };
 

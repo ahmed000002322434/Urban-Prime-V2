@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import { itemService } from '../../services/itemService';
@@ -26,11 +26,11 @@ const FormCard: React.FC<{title: string; subtitle?: string; children: React.Reac
 // --- Main Page ---
 const DigitalListItemPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const { showNotification } = useNotification();
-    const { categories, isLoading: isLoadingCategories } = useCategories();
-    
-    const [step, setStep] = useState(1);
+    const { categories } = useCategories();
+
     const [formData, setFormData] = useState<Partial<Item>>({
         itemType: 'digital',
         imageUrls: [],
@@ -39,6 +39,9 @@ const DigitalListItemPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [mockupPrompt, setMockupPrompt] = useState('');
     const [isGeneratingMockups, setIsGeneratingMockups] = useState(false);
+    const [formMode, setFormMode] = useState<'new' | 'edit' | 'duplicate'>('new');
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [isHydratingListing, setIsHydratingListing] = useState(false);
     const withTimeout = <T,>(promise: Promise<T>, ms = 15000) =>
         Promise.race([
             promise,
@@ -47,6 +50,73 @@ const DigitalListItemPage: React.FC = () => {
     
     const digitalCategories = categories.find(c => c.id === 'digital-products')?.subcategories || [];
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const editId = String(params.get('edit') || '').trim();
+        const duplicateId = String(params.get('duplicate') || '').trim();
+        const sourceId = editId || duplicateId;
+        const mode: 'new' | 'edit' | 'duplicate' = editId ? 'edit' : duplicateId ? 'duplicate' : 'new';
+
+        if (!sourceId) {
+            setFormMode('new');
+            setEditingItemId(null);
+            return;
+        }
+
+        let cancelled = false;
+        const hydrateListing = async () => {
+            setIsHydratingListing(true);
+            try {
+                const sourceItem = await itemService.getItemById(sourceId);
+                if (!sourceItem) {
+                    if (!cancelled) {
+                        showNotification('Listing not found. Starting a new digital listing.');
+                        setFormMode('new');
+                        setEditingItemId(null);
+                    }
+                    return;
+                }
+
+                const hydrated: Partial<Item> = {
+                    itemType: 'digital',
+                    title: sourceItem.title || '',
+                    description: sourceItem.description || '',
+                    category: sourceItem.category || '',
+                    version: sourceItem.version || '',
+                    imageUrls: sourceItem.imageUrls?.length ? sourceItem.imageUrls : sourceItem.images || [],
+                    digitalFileUrl: sourceItem.digitalFileUrl || '',
+                    licenseType: sourceItem.licenseType || 'personal',
+                    licenseDescription: sourceItem.licenseDescription || '',
+                    salePrice: sourceItem.salePrice || sourceItem.price || 0,
+                    stock: sourceItem.stock ?? 1,
+                    brand: sourceItem.brand || '',
+                    sku: sourceItem.sku || '',
+                    condition: sourceItem.condition || 'new'
+                };
+
+                if (!cancelled) {
+                    setFormData(hydrated);
+                    setFormMode(mode);
+                    setEditingItemId(mode === 'edit' ? sourceItem.id : null);
+                }
+            } catch (error) {
+                console.error('Digital listing hydration failed:', error);
+                if (!cancelled) {
+                    showNotification('Unable to load listing data. Starting a new digital listing.');
+                    setFormMode('new');
+                    setEditingItemId(null);
+                }
+            } finally {
+                if (!cancelled) setIsHydratingListing(false);
+            }
+        };
+
+        void hydrateListing();
+        return () => {
+            cancelled = true;
+        };
+    }, [location.search, showNotification]);
+
     const handlePublish = async (status: 'published' | 'draft') => {
         if (isLoading) return;
         if (!user) {
@@ -54,12 +124,30 @@ const DigitalListItemPage: React.FC = () => {
             navigate('/login');
             return;
         }
-        const finalData: Partial<Item> = { ...formData, status };
+        if (status !== 'draft' && (!formData.title || !formData.category || !formData.salePrice)) {
+            showNotification('Please provide title, category, and price before publishing.');
+            return;
+        }
+        const finalData: Partial<Item> = { ...formData, itemType: 'digital', status };
         setIsLoading(true);
         try {
-            const newItem = await withTimeout(itemService.addItem(finalData, user));
-            showNotification(status === 'published' ? "Digital product published!" : "Saved to drafts!");
-            navigate(status === 'published' ? `/item/${newItem.id}` : '/profile/products');
+            let savedItem: Item;
+            if (formMode === 'edit' && editingItemId) {
+                await withTimeout(itemService.updateItem(editingItemId, finalData));
+                const refreshed = await withTimeout(itemService.getItemById(editingItemId));
+                savedItem = refreshed || ({ id: editingItemId, ...finalData } as Item);
+            } else {
+                savedItem = await withTimeout(itemService.addItem(finalData, user));
+            }
+
+            if (formMode === 'edit') {
+                showNotification(status === 'published' ? 'Digital listing updated and published.' : 'Digital listing updated and saved to drafts.');
+            } else if (formMode === 'duplicate') {
+                showNotification(status === 'published' ? 'Digital duplicate published.' : 'Digital duplicate saved to drafts.');
+            } else {
+                showNotification(status === 'published' ? 'Digital product published!' : 'Saved to drafts!');
+            }
+            navigate(status === 'published' ? `/item/${savedItem.id}` : '/profile/products');
         } catch (e) {
             console.error('Failed to save product:', e);
             const message = e instanceof Error ? e.message : 'Unknown error';
@@ -111,10 +199,28 @@ const DigitalListItemPage: React.FC = () => {
         }
     };
 
+    const modeTitle =
+        formMode === 'edit'
+            ? 'Editing Digital Listing'
+            : formMode === 'duplicate'
+                ? 'Duplicating Digital Listing'
+                : 'List a Digital Product';
+
+    if (isHydratingListing) {
+        return (
+            <div className="max-w-4xl mx-auto flex items-center justify-center py-16">
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 shadow-soft">
+                    <Spinner size="sm" />
+                    <p className="text-sm font-semibold text-text-primary">Loading digital listing data...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-4xl mx-auto space-y-6">
              <div className="flex justify-between items-center">
-                 <h1 className="text-2xl font-bold font-display">List a Digital Product</h1>
+                 <h1 className="text-2xl font-bold font-display">{modeTitle}</h1>
                 <div className="flex gap-2">
                     <button type="button" onClick={() => handlePublish('draft')} disabled={isLoading} className="px-4 py-2 text-sm bg-gray-200 font-semibold rounded-md disabled:opacity-60 disabled:cursor-not-allowed">
                         {isLoading ? 'Saving...' : 'Save as Draft'}

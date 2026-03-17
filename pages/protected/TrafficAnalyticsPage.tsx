@@ -30,14 +30,12 @@ const TrafficAnalyticsPage: React.FC = () => {
         
         if (analytics) {
           // Get detailed visitor data
-          const allVisitors: ViewEvent[] = [];
-          
-          // Fetch visitors for each product
+          let allVisitors: ViewEvent[] = [];
           if (analytics.topProducts && analytics.topProducts.length > 0) {
-            for (const product of analytics.topProducts) {
-              const visitors = await analyticsService.getProductVisitors(product.itemId, 30);
-              allVisitors.push(...visitors);
-            }
+            const visitorGroups = await Promise.all(
+              analytics.topProducts.slice(0, 12).map((product) => analyticsService.getProductVisitors(product.itemId, 30))
+            );
+            allVisitors = visitorGroups.flat();
           }
 
           const uniqueVisitorsSet = new Set(allVisitors.map(v => v.visitorId));
@@ -47,7 +45,7 @@ const TrafficAnalyticsPage: React.FC = () => {
             averageTimeOnSite: allVisitors.length > 0 
               ? parseFloat((allVisitors.reduce((sum, v) => sum + (v.durationMs || 0), 0) / allVisitors.length / 1000).toFixed(1))
               : 0,
-            uniqueVisitors: uniqueVisitorsSet.size,
+            uniqueVisitors: analytics.uniqueVisitors || uniqueVisitorsSet.size,
             topProducts: analytics.topProducts?.slice(0, 5).map(p => ({
               itemId: p.itemId,
               title: p.itemTitle,

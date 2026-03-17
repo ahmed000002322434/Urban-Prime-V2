@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import { itemService } from '../../services/itemService';
-import type { Item, Category } from '../../types';
+import brandService from '../../services/brandService';
+import type { Item, Category, Brand, BrandCatalogNode } from '../../types';
 import Calendar from '../../components/Calendar';
 import { useCategories } from '../../context/CategoryContext';
 import CreateCategoryModal from '../../components/CreateCategoryModal';
@@ -168,9 +169,25 @@ const FormCard: React.FC<{title: string, subtitle?: string, children: React.Reac
     </div>
 );
 
+const flattenCatalogNodes = (
+    nodes: BrandCatalogNode[],
+    parentLabel = ''
+): Array<{ id: string; label: string; path: string }> => {
+    const output: Array<{ id: string; label: string; path: string }> = [];
+    nodes.forEach((node) => {
+        const currentLabel = parentLabel ? `${parentLabel} / ${node.name}` : node.name;
+        output.push({ id: node.id, label: currentLabel, path: node.path });
+        if (Array.isArray(node.children) && node.children.length > 0) {
+            output.push(...flattenCatalogNodes(node.children, currentLabel));
+        }
+    });
+    return output;
+};
+
 // --- Main Page ---
 const ListItemPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const { storefront } = useUserData();
     const { showNotification } = useNotification();
@@ -183,6 +200,18 @@ const ListItemPage: React.FC = () => {
     const [isBgModalOpen, setIsBgModalOpen] = useState(false);
     const [imageToEdit, setImageToEdit] = useState<{ url: string; index: number } | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [brandOptions, setBrandOptions] = useState<Brand[]>([]);
+    const [brandSearch, setBrandSearch] = useState('');
+    const [isBrandLoading, setIsBrandLoading] = useState(false);
+    const [brandLineOptions, setBrandLineOptions] = useState<Array<{ id: string; label: string; path: string }>>([]);
+    const [brandLineMode, setBrandLineMode] = useState<'catalog' | 'other'>('catalog');
+    const [showBrandSuggestion, setShowBrandSuggestion] = useState(false);
+    const [brandSuggestionNotes, setBrandSuggestionNotes] = useState('');
+    const [isBrandSuggesting, setIsBrandSuggesting] = useState(false);
+    const [formMode, setFormMode] = useState<'new' | 'edit' | 'duplicate'>('new');
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [isHydratingListing, setIsHydratingListing] = useState(false);
+    const [sourceItemSnapshot, setSourceItemSnapshot] = useState<Item | null>(null);
 
     // Derived state for earnings
     const currentPrice = formData.listingType === 'rent' ? formData.rentalRates.daily : formData.salePrice;
@@ -193,6 +222,177 @@ const ListItemPage: React.FC = () => {
             new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out. Check your connection.')), ms))
         ]);
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const editId = String(params.get('edit') || '').trim();
+        const duplicateId = String(params.get('duplicate') || '').trim();
+        const sourceId = editId || duplicateId;
+        const mode: 'new' | 'edit' | 'duplicate' = editId ? 'edit' : duplicateId ? 'duplicate' : 'new';
+
+        if (!sourceId) {
+            setFormMode('new');
+            setEditingItemId(null);
+            setSourceItemSnapshot(null);
+            return;
+        }
+
+        let cancelled = false;
+        const hydrateFromExistingItem = async () => {
+            setIsHydratingListing(true);
+            try {
+                const sourceItem = await itemService.getItemById(sourceId);
+                if (!sourceItem) {
+                    if (!cancelled) {
+                        showNotification('Listing not found. Starting a new listing.');
+                        setFormMode('new');
+                        setEditingItemId(null);
+                        setSourceItemSnapshot(null);
+                    }
+                    return;
+                }
+
+                const nextFormData: WizardFormData = {
+                    ...initialFormData,
+                    ...sourceItem,
+                    listingType: sourceItem.listingType || 'sale',
+                    imageUrls: sourceItem.imageUrls?.length ? sourceItem.imageUrls : sourceItem.images || [],
+                    specifications: Array.isArray(sourceItem.specifications) && sourceItem.specifications.length > 0
+                        ? sourceItem.specifications
+                        : [{ key: '', value: '' }],
+                    features: Array.isArray(sourceItem.features) && sourceItem.features.length > 0 ? sourceItem.features : [''],
+                    shippingOptions: Array.isArray(sourceItem.shippingOptions) ? (sourceItem.shippingOptions as any) : [],
+                    rentalRates: {
+                        hourly: sourceItem.rentalRates?.hourly || 0,
+                        daily: sourceItem.rentalRates?.daily || sourceItem.rentalPrice || 0,
+                        weekly: sourceItem.rentalRates?.weekly || 0
+                    },
+                    minRentalDuration: sourceItem.minRentalDuration || 24,
+                    securityDeposit: sourceItem.securityDeposit || 0,
+                    whoPaysShipping: sourceItem.whoPaysShipping === 'seller' ? 'seller' : 'buyer',
+                    shippingWeightClass: (
+                        sourceItem.shippingWeightClass === 'small' ||
+                        sourceItem.shippingWeightClass === 'medium' ||
+                        sourceItem.shippingWeightClass === 'large' ||
+                        sourceItem.shippingWeightClass === 'custom'
+                            ? sourceItem.shippingWeightClass
+                            : 'small'
+                    ) as 'small' | 'medium' | 'large' | 'custom',
+                    packageContents: Array.isArray(sourceItem.packageContents) && sourceItem.packageContents.length > 0
+                        ? sourceItem.packageContents
+                        : [''],
+                    careInstructions: Array.isArray(sourceItem.careInstructions) && sourceItem.careInstructions.length > 0
+                        ? sourceItem.careInstructions
+                        : [''],
+                    certifications: Array.isArray(sourceItem.certifications) && sourceItem.certifications.length > 0
+                        ? sourceItem.certifications
+                        : [''],
+                    shippingEstimates: Array.isArray(sourceItem.shippingEstimates) && sourceItem.shippingEstimates.length > 0
+                        ? (sourceItem.shippingEstimates as any)
+                        : [{ minDays: 3, maxDays: 6, carrier: 'Standard', serviceLevel: 'Ground', cost: 0 }],
+                    returnPolicy: sourceItem.returnPolicy || initialFormData.returnPolicy,
+                    warranty: sourceItem.warranty || initialFormData.warranty,
+                    startingBid: sourceItem.auctionDetails?.startingBid || 0,
+                    buyNowPrice: sourceItem.buyNowPrice || 0,
+                    reservePrice: sourceItem.reservePrice || 0,
+                    auctionEndTime: sourceItem.auctionDetails?.endTime || '',
+                    bookedDates: Array.isArray(sourceItem.bookedDates) ? sourceItem.bookedDates : []
+                };
+
+                if (!cancelled) {
+                    setFormData(nextFormData);
+                    setFormMode(mode);
+                    setEditingItemId(mode === 'edit' ? sourceItem.id : null);
+                    setSourceItemSnapshot(sourceItem);
+                }
+            } catch (error) {
+                console.error('Listing hydration failed:', error);
+                if (!cancelled) {
+                    showNotification('Unable to load listing data. Starting a new listing.');
+                    setFormMode('new');
+                    setEditingItemId(null);
+                    setSourceItemSnapshot(null);
+                }
+            } finally {
+                if (!cancelled) setIsHydratingListing(false);
+            }
+        };
+
+        void hydrateFromExistingItem();
+        return () => {
+            cancelled = true;
+        };
+    }, [location.search, showNotification]);
+
+    useEffect(() => {
+        let ignore = false;
+        const timer = setTimeout(async () => {
+            setIsBrandLoading(true);
+            try {
+                const payload = await brandService.getBrands({
+                    search: brandSearch || undefined,
+                    sort: 'name',
+                    limit: 50,
+                    offset: 0,
+                    status: 'active'
+                });
+                if (!ignore) {
+                    setBrandOptions(payload.data);
+                }
+            } catch {
+                if (!ignore) setBrandOptions([]);
+            } finally {
+                if (!ignore) setIsBrandLoading(false);
+            }
+        }, 220);
+
+        return () => {
+            ignore = true;
+            clearTimeout(timer);
+        };
+    }, [brandSearch]);
+
+    useEffect(() => {
+        let ignore = false;
+        const loadCatalog = async () => {
+            const selectedBrandId = String((formData as any).brandId || '').trim();
+            if (!selectedBrandId) {
+                setBrandLineOptions([]);
+                setBrandLineMode('catalog');
+                setFormData((prev) => ({
+                    ...prev,
+                    brandCatalogNodeId: null,
+                    brandCatalogPath: ''
+                }));
+                return;
+            }
+
+            const selectedBrand = brandOptions.find((entry) => entry.id === selectedBrandId);
+            if (selectedBrand?.name && selectedBrand.name !== formData.brand) {
+                setFormData((prev) => ({ ...prev, brand: selectedBrand.name || prev.brand }));
+            }
+
+            const slug = selectedBrand?.slug;
+            if (!slug) return;
+
+            setIsBrandLoading(true);
+            try {
+                const treePayload = await brandService.getBrandTree(slug);
+                if (ignore) return;
+                const flattened = flattenCatalogNodes(treePayload.tree || []);
+                setBrandLineOptions(flattened);
+            } catch {
+                if (!ignore) setBrandLineOptions([]);
+            } finally {
+                if (!ignore) setIsBrandLoading(false);
+            }
+        };
+
+        void loadCatalog();
+        return () => {
+            ignore = true;
+        };
+    }, [(formData as any).brandId, brandOptions, formData.brand]);
+
     const handlePublish = async (status: 'published' | 'draft') => {
         if (isSubmitting) return;
         if (!user) {
@@ -201,6 +401,17 @@ const ListItemPage: React.FC = () => {
             return;
         }
         const { shippingOptions, startingBid, buyNowPrice, reservePrice, auctionEndTime, rentalRates, ...restOfFormData } = formData;
+        const existingAuction =
+            formMode === 'edit' &&
+            sourceItemSnapshot &&
+            sourceItemSnapshot.id === editingItemId
+                ? sourceItemSnapshot.auctionDetails
+                : undefined;
+        const existingCurrentBid = Number(existingAuction?.currentBid || 0);
+        const existingBidCount = Number(existingAuction?.bidCount || 0);
+        const existingStartingBid = Number(existingAuction?.startingBid || 0);
+        const existingBids = Array.isArray(existingAuction?.bids) ? existingAuction.bids : [];
+        const hasLiveBids = existingBidCount > 0 || existingCurrentBid > 0;
         const isDraft = status === 'draft';
         
         if (!isDraft) {
@@ -215,13 +426,81 @@ const ListItemPage: React.FC = () => {
                     showNotification("Please provide a starting bid and end time for the auction.");
                     return;
                 }
+                if (startingBid < 0) {
+                    showNotification("Starting bid cannot be negative.");
+                    return;
+                }
+                if (buyNowPrice < 0 || reservePrice < 0) {
+                    showNotification("Buy now and reserve prices cannot be negative.");
+                    return;
+                }
+                const auctionEndAt = Date.parse(String(auctionEndTime || ''));
+                if (!Number.isFinite(auctionEndAt)) {
+                    showNotification("Auction end time is invalid.");
+                    return;
+                }
+                if (auctionEndAt <= Date.now()) {
+                    showNotification("Auction end time must be in the future.");
+                    return;
+                }
+                const buyNowFloor = Math.max(startingBid, hasLiveBids ? existingCurrentBid : 0);
+                if (buyNowPrice && buyNowPrice < buyNowFloor) {
+                    showNotification(`Buy now price must be at least ${formatCurrency(buyNowFloor)}.`);
+                    return;
+                }
+                if (reservePrice && reservePrice < startingBid) {
+                    showNotification("Reserve price must be greater than or equal to the starting bid.");
+                    return;
+                }
+                if (
+                    formMode === 'edit' &&
+                    hasLiveBids &&
+                    Math.abs(startingBid - existingStartingBid) > 0.0001
+                ) {
+                    showNotification('Starting bid cannot be changed after bids are placed.');
+                    return;
+                }
             } else if (formData.listingType === 'rent') {
                  if (!rentalRates.daily && !rentalRates.hourly && !rentalRates.weekly) {
                      showNotification("Please set at least one rental rate (Hourly, Daily, or Weekly).");
                      return;
                  }
+                 if (
+                    rentalRates.hourly < 0 ||
+                    rentalRates.daily < 0 ||
+                    rentalRates.weekly < 0 ||
+                    formData.securityDeposit < 0 ||
+                    formData.minRentalDuration <= 0
+                 ) {
+                    showNotification("Rental rates, deposit, and minimum duration must be valid positive values.");
+                    return;
+                 }
+            } else if (formData.listingType === 'both') {
+                if (!formData.salePrice) {
+                    showNotification("Please set a sale price for a Sale + Rent listing.");
+                    return;
+                }
+                if (!rentalRates.daily && !rentalRates.hourly && !rentalRates.weekly) {
+                    showNotification("Please set at least one rental rate for a Sale + Rent listing.");
+                    return;
+                }
+                if (
+                    rentalRates.hourly < 0 ||
+                    rentalRates.daily < 0 ||
+                    rentalRates.weekly < 0 ||
+                    formData.securityDeposit < 0 ||
+                    formData.minRentalDuration <= 0
+                ) {
+                    showNotification("Rental rates, deposit, and minimum duration must be valid positive values.");
+                    return;
+                }
             } else if (!formData.salePrice) {
                 showNotification("Please set a sale price.");
+                return;
+            }
+
+            if ((formData as any).brandId && !(formData as any).brandCatalogNodeId && !String((formData as any).brandCatalogPath || '').trim()) {
+                showNotification('Select a product line for the chosen brand, or choose \"Other under this brand\" and provide it.');
                 return;
             }
         }
@@ -235,6 +514,9 @@ const ListItemPage: React.FC = () => {
           ...restOfFormData,
           ...(isDraft && !formData.title ? { title: 'Untitled Draft' } : {}),
           status,
+          brandId: (formData as any).brandId || null,
+          brandCatalogNodeId: (formData as any).brandCatalogNodeId || null,
+          brandCatalogPath: (formData as any).brandCatalogPath || '',
           shippingDetails: finalShippingDetails,
           shippingWeightClass: formData.shippingWeightClass,
           whoPaysShipping: formData.whoPaysShipping,
@@ -251,12 +533,13 @@ const ListItemPage: React.FC = () => {
         }
 
         if (formData.listingType === 'auction') {
+            const lockedStartingBid = hasLiveBids ? existingStartingBid : (startingBid || 0);
             finalData.auctionDetails = {
-                startingBid: startingBid || 0,
-                currentBid: startingBid || 0,
+                startingBid: lockedStartingBid,
+                currentBid: hasLiveBids ? existingCurrentBid : Math.max(existingCurrentBid, lockedStartingBid),
                 endTime: auctionEndTime || '',
-                bidCount: 0,
-                bids: []
+                bidCount: existingBidCount,
+                bids: existingBids
             };
             finalData.buyNowPrice = buyNowPrice;
             finalData.reservePrice = reservePrice;
@@ -264,9 +547,51 @@ const ListItemPage: React.FC = () => {
 
         try {
             setIsSubmitting(true);
-            const newItem = await withTimeout(itemService.addItem(finalData, user));
-            showNotification(status === 'published' ? "Your product is listed!" : "Saved to drafts!");
-            navigate(status === 'published' ? `/item/${newItem.id}` : '/profile/products');
+            let savedItem: Item;
+            if (formMode === 'edit' && editingItemId) {
+                await withTimeout(itemService.updateItem(editingItemId, finalData));
+                const refreshed = await withTimeout(itemService.getItemById(editingItemId));
+                savedItem = refreshed || ({ id: editingItemId, ...finalData } as Item);
+            } else {
+                savedItem = await withTimeout(itemService.addItem(finalData, user));
+            }
+            try {
+                const selectedBrandId = (finalData as any).brandId as string | null;
+                const selectedPath = String((finalData as any).brandCatalogPath || '').trim();
+                if (!selectedBrandId && finalData.brand) {
+                    const classification = await brandService.classifyItemBrand({
+                        itemId: savedItem.id,
+                        brand: finalData.brand
+                    });
+                    if (classification?.brand?.id && selectedPath) {
+                        await brandService.classifyItemCatalog({
+                            itemId: savedItem.id,
+                            brandId: classification.brand.id,
+                            path: selectedPath
+                        });
+                    }
+                } else if (selectedBrandId && !(finalData as any).brandCatalogNodeId && selectedPath) {
+                    await brandService.classifyItemCatalog({
+                        itemId: savedItem.id,
+                        brandId: selectedBrandId,
+                        path: selectedPath
+                    });
+                }
+            } catch (classificationError) {
+                console.warn('Brand classification enqueue failed:', classificationError);
+            }
+            if (formMode === 'edit') {
+                showNotification(status === 'published' ? 'Listing updated and published.' : 'Listing updated and saved to drafts.');
+            } else if (formMode === 'duplicate') {
+                showNotification(status === 'published' ? 'Duplicate listing published.' : 'Duplicate saved to drafts.');
+            } else {
+                showNotification(status === 'published' ? "Your product is listed!" : "Saved to drafts!");
+            }
+            if (status === 'published') {
+                navigate(`/item/${savedItem.id}`);
+            } else {
+                navigate('/profile/products');
+            }
         } catch (e) {
             console.error('Failed to save product:', e);
             const message = e instanceof Error ? e.message : 'Unknown error';
@@ -292,6 +617,79 @@ const ListItemPage: React.FC = () => {
 
         setFormData(prev => ({...prev, [name]: value}));
     }
+
+    const handleBrandSelectChange = (value: string) => {
+        if (!value) {
+            setFormData((prev) => ({
+                ...prev,
+                brandId: null,
+                brandCatalogNodeId: null,
+                brandCatalogPath: '',
+                brand: prev.brand || ''
+            }));
+            setBrandLineOptions([]);
+            setBrandLineMode('catalog');
+            return;
+        }
+
+        const selected = brandOptions.find((entry) => entry.id === value);
+        setFormData((prev) => ({
+            ...prev,
+            brandId: value,
+            brand: selected?.name || prev.brand,
+            brandCatalogNodeId: null,
+            brandCatalogPath: ''
+        }));
+        setBrandLineMode('catalog');
+    };
+
+    const handleBrandLineSelectChange = (value: string) => {
+        if (!value) {
+            setFormData((prev) => ({ ...prev, brandCatalogNodeId: null, brandCatalogPath: '' }));
+            setBrandLineMode('catalog');
+            return;
+        }
+        if (value === '__other__') {
+            setBrandLineMode('other');
+            setFormData((prev) => ({ ...prev, brandCatalogNodeId: null }));
+            return;
+        }
+        const selected = brandLineOptions.find((entry) => entry.id === value);
+        setBrandLineMode('catalog');
+        setFormData((prev) => ({
+            ...prev,
+            brandCatalogNodeId: value,
+            brandCatalogPath: selected?.path || prev.brandCatalogPath || ''
+        }));
+    };
+
+    const handleSuggestBrand = async () => {
+        const rawBrand = String(formData.brand || '').trim();
+        if (!rawBrand) {
+            showNotification('Enter a brand name first, then submit suggestion.');
+            return;
+        }
+        if (!user) {
+            showNotification('Sign in is required to submit a brand suggestion.');
+            return;
+        }
+
+        setIsBrandSuggesting(true);
+        try {
+            await brandService.suggestBrand({
+                brand: rawBrand,
+                line: String((formData as any).brandCatalogPath || '').trim() || undefined,
+                notes: String(brandSuggestionNotes || '').trim() || undefined
+            });
+            setShowBrandSuggestion(false);
+            setBrandSuggestionNotes('');
+            showNotification('Brand suggestion submitted for moderation review.');
+        } catch (error: any) {
+            showNotification(error?.message || 'Unable to submit brand suggestion.');
+        } finally {
+            setIsBrandSuggesting(false);
+        }
+    };
 
     const handleRentalRateChange = (rateType: 'hourly' | 'daily' | 'weekly', value: string) => {
         const numVal = parseFloat(value) || 0;
@@ -459,6 +857,28 @@ const ListItemPage: React.FC = () => {
         setFormData(prev => ({ ...prev, shippingWeightClass: cls }));
     };
 
+    const listingModeTitle =
+        formMode === 'edit' ? 'Editing Listing' : formMode === 'duplicate' ? 'Duplicating Listing' : 'New Listing';
+    const listingModeSubtitle =
+        formMode === 'edit'
+            ? 'Update your listing details and lifecycle status.'
+            : formMode === 'duplicate'
+                ? 'Using an existing listing as a template for a new draft.'
+                : 'List an item for sale, rent, or both.';
+
+    if (isHydratingListing) {
+        return (
+            <div className="bg-gray-50/50 dark:bg-dark-background min-h-screen py-20">
+                <div className="container mx-auto flex items-center justify-center">
+                    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 shadow-soft">
+                        <Spinner size="sm" />
+                        <p className="text-sm font-semibold text-text-primary">Loading listing data...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-gray-50/50 dark:bg-dark-background min-h-screen py-10">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 space-y-8 pb-20">
@@ -466,8 +886,8 @@ const ListItemPage: React.FC = () => {
                      <div className="flex items-center gap-4">
                          <BackButton />
                          <div>
-                            <h1 className="text-3xl font-bold font-display text-gray-900 dark:text-dark-text">New Listing</h1>
-                            <p className="text-gray-500 dark:text-gray-400">List an item for sale or rent.</p>
+                            <h1 className="text-3xl font-bold font-display text-gray-900 dark:text-dark-text">{listingModeTitle}</h1>
+                            <p className="text-gray-500 dark:text-gray-400">{listingModeSubtitle}</p>
                          </div>
                      </div>
                      <div className="flex flex-wrap items-center gap-2">
@@ -577,6 +997,12 @@ const ListItemPage: React.FC = () => {
                                     For Rent
                                 </button>
                                 <button
+                                    onClick={() => setFormData(p => ({ ...p, listingType: 'both' }))}
+                                    className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${formData.listingType === 'both' ? 'bg-white dark:bg-dark-surface shadow text-black dark:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Sale + Rent
+                                </button>
+                                <button
                                     onClick={() => setFormData(p => ({ ...p, listingType: 'auction' }))}
                                     className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${formData.listingType === 'auction' ? 'bg-white dark:bg-dark-surface shadow text-black dark:text-white' : 'text-gray-500 hover:text-gray-700'}`}
                                 >
@@ -585,10 +1011,12 @@ const ListItemPage: React.FC = () => {
                             </div>
 
                             {/* SALE INPUTS */}
-                            {formData.listingType === 'sale' && (
+                            {(formData.listingType === 'sale' || formData.listingType === 'both') && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 animate-fade-in-up">
                                     <div>
-                                        <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Sale Price</label>
+                                        <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">
+                                            Sale Price {formData.listingType === 'both' ? '(required)' : ''}
+                                        </label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
                                             <Input name="salePrice" type="number" placeholder="0.00" value={formData.salePrice} onChange={handleChange} className="pl-8" />
@@ -605,7 +1033,7 @@ const ListItemPage: React.FC = () => {
                             )}
 
                             {/* RENT INPUTS */}
-                            {formData.listingType === 'rent' && (
+                            {(formData.listingType === 'rent' || formData.listingType === 'both') && (
                                 <div className="space-y-6 animate-fade-in-up">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                         <div>
@@ -722,7 +1150,7 @@ const ListItemPage: React.FC = () => {
                         </FormCard>
 
                         <FormCard title="Shipping & Delivery">
-                             {(!storefront?.shippingSettings && (formData.listingType === 'sale' || formData.listingType === 'auction')) && (
+                             {(!storefront?.shippingSettings && (formData.listingType === 'sale' || formData.listingType === 'both' || formData.listingType === 'auction')) && (
                                 <div className="p-4 mb-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
                                     <strong>No Shipping Address Found.</strong> You need to set a ship-from address in your profile settings before listing physical items for sale.
                                 </div>
@@ -1172,8 +1600,82 @@ const ListItemPage: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Brand</label>
-                                    <Input name="brand" placeholder="e.g. Nike, Sony" value={formData.brand} onChange={handleChange} />
+                                    <div className="space-y-2">
+                                        <Input
+                                            name="brandSearch"
+                                            placeholder="Search canonical brands"
+                                            value={brandSearch}
+                                            onChange={(event) => setBrandSearch(event.target.value)}
+                                        />
+                                        <Select
+                                            value={String((formData as any).brandId || '')}
+                                            onChange={(event) => handleBrandSelectChange(event.target.value)}
+                                        >
+                                            <option value="">{isBrandLoading ? 'Loading brands...' : 'Select canonical brand (optional)'}</option>
+                                            {brandOptions.map((brand) => (
+                                                <option key={brand.id} value={brand.id}>{brand.name}</option>
+                                            ))}
+                                        </Select>
+                                        <Input
+                                            name="brand"
+                                            placeholder="Raw brand text (kept for compatibility)"
+                                            value={formData.brand}
+                                            onChange={handleChange}
+                                        />
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowBrandSuggestion((value) => !value)}
+                                                className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-secondary hover:border-primary/60 hover:text-primary"
+                                            >
+                                                {showBrandSuggestion ? 'Close suggestion' : "Can't find brand?"}
+                                            </button>
+                                            <span className="text-[11px] text-text-secondary">Suggest a canonical brand for review.</span>
+                                        </div>
+                                        {showBrandSuggestion ? (
+                                            <div className="rounded-xl border border-border bg-surface-soft p-3 space-y-2">
+                                                <Input
+                                                    value={brandSuggestionNotes}
+                                                    onChange={(event) => setBrandSuggestionNotes(event.target.value)}
+                                                    placeholder="Optional context: official website, category, alias..."
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={isBrandSuggesting}
+                                                    onClick={handleSuggestBrand}
+                                                    className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text-primary hover:border-primary/60 disabled:opacity-60"
+                                                >
+                                                    {isBrandSuggesting ? 'Submitting...' : 'Submit brand suggestion'}
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 </div>
+                                {(formData as any).brandId ? (
+                                    <div>
+                                        <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Brand Line / Subcategory</label>
+                                        <div className="space-y-2">
+                                            <Select
+                                                value={brandLineMode === 'other' ? '__other__' : String((formData as any).brandCatalogNodeId || '')}
+                                                onChange={(event) => handleBrandLineSelectChange(event.target.value)}
+                                            >
+                                                <option value="">Select brand line</option>
+                                                {brandLineOptions.map((line) => (
+                                                    <option key={line.id} value={line.id}>{line.label}</option>
+                                                ))}
+                                                <option value="__other__">Other under this brand</option>
+                                            </Select>
+                                            {brandLineMode === 'other' ? (
+                                                <Input
+                                                    name="brandCatalogPath"
+                                                    placeholder="e.g. iphone/pro/iphone-15-pro"
+                                                    value={String((formData as any).brandCatalogPath || '')}
+                                                    onChange={handleChange}
+                                                />
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ) : null}
                                  <div>
                                     <label className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-1 block">Condition</label>
                                     <Select name="condition" value={formData.condition} onChange={handleChange}>

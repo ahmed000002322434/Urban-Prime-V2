@@ -29,22 +29,39 @@ const itemVariants = {
     show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
-const StarIcon = ({isFilled}: {isFilled: boolean}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill={isFilled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-colors ${isFilled ? 'text-yellow-400' : 'text-gray-400'}`}>
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-    </svg>
-);
-
 const RocketIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-purple-500"><path d="M12 2.5a.5.5 0 0 1 .5.5v3.032c1.928.272 3.65 1.254 4.875 2.705l2.146-2.147a.5.5 0 0 1 .708 0l.707.708a.5.5 0 0 1 0 .707l-2.147 2.146c1.45 1.225 2.433 2.947 2.705 4.875H21.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3.032c-.272 1.928-1.254 3.65-2.705 4.875l2.147 2.146a.5.5 0 0 1 0 .707l-.707.708a.5.5 0 0 1-.708 0l-2.146-2.147c-1.225 1.45-2.947 2.433-4.875 2.705V21.5a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-3.032c-1.928-.272-3.65-1.254-4.875-2.705l-2.146 2.147a.5.5 0 0 1-.708 0l-.707-.708a.5.5 0 0 1 0-.707l2.147-2.146c-1.45-1.225-2.433-2.947-2.705-4.875H2.5a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3.032c.272-1.928 1.254-3.65 2.705-4.875L5.836 6.444a.5.5 0 0 1 0-.707l.707-.708a.5.5 0 0 1 .708 0l2.146 2.147c1.225-1.45 2.947-2.433 4.875-2.705V3a.5.5 0 0 1 .5-.5h1zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>;
 const GridIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
 
 type AutomationKey = 'autoReprice' | 'autoRestock' | 'autoPromote' | 'autoFulfill';
+type QuickUpdateField = 'salePrice' | 'rentalPrice' | 'stock' | 'startingBid' | 'buyNowPrice';
+type ListingStatus = 'published' | 'draft' | 'archived' | 'sold';
 
 const getItemImage = (item: Item) => {
   if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
   if (item.images && item.images.length > 0) return item.images[0];
   return `https://picsum.photos/seed/${item.id}/200/200`;
+};
+
+const getListingStatus = (item: Item): ListingStatus => {
+  if (item.status === 'draft' || item.status === 'archived' || item.status === 'sold') return item.status;
+  return 'published';
+};
+
+const isDigitalItem = (item: Item) => {
+  return item.itemType === 'digital' || item.productType === 'digital' || Boolean(item.digitalFileUrl);
+};
+
+const getEditorRoute = (item: Item, mode: 'edit' | 'duplicate') => {
+  const base = isDigitalItem(item) ? '/profile/products/new-digital' : '/profile/products/new';
+  return `${base}?${mode}=${encodeURIComponent(item.id)}`;
+};
+
+const statusChipClasses = (status: ListingStatus) => {
+  if (status === 'published') return 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30';
+  if (status === 'draft') return 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30';
+  if (status === 'archived') return 'bg-slate-500/20 text-slate-600 dark:text-slate-400 border border-slate-500/30';
+  return 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30';
 };
 
 const MyListingsPage: React.FC = () => {
@@ -60,54 +77,164 @@ const MyListingsPage: React.FC = () => {
   const [itemToBoost, setItemToBoost] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchItems = () => {
-      if (user) {
-          setIsLoading(true);
-          itemService.getItemsByOwner(user.id).then((items) => {
-              setMyItems(items);
-              setIsLoading(false);
-          });
-      }
+  const fetchItems = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const items = await itemService.getItemsByOwner(user.id, {
+        visibility: 'owner',
+        allowMockFallback: false,
+        strictOwnerMatch: true
+      });
+      setMyItems(items);
+    } catch (error) {
+      console.error('Failed to fetch owner listings:', error);
+      setMyItems([]);
+      showNotification('Unable to load listings right now.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchItems();
-  }, [user]);
+    void fetchItems();
+  }, [user?.id]);
 
   if (!user) return null;
 
-  const handleToggleFeatured = async (item: Item) => {
-      await itemService.updateItem(item.id, { isFeatured: !item.isFeatured });
-      fetchItems(); // Refresh list
-  };
-
-  const handleArchive = async (itemId: string) => {
-    await itemService.updateItem(itemId, { status: 'archived' });
-    showNotification("Item archived.");
-    fetchItems();
-  };
-
-  const handleUnarchive = async (itemId: string) => {
-    await itemService.updateItem(itemId, { status: 'draft' });
-    showNotification("Item unarchived and moved to drafts.");
-    fetchItems();
+  const handleLifecycle = async (
+    itemId: string,
+    action: 'publish' | 'unpublish' | 'archive' | 'restoreDraft' | 'publishFromArchive'
+  ) => {
+    try {
+      if (action === 'publish') {
+        await itemService.publishItem(itemId);
+        showNotification('Listing published.');
+      } else if (action === 'unpublish') {
+        await itemService.unpublishItem(itemId);
+        showNotification('Listing moved to drafts.');
+      } else if (action === 'archive') {
+        await itemService.archiveItem(itemId);
+        showNotification('Listing archived.');
+      } else if (action === 'restoreDraft') {
+        await itemService.restoreItemToDraft(itemId);
+        showNotification('Listing restored to drafts.');
+      } else {
+        await itemService.restoreAndPublishItem(itemId);
+        showNotification('Listing restored and published.');
+      }
+      await fetchItems();
+    } catch (error) {
+      console.error('Listing lifecycle action failed:', error);
+      showNotification('Unable to update listing status. Please try again.');
+    }
   };
 
   const handleDelete = async (itemId: string) => {
     if (window.confirm("Are you sure you want to permanently delete this item? This action cannot be undone.")) {
+      try {
         await itemService.deleteItem(itemId);
         showNotification("Item permanently deleted.");
-        fetchItems();
+        await fetchItems();
+      } catch (error) {
+        console.error('Listing deletion failed:', error);
+        showNotification('Unable to delete listing.');
+      }
     }
   };
 
-  const handleQuickUpdate = async (itemId: string, field: 'salePrice' | 'stock', value: string) => {
+  const handleQuickUpdate = async (itemId: string, field: QuickUpdateField, value: string) => {
       const numValue = parseFloat(value);
       if (isNaN(numValue)) return;
-      await itemService.updateItem(itemId, { [field]: numValue });
-      showNotification(`${field === 'salePrice' ? 'Price' : 'Stock'} updated!`);
-      // Update local state without full refetch for speed
-      setMyItems(prev => prev.map(i => i.id === itemId ? { ...i, [field]: numValue } : i));
+      if (numValue < 0) {
+        showNotification('Value cannot be negative.');
+        return;
+      }
+      const currentItem = myItems.find((item) => item.id === itemId);
+      if (!currentItem) return;
+
+      try {
+        if (field === 'startingBid') {
+            const currentAuction = currentItem.auctionDetails || {
+                startingBid: 0,
+                currentBid: 0,
+                endTime: '',
+                bidCount: 0,
+                bids: []
+            };
+            const highestBid = Number(currentAuction.currentBid || 0);
+            const bidCount = Number(currentAuction.bidCount || 0);
+            if (bidCount > 0 || highestBid > 0) {
+                showNotification('Starting bid is locked after bids are placed.');
+                return;
+            }
+            const currentBuyNow = Number(currentItem.buyNowPrice || 0);
+            if (currentBuyNow > 0 && numValue > currentBuyNow) {
+                showNotification('Starting bid cannot exceed the buy now price.');
+                return;
+            }
+            const nextAuction = {
+                ...currentAuction,
+                startingBid: numValue,
+                currentBid: numValue
+            };
+            await itemService.updateItem(itemId, { auctionDetails: nextAuction });
+            setMyItems((prev) =>
+                prev.map((item) =>
+                    item.id === itemId
+                        ? { ...item, auctionDetails: nextAuction }
+                        : item
+                )
+            );
+            showNotification('Auction starting bid updated!');
+            return;
+        }
+
+        if (field === 'buyNowPrice') {
+            const priceFloor = Math.max(
+                Number(currentItem.auctionDetails?.currentBid || 0),
+                Number(currentItem.auctionDetails?.startingBid || 0)
+            );
+            if (numValue > 0 && numValue < priceFloor) {
+                showNotification(`Buy now price must be at least $${priceFloor.toFixed(2)}.`);
+                return;
+            }
+            await itemService.updateItem(itemId, { buyNowPrice: numValue });
+            setMyItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, buyNowPrice: numValue } : item)));
+            showNotification('Auction buy now price updated!');
+            return;
+        }
+
+        if (field === 'rentalPrice') {
+            const nextRates = {
+                hourly: Number(currentItem.rentalRates?.hourly || 0),
+                daily: numValue,
+                weekly: Number(currentItem.rentalRates?.weekly || 0)
+            };
+            await itemService.updateItem(itemId, {
+                rentalPrice: numValue,
+                rentalRates: nextRates
+            });
+            setMyItems((prev) =>
+                prev.map((item) =>
+                    item.id === itemId
+                        ? { ...item, rentalPrice: numValue, rentalRates: nextRates }
+                        : item
+                )
+            );
+            showNotification('Rental price updated!');
+            return;
+        }
+
+        const normalizedValue = field === 'stock' ? Math.max(0, Math.floor(numValue)) : numValue;
+        await itemService.updateItem(itemId, { [field]: normalizedValue } as Partial<Item>);
+        if (field === 'salePrice') showNotification('Sale price updated!');
+        else showNotification('Stock updated!');
+        setMyItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, [field]: normalizedValue } : item)));
+      } catch (error) {
+        console.error('Quick listing update failed:', error);
+        showNotification('Unable to update listing right now.');
+      }
   };
 
   const handleAutomationToggle = async (item: Item, field: AutomationKey, label: string) => {
@@ -119,9 +246,9 @@ const MyListingsPage: React.FC = () => {
   };
 
   const filteredItems = myItems.filter(item => {
+    const status = getListingStatus(item);
     if (activeTab === 'all') return true;
-    if (activeTab === 'published' && (!item.status || item.status === 'published')) return true;
-    return item.status === activeTab;
+    return status === activeTab;
   }).filter(item => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -166,9 +293,9 @@ const MyListingsPage: React.FC = () => {
             animate="show"
            >
                <TabButton tab="all" label="All" count={myItems.length} />
-               <TabButton tab="published" label="Published" count={myItems.filter(i => i.status === 'published' || !i.status).length} />
-               <TabButton tab="draft" label="Drafts" count={myItems.filter(i => i.status === 'draft').length} />
-               <TabButton tab="archived" label="Archived" count={myItems.filter(i => i.status === 'archived').length} />
+               <TabButton tab="published" label="Published" count={myItems.filter(i => getListingStatus(i) === 'published').length} />
+               <TabButton tab="draft" label="Drafts" count={myItems.filter(i => getListingStatus(i) === 'draft').length} />
+               <TabButton tab="archived" label="Archived" count={myItems.filter(i => getListingStatus(i) === 'archived').length} />
            </motion.div>
            
            <motion.div 
@@ -241,7 +368,7 @@ const MyListingsPage: React.FC = () => {
                       animate="show"
                       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6"
                      >
-                        {filteredItems.map((item, index) => (
+                        {filteredItems.map((item) => (
                             <motion.div 
                               key={item.id} 
                               variants={itemVariants}
@@ -268,15 +395,29 @@ const MyListingsPage: React.FC = () => {
                                <motion.div 
                                 initial={{ opacity: 0 }}
                                 whileHover={{ opacity: 1 }}
-                                className="flex flex-wrap items-center gap-2 justify-center sm:justify-between bg-surface-soft p-2 rounded-lg mt-[-10px] z-20 relative text-[11px] transition-all"
+                                className="flex flex-wrap items-center gap-2 justify-center bg-surface-soft p-2 rounded-lg mt-[-10px] z-20 relative text-[11px] transition-all"
                                >
                                    <Link to={`/item/${item.id}`} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">View</Link>
                                    <span className="text-gray-300">|</span>
-                                   <Link to={`/profile/products/new?edit=${item.id}`} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">Edit</Link>
+                                   <button onClick={() => navigate(getEditorRoute(item, 'edit'))} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">Edit</button>
                                    <span className="text-gray-300">|</span>
-                                   <button onClick={() => { navigate(`/profile/products/new?duplicate=${item.id}`); showNotification('Use this listing as a template.'); }} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">Duplicate</button>
+                                   <button onClick={() => { navigate(getEditorRoute(item, 'duplicate')); showNotification('Use this listing as a template.'); }} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">Duplicate</button>
                                    <span className="text-gray-300">|</span>
-                                   <button onClick={() => handleArchive(item.id)} className="text-xs font-semibold text-text-secondary hover:text-red-500 transition-colors">Archive</button>
+                                   {getListingStatus(item) === 'published' ? (
+                                     <button onClick={() => handleLifecycle(item.id, 'unpublish')} className="text-xs font-semibold text-text-secondary hover:text-amber-500 transition-colors">Unpublish</button>
+                                   ) : getListingStatus(item) === 'draft' ? (
+                                     <button onClick={() => handleLifecycle(item.id, 'publish')} className="text-xs font-semibold text-text-secondary hover:text-green-600 transition-colors">Publish</button>
+                                   ) : (
+                                     <button onClick={() => handleLifecycle(item.id, 'restoreDraft')} className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors">Restore Draft</button>
+                                   )}
+                                   <span className="text-gray-300">|</span>
+                                   {getListingStatus(item) === 'archived' ? (
+                                     <button onClick={() => handleLifecycle(item.id, 'publishFromArchive')} className="text-xs font-semibold text-text-secondary hover:text-green-600 transition-colors">Publish Now</button>
+                                   ) : (
+                                     <button onClick={() => handleLifecycle(item.id, 'archive')} className="text-xs font-semibold text-text-secondary hover:text-red-500 transition-colors">Archive</button>
+                                   )}
+                                   <span className="text-gray-300">|</span>
+                                   <button onClick={() => handleDelete(item.id)} className="text-xs font-semibold text-text-secondary hover:text-red-600 transition-colors">Delete</button>
                                </motion.div>
                             </motion.div>
                         ))}
@@ -299,7 +440,7 @@ const MyListingsPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredItems.map((item, index) => (
+                                {filteredItems.map((item) => (
                                     <motion.tr 
                                       key={item.id} 
                                       variants={itemVariants}
@@ -313,21 +454,81 @@ const MyListingsPage: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
+                                            {(() => {
+                                              const status = getListingStatus(item);
+                                              return (
                                             <motion.span 
                                               whileHover={{ scale: 1.05 }}
-                                              className={`inline-block px-2 py-1 text-xs font-bold rounded-full capitalize transition-all ${item.status === 'published' ? 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30' : 'bg-gray-500/20 text-gray-600 dark:text-gray-400 border border-gray-500/30'}`}
+                                              className={`inline-block px-2 py-1 text-xs font-bold rounded-full capitalize transition-all ${statusChipClasses(status)}`}
                                             >
-                                                {item.status || 'Published'}
+                                                {status}
                                             </motion.span>
+                                              );
+                                            })()}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <motion.input 
-                                              whileFocus={{ scale: 1.02 }}
-                                              type="number" 
-                                              defaultValue={item.salePrice || item.rentalPrice} 
-                                              onBlur={(e) => handleQuickUpdate(item.id, 'salePrice', e.target.value)}
-                                              className="w-20 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
-                                            />
+                                            <div className="flex flex-col gap-1">
+                                              {item.listingType === 'sale' && (
+                                                <motion.input 
+                                                  whileFocus={{ scale: 1.02 }}
+                                                  type="number" 
+                                                  defaultValue={item.salePrice || 0}
+                                                  onBlur={(e) => handleQuickUpdate(item.id, 'salePrice', e.target.value)}
+                                                  className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                  aria-label="Sale price"
+                                                />
+                                              )}
+                                              {item.listingType === 'auction' && (
+                                                <>
+                                                  <motion.input
+                                                    whileFocus={{ scale: 1.02 }}
+                                                    type="number"
+                                                    defaultValue={item.auctionDetails?.startingBid || 0}
+                                                    onBlur={(e) => handleQuickUpdate(item.id, 'startingBid', e.target.value)}
+                                                    className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                    aria-label="Auction starting bid"
+                                                  />
+                                                  <motion.input
+                                                    whileFocus={{ scale: 1.02 }}
+                                                    type="number"
+                                                    defaultValue={item.buyNowPrice || 0}
+                                                    onBlur={(e) => handleQuickUpdate(item.id, 'buyNowPrice', e.target.value)}
+                                                    className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                    aria-label="Auction buy now price"
+                                                  />
+                                                </>
+                                              )}
+                                              {item.listingType === 'rent' && (
+                                                <motion.input 
+                                                  whileFocus={{ scale: 1.02 }}
+                                                  type="number" 
+                                                  defaultValue={item.rentalPrice || item.rentalRates?.daily || 0}
+                                                  onBlur={(e) => handleQuickUpdate(item.id, 'rentalPrice', e.target.value)}
+                                                  className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                  aria-label="Rental price"
+                                                />
+                                              )}
+                                              {item.listingType === 'both' && (
+                                                <>
+                                                  <motion.input
+                                                    whileFocus={{ scale: 1.02 }}
+                                                    type="number"
+                                                    defaultValue={item.salePrice || 0}
+                                                    onBlur={(e) => handleQuickUpdate(item.id, 'salePrice', e.target.value)}
+                                                    className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                    aria-label="Sale price"
+                                                  />
+                                                  <motion.input
+                                                    whileFocus={{ scale: 1.02 }}
+                                                    type="number"
+                                                    defaultValue={item.rentalPrice || item.rentalRates?.daily || 0}
+                                                    onBlur={(e) => handleQuickUpdate(item.id, 'rentalPrice', e.target.value)}
+                                                    className="w-24 p-1 border border-border rounded bg-transparent focus:bg-surface focus:ring-1 focus:ring-primary text-right transition-all"
+                                                    aria-label="Rental price"
+                                                  />
+                                                </>
+                                              )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <motion.input 
@@ -399,11 +600,69 @@ const MyListingsPage: React.FC = () => {
                                                 <motion.button 
                                                   whileHover={{ scale: 1.05 }}
                                                   whileTap={{ scale: 0.95 }}
-                                                  onClick={() => navigate(`/profile/products/new?edit=${item.id}`)} 
+                                                  onClick={() => navigate(getEditorRoute(item, 'edit'))} 
                                                   className="text-primary hover:text-primary/80 transition-colors font-semibold"
                                                 >
                                                   Edit
                                                 </motion.button>
+                                                <motion.button 
+                                                  whileHover={{ scale: 1.05 }}
+                                                  whileTap={{ scale: 0.95 }}
+                                                  onClick={() => navigate(getEditorRoute(item, 'duplicate'))}
+                                                  className="text-text-secondary hover:text-primary transition-colors font-semibold"
+                                                >
+                                                  Duplicate
+                                                </motion.button>
+                                                {getListingStatus(item) === 'published' && (
+                                                  <motion.button
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => handleLifecycle(item.id, 'unpublish')}
+                                                    className="text-text-secondary hover:text-amber-600 transition-colors font-semibold"
+                                                  >
+                                                    Unpublish
+                                                  </motion.button>
+                                                )}
+                                                {getListingStatus(item) === 'draft' && (
+                                                  <motion.button
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => handleLifecycle(item.id, 'publish')}
+                                                    className="text-text-secondary hover:text-green-600 transition-colors font-semibold"
+                                                  >
+                                                    Publish
+                                                  </motion.button>
+                                                )}
+                                                {getListingStatus(item) === 'archived' && (
+                                                  <>
+                                                    <motion.button
+                                                      whileHover={{ scale: 1.05 }}
+                                                      whileTap={{ scale: 0.95 }}
+                                                      onClick={() => handleLifecycle(item.id, 'restoreDraft')}
+                                                      className="text-text-secondary hover:text-primary transition-colors font-semibold"
+                                                    >
+                                                      Restore Draft
+                                                    </motion.button>
+                                                    <motion.button
+                                                      whileHover={{ scale: 1.05 }}
+                                                      whileTap={{ scale: 0.95 }}
+                                                      onClick={() => handleLifecycle(item.id, 'publishFromArchive')}
+                                                      className="text-text-secondary hover:text-green-600 transition-colors font-semibold"
+                                                    >
+                                                      Publish Now
+                                                    </motion.button>
+                                                  </>
+                                                )}
+                                                {getListingStatus(item) !== 'archived' && (
+                                                  <motion.button
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => handleLifecycle(item.id, 'archive')}
+                                                    className="text-text-secondary hover:text-red-500 transition-colors font-semibold"
+                                                  >
+                                                    Archive
+                                                  </motion.button>
+                                                )}
                                                 <motion.button 
                                                   whileHover={{ scale: 1.05 }}
                                                   whileTap={{ scale: 0.95 }}

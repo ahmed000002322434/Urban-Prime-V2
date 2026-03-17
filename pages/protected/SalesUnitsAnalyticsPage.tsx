@@ -27,28 +27,25 @@ const SalesUnitsAnalyticsPage: React.FC = () => {
         const analytics = await analyticsService.getSellerAnalytics(activePersona.id, 30);
         
         if (analytics) {
-          // Calculate units trend from completed checkouts
-          const dailyMap = new Map<string, number>();
-          const today = new Date().toISOString().split('T')[0];
-          dailyMap.set(today, analytics.completedCheckouts);
-
-          const unitsTrend = Array.from(dailyMap.entries())
-            .map(([date, units]) => ({ date, units }))
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .slice(-30);
+          const unitsTrend = (analytics.unitsTrend || analytics.ordersTrend || []).map((entry) => ({
+            date: entry.date,
+            units: entry.value
+          }));
+          const totalUnits = analytics.topProducts?.reduce((sum, product) => sum + Number(product.unitsSold || product.totalCheckouts || 0), 0) || analytics.completedCheckouts;
+          const totalOrders = analytics.totalOrders || analytics.completedCheckouts;
 
           setData({
-            totalUnits: analytics.completedCheckouts,
-            averageUnitsPerOrder: analytics.completedCheckouts > 0 
-              ? parseFloat((analytics.completedCheckouts / Math.max(1, analytics.completedCheckouts)).toFixed(2))
+            totalUnits,
+            averageUnitsPerOrder: totalOrders > 0
+              ? parseFloat((totalUnits / totalOrders).toFixed(2))
               : 0,
             topSellingProducts: analytics.topProducts?.slice(0, 5).map(p => ({
               itemId: p.itemId,
               title: p.itemTitle,
-              units: p.totalCheckouts,
-              revenue: p.totalCheckouts * 50
+              units: Number(p.unitsSold || p.totalCheckouts || 0),
+              revenue: Number(p.revenue || 0)
             })) || [],
-            unitsTrend: unitsTrend.length > 0 ? unitsTrend : [{ date: today, units: analytics.completedCheckouts }]
+            unitsTrend: unitsTrend.length > 0 ? unitsTrend : [{ date: new Date().toISOString().split('T')[0], units: totalUnits }]
           });
         }
       } catch (error) {

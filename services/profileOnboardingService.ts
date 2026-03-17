@@ -1,5 +1,7 @@
 import { auth } from '../firebase';
 import { backendFetch, isBackendConfigured } from './backendClient';
+import { localDb } from './localDb';
+import personaService from './personaService';
 import type {
   AccountPersona,
   CapabilityState,
@@ -95,7 +97,8 @@ const mapCompletion = (raw: any): ProfileCompletion => ({
 
 const mapFeatureFlags = (raw: any): FeatureFlags => ({
   profileOnboardingV2: raw?.profileOnboardingV2 !== false,
-  chatReliabilityV2: raw?.chatReliabilityV2 !== false
+  chatReliabilityV2: raw?.chatReliabilityV2 !== false,
+  brandHubV3: raw?.brandHubV3 !== false
 });
 
 const mapOnboardingState = (raw: any): UserOnboardingState | null => {
@@ -159,6 +162,7 @@ const mapUnifiedProfile = (raw: any): UnifiedProfile => {
     memberSince: userRow?.created_at || new Date().toISOString(),
     status: userRow?.status || 'active',
     accountLifecycle: completion.isComplete ? 'member' : 'restricted',
+    isAdmin: Boolean(userRow?.is_admin || userRow?.isAdmin || (String(userRow?.role || '').toLowerCase() === 'admin') || (String(userRow?.role || '').toLowerCase() === 'super_admin')),
     capabilities: activePersona?.capabilities || {
       ...BASE_CAPABILITIES,
       buy: 'active',
@@ -191,7 +195,7 @@ const getAuthContext = async (): Promise<{ token?: string; firebaseUid?: string 
 
 const request = async (path: string, options: RequestInit = {}) => {
   if (!isBackendConfigured()) {
-    throw new Error('Backend URL is not configured. Set VITE_BACKEND_URL.');
+    return { data: null };
   }
   const authContext = await getAuthContext();
   const headers = new Headers(options.headers || {});
@@ -199,6 +203,56 @@ const request = async (path: string, options: RequestInit = {}) => {
     headers.set('x-firebase-uid', authContext.firebaseUid);
   }
   return backendFetch(path, { ...options, headers }, authContext.token);
+};
+
+const getLocalUnifiedProfile = async (): Promise<UnifiedProfile> => {
+  await localDb.init();
+  const users = await localDb.list<User>('users');
+  const fallbackUser = users[0] || {
+    id: 'local-user',
+    name: 'Local User',
+    email: '',
+    avatar: '/icons/urbanprime.svg',
+    phone: '',
+    city: '',
+    country: '',
+    purpose: undefined,
+    interests: [],
+    currencyPreference: '',
+    following: [],
+    followers: [],
+    wishlist: [],
+    cart: [],
+    badges: [],
+    memberSince: new Date().toISOString(),
+    status: 'active',
+    accountLifecycle: 'member',
+    capabilities: {
+      ...BASE_CAPABILITIES,
+      buy: 'active',
+      rent: 'active'
+    }
+  } as User;
+
+  const personas = await personaService.ensureDefaultConsumerPersona(fallbackUser);
+  const activePersona = personas[0] || null;
+
+  return {
+    user: fallbackUser,
+    profile: {},
+    personas,
+    activePersona,
+    completion: {
+      isComplete: true,
+      missingRequiredFields: [],
+      nextStep: 'completed'
+    },
+    featureFlags: {
+      profileOnboardingV2: false,
+      chatReliabilityV2: false,
+      brandHubV3: true
+    }
+  };
 };
 
 export interface SaveOnboardingStatePayload {
@@ -223,11 +277,17 @@ export type OnboardingTelemetryEvent =
 
 const profileOnboardingService = {
   getProfileMe: async (): Promise<UnifiedProfile> => {
+    if (!isBackendConfigured()) {
+      return getLocalUnifiedProfile();
+    }
     const payload = await request('/profile/me');
     return mapUnifiedProfile(payload);
   },
 
   patchProfileMe: async (payload: Record<string, unknown>): Promise<UnifiedProfile> => {
+    if (!isBackendConfigured()) {
+      return getLocalUnifiedProfile();
+    }
     const response = await request('/profile/me', {
       method: 'PATCH',
       body: JSON.stringify(payload)
@@ -236,6 +296,16 @@ const profileOnboardingService = {
   },
 
   getOnboardingState: async (): Promise<{ state: UserOnboardingState | null; completion: ProfileCompletion }> => {
+    if (!isBackendConfigured()) {
+      return {
+        state: null,
+        completion: {
+          isComplete: true,
+          missingRequiredFields: [],
+          nextStep: 'completed'
+        }
+      };
+    }
     const payload = await request('/onboarding/state');
     return {
       state: mapOnboardingState(payload?.data),
@@ -244,6 +314,16 @@ const profileOnboardingService = {
   },
 
   saveOnboardingState: async (payload: SaveOnboardingStatePayload): Promise<{ state: UserOnboardingState | null; completion: ProfileCompletion }> => {
+    if (!isBackendConfigured()) {
+      return {
+        state: null,
+        completion: {
+          isComplete: true,
+          missingRequiredFields: [],
+          nextStep: 'completed'
+        }
+      };
+    }
     const response = await request('/onboarding/state', {
       method: 'PUT',
       body: JSON.stringify(payload)
@@ -255,6 +335,9 @@ const profileOnboardingService = {
   },
 
   completeOnboarding: async (payload: CompleteOnboardingPayload): Promise<UnifiedProfile> => {
+    if (!isBackendConfigured()) {
+      return getLocalUnifiedProfile();
+    }
     const response = await request('/onboarding/complete', {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -266,6 +349,9 @@ const profileOnboardingService = {
     event: OnboardingTelemetryEvent,
     payload: { step?: OnboardingStepId; details?: Record<string, unknown> } = {}
   ) => {
+    if (!isBackendConfigured()) {
+      return;
+    }
     await request('/onboarding/events', {
       method: 'POST',
       body: JSON.stringify({
@@ -277,6 +363,9 @@ const profileOnboardingService = {
   },
 
   bootstrapPersonas: async (payload: { selectedIntents?: OnboardingIntent[]; roleSetup?: Record<string, unknown> }) => {
+    if (!isBackendConfigured()) {
+      return [];
+    }
     const response = await request('/onboarding/persona-bootstrap', {
       method: 'POST',
       body: JSON.stringify(payload)

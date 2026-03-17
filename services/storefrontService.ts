@@ -50,8 +50,46 @@ export const storefrontService = {
           { question: "In one sentence, what is the tagline for your store?", answer: `Discover amazing items from ${userName}` },
           { question: "Describe the visual style or vibe you want for your store.", answer: 'Modern & Clean' }
       ];
-      
-      const aiResult = await generateStorefront({ questionnaireAnswers: defaultQuestionnaire, logoUrl: '' }, [], []);
+      let aiResult: any;
+      try {
+          aiResult = await generateStorefront({ questionnaireAnswers: defaultQuestionnaire, logoUrl: '' }, [], []);
+      } catch (error) {
+          console.warn('[storefrontService] AI storefront generation failed, using defaults.', error);
+          aiResult = {
+              slug: `${userName}`.toLowerCase().replace(/\s+/g, '-'),
+              brandingKit: {
+                  palette: { primary: '#111827', secondary: '#6b7280', accent: '#f97316' },
+                  fontPairing: { heading: 'Inter', body: 'Inter' },
+                  logoDescription: ''
+              },
+              layout: JSON.stringify({
+                  slug: `${userName}`.toLowerCase().replace(/\s+/g, '-'),
+                  isLive: false,
+                  theme: {
+                      primaryColor: '#0fb9b1',
+                      font: 'Inter',
+                      borderRadius: '12px',
+                      backgroundColor: '#ffffff'
+                  },
+                  sections: [
+                      {
+                          id: 'sec_1',
+                          type: 'hero',
+                          order: 0,
+                          content: { title: `${userName}'s Store`, subtitle: 'Discover amazing finds', ctaText: 'Shop Now' }
+                      }
+                  ],
+                  seo: {
+                      metaTitle: `${userName}'s Store`,
+                      metaDescription: `Discover amazing items from ${userName}.`,
+                      socialImage: ''
+                  }
+              }),
+              banner: { text: `Discover amazing items from ${userName}` },
+              pages: [],
+              questionnaireAnswers: defaultQuestionnaire
+          };
+      }
       
       const newStoreData: Omit<Store, 'id'> = {
           ownerId: userId,

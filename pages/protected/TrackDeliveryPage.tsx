@@ -149,7 +149,7 @@ const TrackDeliveryPage: React.FC = () => {
                 <div className="mx-4 mb-4 bg-white dark:bg-[#1e1e1e] rounded-xl shadow-2xl p-4 border border-gray-100 dark:border-gray-700">
                     <div className="flex justify-between items-center mb-2">
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">{status}</h2>
-                        <div className="bg-black dark:bg-white text-white dark:text-black px-3 py-1 rounded-full text-xs font-bold">
+                        <div className="clay-button clay-button-primary clay-size-sm">
                             {eta} min
                         </div>
                     </div>

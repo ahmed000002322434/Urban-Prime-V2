@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Premium Product Detail Page</title>
+<!-- Tailwind CSS v3 CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'skeuo-bg': '#f0f2f5',
+            'skeuo-surface': '#f8fafc',
+            'premium-orange': '#ff6b00',
+            'charcoal': '#1a1a1a',
+          },
+          borderRadius: {
+            '2xl': '20px',
+          },
+          boxShadow: {
+            'skeuo-flat': '8px 8px 16px #d1d9e6, -8px -8px 16px #ffffff',
+            'skeuo-pressed': 'inset 4px 4px 8px #d1d9e6, inset -4px -4px 8px #ffffff',
+            'skeuo-hover': '12px 12px 24px #d1d9e6, -12px -12px 24px #ffffff',
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="skeuomorphic-globals">
+    :root {
+      --bg-color: #f0f2f5;
+      --surface-color: #f8fafc;
+      --text-main: #1a1a1a;
+      --text-muted: #6b7280;
+      --shadow-light: #ffffff;
+      --shadow-dark: #d1d9e6;
+      --shadow-darker: #b8c2d1;
+      --accent-color: #ff6b00;
+      --border-color: rgba(255,255,255,0.5);
+    }
+
+    [data-theme='dark'] {
+      --bg-color: #0f172a;
+      --surface-color: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --shadow-light: #283447;
+      --shadow-dark: #020617;
+      --shadow-darker: #01040a;
+      --border-color: rgba(255,255,255,0.05);
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      transition: background-color 0.5s ease, color 0.5s ease;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    .skeuo-card {
+      background: var(--surface-color);
+      box-shadow: 12px 12px 24px var(--shadow-dark), -12px -12px 24px var(--shadow-light);
+      border-radius: 24px;
+      border: 1px solid var(--border-color);
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .skeuo-card:hover {
+      box-shadow: 16px 16px 32px var(--shadow-darker), -16px -16px 32px var(--shadow-light);
+      transform: translateY(-4px);
+    }
+
+    .skeuo-inset {
+      box-shadow: inset 8px 8px 16px var(--shadow-dark), inset -8px -8px 16px var(--shadow-light);
+      border-radius: 16px;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+    }
+
+    .skeuo-btn {
+      box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+      transition: all 0.2s ease;
+    }
+
+    .skeuo-btn:active {
+      box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+      transform: scale(0.98);
+    }
+
+    .stagger-reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .stagger-reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .parallax-container {
+      perspective: 1000px;
+    }
+
+    .parallax-img {
+      transition: transform 0.1s ease-out;
+    }
+
+    .mode-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+      opacity: 0;
+    }
+
+    .mode-content.active {
+      max-height: 500px;
+      opacity: 1;
+    }
+  </style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/></head>
+<body class="p-4 md:p-8">
+<div class="fixed top-8 right-8 z-[100]">
+<button class="skeuo-card w-12 h-12 flex items-center justify-center skeuo-btn" id="theme-toggle" style="color: var(--text-main);">
+<span class="material-symbols-outlined theme-icon-sun">light_mode</span>
+<span class="material-symbols-outlined theme-icon-moon hidden">dark_mode</span>
+</button>
+</div>
+<main class="max-w-7xl mx-auto space-y-16">
+<!-- BEGIN: Hero Product Section -->
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start fade-in-up" data-purpose="hero-section">
+<!-- Left: Product Gallery -->
+<div class="flex flex-col md:flex-row gap-4 sticky top-8">
+<!-- Thumbnails -->
+<div class="flex md:flex-col gap-4 order-2 md:order-1 overflow-x-auto md:overflow-visible py-2">
+<button class="skeuo-card w-16 h-16 md:w-20 md:h-20 flex-shrink-0 p-1 overflow-hidden" style="color: var(--text-main);">
+<img alt="Thumbnail" class="w-full h-full object-cover rounded-xl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBrxDylcb2jNo373y3OrcC-BzP4xT9_JF_Q89nGVhwDL7EaawgDoRymrSkxEgArot_-tc2VnncKTKMM6JfF3OUH8TdAgV6tCIEKAoWQjYbQFqz6XLgd-YLAYeqMBrtG0_8cCNYC5qaTH95ndneNk89Gxb0KPi3AGn6UtLFoVUTsj0WCByBXeSPwGN1ewOtfp3csdd8FSTNqN5tsMt6ACQS4D9KrEoCpvzoNpxPfkdsibyj_D2po9C-AaktUW4MBuDaj95rR0c80zi3X"/>
+</button>
+<button class="skeuo-card w-16 h-16 md:w-20 md:h-20 flex-shrink-0 p-1 overflow-hidden" style="color: var(--text-main);">
+<img alt="Thumbnail" class="w-full h-full object-cover rounded-xl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD2v0oDGOLDECGTDPTpSorBQJGuDk0PTGAO2Ov_hf21-YrzM6vWa6maoHYk_F7jrUTYOvNOuHr595egJe46za73BMet3nlltVXvtpe61KuXQiHicDIZr_2zBCSsaN7-zqm-PPc6jIKthiojTjIHGyb1Hdr0Q4EIXLwtNVr4bVm2hc2vdtjqruNP2jt9tlYwNtul6dbw4p5EjDi_Nf1_u3ez69WUIL9fFIbCrweYn8oZWEZzKpbYa8dQ1DI5G3IhN6UckgC8MetB7QsX"/>
+</button>
+<button class="skeuo-inset w-16 h-16 md:w-20 md:h-20 flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-500 uppercase tracking-tighter" style="color: var(--text-muted)">
+            360°
+          </button>
+<button class="skeuo-inset w-16 h-16 md:w-20 md:h-20 flex-shrink-0 flex items-center justify-center">
+<svg class="w-8 h-8 text-premium-orange" fill="currentColor" viewbox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg>
+</button>
+</div>
+<!-- Main Image -->
+<div class="skeuo-card flex-1 aspect-square overflow-hidden relative order-1 md:order-2 group image-zoom cursor-crosshair" style="color: var(--text-main);">
+<img alt="Main Product" class="w-full h-full object-cover transition-transform duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8o6sXeJ2iWCSWe12Stf9hWFeczLDER3qDLsug-bm8TqmYAo6q3sid_rMsOlzP94mFROTEaT3r5pXUG0lldllotjVqMoNWCJ0hq7OP00cTvJ2S_ae0BJNK4Fp2S2srW_aQIX1vw-Ilti7M-IiwkWfYnm5UNJLZRsiwWU33QgES7_b7MghBzFw1WAPgeFaDbVE_ELRm75XXgz31VV6yjS7aYO_DyQ_2Kdar_ZLu28uxdEO1WMXqhwtsF9u4qYb4QoDzw180JlgvgnN9"/>
+<div class="absolute bottom-4 right-4 skeuo-card px-4 py-2 bg-white/80 backdrop-blur-sm text-xs font-bold uppercase tracking-wider" style="color: var(--text-main);">
+            Hover to Zoom
+          </div>
+</div>
+</div>
+<!-- Right: Product Info -->
+<div class="space-y-8">
+<div>
+<h1 class="text-4xl font-extrabold text-charcoal mb-2" style="color: var(--text-main)">Zenith X1 Pro Wireless Headphones</h1>
+<div class="flex items-center gap-4">
+<div class="flex text-premium-orange">
+<span>★★★★★</span>
+</div>
+<span class="text-gray-500 text-sm font-medium" style="color: var(--text-muted)">4.9 (1,248 Reviews)</span>
+</div>
+</div>
+<div class="flex items-baseline gap-4">
+<span class="text-4xl font-bold text-charcoal" style="color: var(--text-main)">$299.00</span>
+<span class="text-xl text-gray-400 line-through" style="color: var(--text-muted)">$399.00</span>
+<span class="bg-premium-orange text-white px-3 py-1 rounded-full text-xs font-bold uppercase">-25% OFF</span>
+</div>
+<p class="text-gray-600 leading-relaxed" style="color: var(--text-muted)">
+          Experience acoustic perfection with the Zenith X1 Pro. Featuring hybrid noise cancellation, 60-hour battery life, and high-fidelity spatial audio for an immersive listening experience.
+        </p>
+<!-- Selectors -->
+<div class="space-y-6">
+<div>
+<span class="block text-xs font-bold uppercase text-gray-500 mb-3 tracking-widest" style="color: var(--text-muted)">Select Color</span>
+<div class="flex gap-4">
+<button class="w-10 h-10 rounded-full border-4 border-white skeuo-card bg-charcoal" data-purpose="color-opt" style="color: var(--text-main);"></button>
+<button class="w-10 h-10 rounded-full border-4 border-white skeuo-inset bg-gray-400" data-purpose="color-opt"></button>
+<button class="w-10 h-10 rounded-full border-4 border-white skeuo-card bg-premium-orange" data-purpose="color-opt" style="color: var(--text-main);"></button>
+</div>
+</div>
+<div>
+<span class="block text-xs font-bold uppercase text-gray-500 mb-3 tracking-widest" style="color: var(--text-muted)">Size / Fit</span>
+<div class="flex gap-3">
+<button class="skeuo-inset px-6 py-2 text-sm font-bold text-premium-orange">Standard</button>
+<button class="skeuo-card px-6 py-2 text-sm font-bold text-charcoal" style="color: var(--text-main);">Extra Comfort</button>
+</div>
+</div>
+</div>
+<!-- Purchase Actions -->
+<div class="space-y-6 pt-4">
+<!-- Mode Toggle -->
+<div class="skeuo-inset p-1 flex gap-1">
+<button class="flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all bg-premium-orange text-white shadow-sm magnetic-btn" id="btn-buy" onclick="switchMode('buy')">Buy</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-gray-500 hover:text-premium-orange magnetic-btn" id="btn-bid" onclick="switchMode('bid')" style="color: var(--text-muted)">Bid</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-gray-500 hover:text-premium-orange magnetic-btn" id="btn-rent" onclick="switchMode('rent')" style="color: var(--text-muted)">Rent</button>
+</div>
+<!-- Buy Mode -->
+<div class="mode-content active space-y-4" id="mode-buy">
+<div class="flex items-center gap-4">
+<div class="skeuo-inset flex items-center p-1">
+<button class="w-10 h-10 skeuo-btn flex items-center justify-center font-bold text-gray-500" onclick="this.parentNode.querySelector('input').stepDown()" style="color: var(--text-main);">-</button>
+<input class="w-12 bg-transparent border-none text-center font-bold focus:ring-0 text-current" min="1" type="number" value="1"/>
+<button class="w-10 h-10 skeuo-btn flex items-center justify-center font-bold text-gray-500" onclick="this.parentNode.querySelector('input').stepUp()" style="color: var(--text-main);">+</button>
+</div>
+<button class="flex-1 skeuo-card skeuo-btn bg-charcoal text-white py-4 font-bold uppercase tracking-widest hover:bg-black" style="color: var(--text-main);">
+        Add to Cart
+      </button>
+</div>
+<button class="w-full skeuo-card skeuo-btn bg-premium-orange text-white py-4 font-bold uppercase tracking-widest shadow-[0_4px_10px_rgba(255,107,0,0.3)] btn-shimmer magnetic-btn" style="color: var(--text-main);">
+      Buy It Now
+    </button>
+</div>
+<!-- Bid Mode -->
+<div class="mode-content space-y-4" id="mode-bid">
+<div class="skeuo-inset p-4 flex justify-between items-center">
+<div>
+<span class="block text-[10px] uppercase text-gray-500 font-bold tracking-tighter" style="color: var(--text-muted)">Current Bid</span>
+<span class="text-2xl font-black text-premium-orange">$255.00</span>
+</div>
+<a class="text-xs font-bold text-gray-500 underline hover:text-premium-orange transition-colors" href="#" style="color: var(--text-muted)">Bid History (14)</a>
+</div>
+<div class="flex gap-4">
+<div class="skeuo-inset flex-1 flex items-center px-4 py-3">
+<span class="text-gray-400 mr-2" style="color: var(--text-muted)">$</span>
+<input class="bg-transparent border-none focus:ring-0 w-full font-bold text-current" min="256" placeholder="Enter bid" type="number"/>
+</div>
+<button class="skeuo-card skeuo-btn bg-premium-orange text-white px-8 font-bold uppercase tracking-widest btn-shimmer magnetic-btn" style="color: var(--text-main);">Place Bid</button>
+</div>
+</div>
+<!-- Rent Mode -->
+<div class="mode-content space-y-4" id="mode-rent">
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-1">
+<label class="text-[10px] font-bold uppercase text-gray-500 ml-1" style="color: var(--text-muted)">Start Date</label>
+<input class="w-full skeuo-inset border-none p-3 text-sm font-medium focus:ring-premium-orange bg-transparent text-current" type="date"/>
+</div>
+<div class="space-y-1">
+<label class="text-[10px] font-bold uppercase text-gray-500 ml-1" style="color: var(--text-muted)">End Date</label>
+<input class="w-full skeuo-inset border-none p-3 text-sm font-medium focus:ring-premium-orange bg-transparent text-current" type="date"/>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 skeuo-inset">
+<span class="text-sm font-bold text-gray-500" style="color: var(--text-muted)">$12.99 / day</span>
+<span class="text-xs text-gray-400" style="color: var(--text-muted)">Min. 3 days</span>
+</div>
+<button class="w-full skeuo-card skeuo-btn bg-premium-orange text-white py-4 font-bold uppercase tracking-widest" style="color: var(--text-main);">
+      Rent Now
+    </button>
+</div>
+<script>
+    function switchMode(mode) {
+      document.querySelectorAll('.mode-content').forEach(el => el.classList.remove('active'));
+      document.getElementById('mode-' + mode).classList.add('active');
+      
+      const buttons = ['buy', 'bid', 'rent'];
+      buttons.forEach(b => {
+        const btn = document.getElementById('btn-' + b);
+        btn.classList.remove('bg-premium-orange', 'text-white', 'shadow-sm');
+        btn.classList.add('text-gray-500');
+      });
+      
+      const activeBtn = document.getElementById('btn-' + mode);
+      activeBtn.classList.remove('text-gray-500');
+      activeBtn.classList.add('bg-premium-orange', 'text-white', 'shadow-sm');
+    }
+  </script>
+</div>
+</div>
+</section>
+<!-- END: Hero Product Section -->
+<!-- BEGIN: Trust Badge Strip -->
+<section class="grid grid-cols-2 md:grid-cols-4 gap-6 fade-in-up" data-purpose="trust-badges">
+<div class="skeuo-card p-6 flex flex-col items-center text-center gap-2" style="color: var(--text-main);">
+<svg class="w-6 h-6 text-premium-orange" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-xs font-bold uppercase">Free Shipping</span>
+</div>
+<div class="skeuo-card p-6 flex flex-col items-center text-center gap-2" style="color: var(--text-main);">
+<svg class="w-6 h-6 text-premium-orange" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-xs font-bold uppercase">30-Day Returns</span>
+</div>
+<div class="skeuo-card p-6 flex flex-col items-center text-center gap-2" style="color: var(--text-main);">
+<svg class="w-6 h-6 text-premium-orange" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-xs font-bold uppercase">Secure Checkout</span>
+</div>
+<div class="skeuo-card p-6 flex flex-col items-center text-center gap-2" style="color: var(--text-main);">
+<svg class="w-6 h-6 text-premium-orange" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-xs font-bold uppercase">2 Year Warranty</span>
+</div>
+</section>
+<!-- END: Trust Badge Strip -->
+<!-- BEGIN: Product Highlights -->
+<section class="space-y-8 fade-in-up" data-purpose="highlights-grid">
+<h2 class="text-2xl font-bold text-center uppercase tracking-[0.2em] text-gray-400" style="color: var(--text-muted)">Key Features</h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="skeuo-card p-8 space-y-4 stagger-reveal" style="color: var(--text-main);">
+<div class="w-12 h-12 skeuo-inset flex items-center justify-center text-premium-orange font-bold text-xl">01</div>
+<h3 class="text-lg font-bold" style="color: var(--text-main)">Military Durability</h3>
+<p class="text-gray-500 text-sm" style="color: var(--text-muted)">Crafted with aircraft-grade aluminum and premium reinforced polymers to withstand daily wear and tear.</p>
+</div>
+<div class="skeuo-card p-8 space-y-4 stagger-reveal" style="color: var(--text-main);">
+<div class="w-12 h-12 skeuo-inset flex items-center justify-center text-premium-orange font-bold text-xl">02</div>
+<h3 class="text-lg font-bold" style="color: var(--text-main)">IPX5 Waterproof</h3>
+<p class="text-gray-500 text-sm" style="color: var(--text-muted)">Protected against splashes and sweat, making them the perfect companion for intense workouts and travel.</p>
+</div>
+<div class="skeuo-card p-8 space-y-4 stagger-reveal" style="color: var(--text-main);">
+<div class="w-12 h-12 skeuo-inset flex items-center justify-center text-premium-orange font-bold text-xl">03</div>
+<h3 class="text-lg font-bold" style="color: var(--text-main)">Featherweight Design</h3>
+<p class="text-gray-500 text-sm" style="color: var(--text-muted)">At only 240g, you'll forget you're wearing them, even after hours of continuous use.</p>
+</div>
+</div>
+</section>
+<!-- END: Product Highlights -->
+<!-- BEGIN: Story Features -->
+<section class="space-y-24 py-12" data-purpose="story-sections">
+<div class="flex flex-col md:flex-row items-center gap-12 group fade-in-up stagger-reveal">
+<div class="w-full md:w-1/2 skeuo-card overflow-hidden" style="color: var(--text-main);">
+<img alt="Feature Story" class="w-full h-auto transform group-hover:scale-105 transition-transform duration-700" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDa9ScKUmmbAWz8LD_RtgkrpTaavstmb7SppwMWO0fgdYdWvr02eT2HFw0RL0NY4Zbd6VDdmifK3p22qdS7xX7a5IcAJTRf653MSNsZ9rZSyvJf3I02xq4XYss2p7jBn_Ua2QEWjd8OIot5zNjOqGZSfixXmmiEa3QoBSfWkEa2QlhtBdnSbyqGi4_huQXM0H5jS_1fTmeAOovJuPI9XW0h4OHyS_S_f-HNmiWA_hV60-4hIuhD2I5rNQEhzM_g6GzGU4H4mPtPSsnC"/>
+</div>
+<div class="w-full md:w-1/2 space-y-4 px-4">
+<h3 class="text-3xl font-bold" style="color: var(--text-main)">Focus on what matters.</h3>
+<p class="text-gray-600 text-lg" style="color: var(--text-muted)">Our proprietary adaptive noise cancellation technology analyzes ambient sounds 50,000 times per second to create a quiet oasis wherever you go.</p>
+</div>
+</div>
+<div class="flex flex-col md:flex-row-reverse items-center gap-12 group fade-in-up stagger-reveal">
+<div class="w-full md:w-1/2 skeuo-card overflow-hidden" style="color: var(--text-main);">
+<img alt="Feature Story" class="w-full h-auto transform group-hover:scale-105 transition-transform duration-700" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo2h_lzwPWSxhfM-66hDHY3LMHEoHmZUlQnGCcczNq8Wx0qHflZvdRxwuhguYjiCbzpizkzoe6VAi_1Vo0WyjEyeOV4OirmYEt0Vpli6ljetpUhUFD_WjSo3RWCdX2qhBnrY21g6SRNmZCZ_hMu9Zi0zMJjLKMhgMdqe0aYlsRWlbfg32PxLbPVa6HZq2NFlp21wtnN_2JZNK60QXrBPsbyUZfFlMc7kjP3F18tb03PW1GGgwvT2dOpq6rZOZb1LjkAfXSgrSfpBzT"/>
+</div>
+<div class="w-full md:w-1/2 space-y-4 px-4">
+<h3 class="text-3xl font-bold" style="color: var(--text-main)">Sound in 3D.</h3>
+<p class="text-gray-600 text-lg" style="color: var(--text-muted)">Integrated head tracking technology places sound exactly where it should be, giving you a concert-hall experience in the palm of your hand.</p>
+</div>
+</div>
+</section>
+<!-- END: Story Features -->
+<!-- BEGIN: Visual Specifications -->
+<section class="space-y-12 fade-in-up" data-purpose="seller-info">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<!-- Seller Profile Card -->
+<div class="skeuo-card p-6 flex flex-col items-center text-center space-y-4 magnetic-card" style="color: var(--text-main);">
+<div class="relative">
+<div class="w-24 h-24 rounded-full skeuo-inset p-1 overflow-hidden">
+<img alt="Zenith Store" class="w-full h-full object-cover rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_A"/>
+</div>
+<div class="absolute -bottom-2 -right-2 bg-green-500 text-white p-1 rounded-full border-2 border-white skeuo-card" style="color: var(--text-main);" title="Online Now">
+<span class="material-symbols-outlined text-xs">check</span>
+</div>
+</div>
+<div>
+<h4 class="text-xl font-bold" style="color: var(--text-main)">Zenith Official Store</h4>
+<div class="flex items-center justify-center gap-2 mt-1">
+<span class="text-premium-orange font-bold">4.9</span>
+<div class="flex text-premium-orange text-xs">★★★★★</div>
+<span class="text-xs text-gray-400">(12k+ Sales)</span>
+</div>
+</div>
+<div class="flex flex-wrap justify-center gap-2">
+<span class="skeuo-badge px-3 py-1 text-[10px] font-bold uppercase text-blue-600 flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">verified</span> Authorized Seller
+        </span>
+<span class="skeuo-badge px-3 py-1 text-[10px] font-bold uppercase text-premium-orange flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">bolt</span> Auto-Seller
+        </span>
+</div>
+<div class="grid grid-cols-2 gap-3 w-full">
+<button class="skeuo-inset py-2 text-xs font-bold uppercase tracking-wider">Message</button>
+<button class="skeuo-card bg-premium-orange text-white py-2 text-xs font-bold uppercase tracking-wider hover:brightness-110 skeuo-btn" style="color: var(--text-main);">Follow</button>
+</div>
+</div>
+<!-- More from Seller Section -->
+<div class="lg:col-span-2 space-y-6">
+<div class="flex justify-between items-end">
+<h3 class="text-xl font-bold uppercase tracking-wider" style="color: var(--text-main)">More from Zenith</h3>
+<a class="text-xs font-bold text-premium-orange hover:underline" href="#">View All</a>
+</div>
+<div class="flex gap-6 overflow-x-auto pb-6 custom-scrollbar">
+<!-- Miniature Product Card -->
+<div class="min-w-[180px] skeuo-card p-3 space-y-3 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Zenith Speaker" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_B"/>
+</div>
+<div>
+<p class="text-xs font-bold line-clamp-1" style="color: var(--text-main)">Zenith Orbit G2 Speaker</p>
+<p class="text-sm font-black text-premium-orange mt-1">$129.00</p>
+</div>
+</div>
+<div class="min-w-[180px] skeuo-card p-3 space-y-3 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Zenith Buds" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_C"/>
+</div>
+<div>
+<p class="text-xs font-bold line-clamp-1" style="color: var(--text-main)">Zenith Buds Pro</p>
+<p class="text-sm font-black text-premium-orange mt-1">$89.00</p>
+</div>
+</div>
+<div class="min-w-[180px] skeuo-card p-3 space-y-3 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Zenith Watch" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_D"/>
+</div>
+<div>
+<p class="text-xs font-bold line-clamp-1" style="color: var(--text-main)">Zenith Alpha Watch</p>
+<p class="text-sm font-black text-premium-orange mt-1">$249.00</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section><section class="max-w-4xl mx-auto fade-in-up" data-purpose="specifications">
+<div class="skeuo-card p-10" style="color: var(--text-main);">
+<h2 class="text-2xl font-bold mb-8 flex items-center gap-3" style="color: var(--text-main)">
+<span class="w-2 h-8 bg-premium-orange rounded-full"></span>
+          Technical Specifications
+        </h2>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-12">
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Dimensions</span>
+<span class="font-bold">184 x 162 x 81 mm</span>
+</div>
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Driver Type</span>
+<span class="font-bold">40mm Dynamic</span>
+</div>
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Weight</span>
+<span class="font-bold">245 grams</span>
+</div>
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Connection</span>
+<span class="font-bold">Bluetooth 5.3</span>
+</div>
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Battery Life</span>
+<span class="font-bold">60 Hours</span>
+</div>
+<div class="flex justify-between border-b border-gray-200 pb-2">
+<span class="text-gray-500 font-medium" style="color: var(--text-muted)">Charging Port</span>
+<span class="font-bold">USB-C Fast Charge</span>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Visual Specifications -->
+<!-- BEGIN: Comparison Table -->
+<section class="space-y-8 fade-in-up" data-purpose="comparison-table">
+<h2 class="text-2xl font-bold text-center" style="color: var(--text-main)">Why Zenith X1 Beats the Competition</h2>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-separate border-spacing-y-4">
+<thead>
+<tr class="text-gray-400 text-xs uppercase tracking-widest" style="color: var(--text-muted)">
+<th class="px-6 py-2">Features</th>
+<th class="px-6 py-2 text-premium-orange">Zenith X1 Pro</th>
+<th class="px-6 py-2">Standard Brand</th>
+</tr>
+</thead>
+<tbody>
+<tr class="skeuo-card overflow-hidden" style="color: var(--text-main);">
+<td class="px-6 py-6 font-bold rounded-l-2xl">Battery Life</td>
+<td class="px-6 py-6 font-bold text-premium-orange">60 Hours</td>
+<td class="px-6 py-6 rounded-r-2xl">20 Hours</td>
+</tr>
+<tr class="skeuo-card" style="color: var(--text-main);">
+<td class="px-6 py-6 font-bold rounded-l-2xl">Noise Cancellation</td>
+<td class="px-6 py-6 font-bold text-premium-orange">Adaptive Hybrid</td>
+<td class="px-6 py-6 rounded-r-2xl">Active Only</td>
+</tr>
+<tr class="skeuo-card" style="color: var(--text-main);">
+<td class="px-6 py-6 font-bold rounded-l-2xl">Fast Charging</td>
+<td class="px-6 py-6 font-bold text-premium-orange">10m = 5h play</td>
+<td class="px-6 py-6 rounded-r-2xl">30m = 1h play</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- END: Comparison Table -->
+<!-- BEGIN: Customer Reviews -->
+<section class="space-y-12 fade-in-up" data-purpose="reviews-section">
+<div class="flex flex-col md:flex-row gap-12 items-center">
+<div class="text-center md:text-left space-y-2">
+<div class="text-6xl font-black text-charcoal" style="color: var(--text-main)">4.9</div>
+<div class="text-premium-orange text-xl">★★★★★</div>
+<div class="text-sm text-gray-500 font-medium" style="color: var(--text-muted)">Based on 1,248 reviews</div>
+</div>
+<div class="flex-1 space-y-3 w-full max-w-md">
+<div class="flex items-center gap-4">
+<span class="w-4 text-sm font-bold">5</span>
+<div class="flex-1 h-3 skeuo-inset overflow-hidden">
+<div class="h-full bg-premium-orange w-[92%]"></div>
+</div>
+<span class="w-8 text-xs text-gray-500" style="color: var(--text-muted)">92%</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="w-4 text-sm font-bold">4</span>
+<div class="flex-1 h-3 skeuo-inset overflow-hidden">
+<div class="h-full bg-premium-orange w-[6%]"></div>
+</div>
+<span class="w-8 text-xs text-gray-500" style="color: var(--text-muted)">6%</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="w-4 text-sm font-bold">3</span>
+<div class="flex-1 h-3 skeuo-inset overflow-hidden">
+<div class="h-full bg-premium-orange w-[2%]"></div>
+</div>
+<span class="w-8 text-xs text-gray-500" style="color: var(--text-muted)">2%</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<!-- Review Card 1 -->
+<div class="skeuo-card p-6 space-y-4" style="color: var(--text-main);">
+<div class="flex justify-between items-start">
+<div>
+<div class="flex text-premium-orange text-sm mb-1">★★★★★</div>
+<h4 class="font-bold text-lg" style="color: var(--text-main)">Incredible Sound Stage</h4>
+</div>
+<div class="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold uppercase rounded-md flex items-center gap-1">
+<svg class="w-3 h-3" fill="currentColor" viewbox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+              Verified Buyer
+            </div>
+</div>
+<p class="text-gray-600 italic" style="color: var(--text-muted)">"The depth of the audio is unlike anything I've heard in this price range. It feels like the band is in the room with me. Plus, the build quality is tank-like."</p>
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full skeuo-inset overflow-hidden">
+<img alt="User" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0oUx3Ym67J1S6bikpuctmyBVLe3WMq6L4YUdD83Nb0OrIp9eVV8Iqe9uV7M5-BbwpbCq-0NaGDYMLwYVb_ceri2AJNrXgNH97UqVjZKrfRr0BB93IXrCqO68s0eSeMyMp7y171RBSE6TUS_gutBLPfWKEkjE5o-X42ZJbpL-2BNGsVRTqSFGqEOIOgjJpVIrmeyQOZjY6vcCFk0EJQPp_A3TqQdI7p1KeL5B-BXSZD5jQbdAsA1yahKaT59wvT4SN8AHQBCaDPRM8"/>
+</div>
+<div>
+<span class="block text-sm font-bold">John D.</span>
+<span class="block text-xs text-gray-400" style="color: var(--text-muted)">2 days ago</span>
+</div>
+</div>
+</div>
+<!-- Review Card 2 -->
+<div class="skeuo-card p-6 space-y-4" style="color: var(--text-main);">
+<div class="flex justify-between items-start">
+<div>
+<div class="flex text-premium-orange text-sm mb-1">★★★★★</div>
+<h4 class="font-bold text-lg" style="color: var(--text-main)">Battery life is insane</h4>
+</div>
+<div class="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold uppercase rounded-md flex items-center gap-1">
+<svg class="w-3 h-3" fill="currentColor" viewbox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+              Verified Buyer
+            </div>
+</div>
+<p class="text-gray-600 italic" style="color: var(--text-muted)">"I travel a lot and these have survived 3 international flights on a single charge with juice to spare. Extremely comfortable for long hauls."</p>
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full skeuo-inset overflow-hidden">
+<img alt="User" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBqPTlCQbjFBkOFLGuSaT3qKNhPdRbvc7Yi9oUd85QzmLxMMNyx-bmvU-I0AuVh1MJYYyWA6vke6iY74oOBobFywNkqC85sahGqPJRzUQR4siYiqeHDBlw_6NEya3Af4d4YSH4yVY_MD8dgXx01JD4ES9c8qVg3uKOonnuNbe8g7-XVc7xhO2YuwWHYgsw1KaIaB5s5s7KUSaMSkGXEDI1N1hR4QuNIJDQ8kVdxjB60MiUvQoh076TT4VVfRiSFxjwIKc--UJJF076D"/>
+</div>
+<div>
+<span class="block text-sm font-bold">Sarah A.</span>
+<span class="block text-xs text-gray-400" style="color: var(--text-muted)">1 week ago</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Customer Reviews -->
+<!-- BEGIN: Frequently Bought Together -->
+<section class="space-y-8 fade-in-up" data-purpose="upsell-section">
+<h2 class="text-2xl font-bold uppercase tracking-widest text-gray-500" style="color: var(--text-muted)">Complete Your Experience</h2>
+<div class="flex gap-6 overflow-x-auto pb-8 custom-scrollbar">
+<!-- Product Card 1 -->
+<div class="skeuo-card min-w-[280px] p-4 group magnetic-card" style="color: var(--text-main);">
+<div class="skeuo-inset rounded-xl overflow-hidden mb-4 aspect-square">
+<img alt="Related" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6kWeyRnLW1gmiT7ogykCgrp49gvAykLbj--N3cM_SscL88acMo9dgQlokt0agNteqCRkdT2JsCxeepJQiG8ealcMrg-CTNKkiAS-AHGks493jjIVh8KUq91KfD_3wl3QVJ_8jXXtHUl-mIAw0zk2wEbJxd2KonkIBmRmnReD0lyqcWSz8QCFHik9JVtLI8FpMsGsJwuEhDN9OU3-KI-29Ivn4iR0pGeCocOoeclM0a5PUZVP15-La4UXm7jl9JwuiVsI2JMO8KZUT"/>
+</div>
+<h4 class="font-bold" style="color: var(--text-main)">Pro Travel Case</h4>
+<p class="text-gray-500 text-sm mb-3" style="color: var(--text-muted)">$24.99</p>
+<button class="w-full skeuo-card skeuo-btn py-2 text-xs font-bold uppercase tracking-widest border border-white/50 magnetic-card" style="color: var(--text-main);">Add Extra</button>
+</div>
+<!-- Product Card 2 -->
+<div class="skeuo-card min-w-[280px] p-4 group magnetic-card" style="color: var(--text-main);">
+<div class="skeuo-inset rounded-xl overflow-hidden mb-4 aspect-square">
+<img alt="Related" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwg1DsBWagFmeJkv2WzmTuARUMmQsOMV-wjfhf-fplx9KVhCjEZ9VXmhHy_JxkclHnM6GThxiY6WaIM2QsXSU14yOcs6HYuYDLZwFhuxEFOXU1mQ7LwUHDgSwetVwp4ukIH9nq-8l4VrgShnoR0Oeo6Cejw0xswhyKBuEiXs6KFMr04RYjBBM-YzfNxXyOVzR2_wSnHKRb-I0J9tcxnhrXFeXikSAl-OsdLYuUEJJ6zslq8J6SSGJhD_aKilh0ko-6taukqm06ofZ3"/>
+</div>
+<h4 class="font-bold" style="color: var(--text-main)">Velvet Ear Pads</h4>
+<p class="text-gray-500 text-sm mb-3" style="color: var(--text-muted)">$19.99</p>
+<button class="w-full skeuo-card skeuo-btn py-2 text-xs font-bold uppercase tracking-widest border border-white/50 magnetic-card" style="color: var(--text-main);">Add Extra</button>
+</div>
+<!-- Product Card 3 -->
+<div class="skeuo-card min-w-[280px] p-4 group magnetic-card" style="color: var(--text-main);">
+<div class="skeuo-inset rounded-xl overflow-hidden mb-4 aspect-square">
+<img alt="Related" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkjXgpGu1KNz0a0_Yo6yimOYoUjpFqep64UJOUNAtRA1cnlPU25CMbHB5rwl-XNMCNXBXqX5oa28bAAYUtIjVyA6Z1yfYgTo9_E3ZwW1UwZ9TIjPFXK2npx9uVtpOoIoTsujb3w_4ArOfpOx_E4EGd4EY0TvgKFZrWZ1NmVREO2fwGQ4sO1XbFAtMoOelUrc4-7mYXqIVsUF6seqiT6S6vyYm-uF2TWZyCHKwZ45En1wcKotI9-_1nHnWBWcok7U6xAPA7mnOthbRU"/>
+</div>
+<h4 class="font-bold" style="color: var(--text-main)">Magnetic Charge Stand</h4>
+<p class="text-gray-500 text-sm mb-3" style="color: var(--text-muted)">$45.00</p>
+<button class="w-full skeuo-card skeuo-btn py-2 text-xs font-bold uppercase tracking-widest border border-white/50 magnetic-card" style="color: var(--text-main);">Add Extra</button>
+</div>
+</div>
+</section>
+<!-- END: Frequently Bought Together -->
+<!-- BEGIN: FAQ Section -->
+<section class="space-y-8 fade-in-up" data-purpose="similar-products">
+<h2 class="text-2xl font-bold text-center uppercase tracking-[0.2em] text-gray-400" style="color: var(--text-muted)">Similar Products</h2>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+<div class="skeuo-card p-4 space-y-4 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Alternative 1" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_E"/>
+</div>
+<div class="text-center">
+<p class="text-xs font-bold uppercase text-gray-500 mb-1">Apex Audio</p>
+<h4 class="font-bold text-sm line-clamp-1" style="color: var(--text-main)">Acoustix v2 Wireless</h4>
+<p class="text-premium-orange font-black mt-2">$275.00</p>
+</div>
+</div>
+<div class="skeuo-card p-4 space-y-4 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Alternative 2" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_F"/>
+</div>
+<div class="text-center">
+<p class="text-xs font-bold uppercase text-gray-500 mb-1">SoundWave</p>
+<h4 class="font-bold text-sm line-clamp-1" style="color: var(--text-main)">SilentFlow ANC</h4>
+<p class="text-premium-orange font-black mt-2">$319.00</p>
+</div>
+</div>
+<div class="skeuo-card p-4 space-y-4 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Alternative 3" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_G"/>
+</div>
+<div class="text-center">
+<p class="text-xs font-bold uppercase text-gray-500 mb-1">Echo Tech</p>
+<h4 class="font-bold text-sm line-clamp-1" style="color: var(--text-main)">Crystal Pure 5.0</h4>
+<p class="text-premium-orange font-black mt-2">$240.00</p>
+</div>
+</div>
+<div class="skeuo-card p-4 space-y-4 magnetic-card cursor-pointer group" style="color: var(--text-main);">
+<div class="aspect-square skeuo-inset overflow-hidden">
+<img alt="Alternative 4" class="w-full h-full object-cover group-hover:scale-110 transition-transform" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD93fN0eW6qW_p4v_qfQ5K4L5qG7S8y8Y1R0T1v2Y3Z4_H"/>
+</div>
+<div class="text-center">
+<p class="text-xs font-bold uppercase text-gray-500 mb-1">Velvet Sound</p>
+<h4 class="font-bold text-sm line-clamp-1" style="color: var(--text-main)">Onyx Over-Ear</h4>
+<p class="text-premium-orange font-black mt-2">$349.00</p>
+</div>
+</div>
+</div>
+</section><section class="max-w-3xl mx-auto space-y-6 pb-24 fade-in-up" data-purpose="faq-accordion">
+<h2 class="text-2xl font-bold text-center mb-8 uppercase tracking-widest" style="color: var(--text-main)">Questions &amp; Answers</h2>
+<div class="space-y-4">
+<details class="skeuo-card group overflow-hidden" open="" style="color: var(--text-main);">
+<summary class="p-6 cursor-pointer font-bold flex justify-between items-center list-none select-none">
+            Does it support multi-device pairing?
+            <span class="text-premium-orange transition-transform group-open:rotate-180">▼</span>
+</summary>
+<div class="p-6 pt-0 text-gray-600 border-t border-gray-100 mt-2" style="color: var(--text-muted)">
+            Yes, the Zenith X1 Pro supports Multipoint Bluetooth, allowing you to connect to two devices simultaneously and switch between them seamlessly.
+          </div>
+</details>
+<details class="skeuo-card group overflow-hidden" style="color: var(--text-main);">
+<summary class="p-6 cursor-pointer font-bold flex justify-between items-center list-none select-none">
+            Is the battery user-replaceable?
+            <span class="text-premium-orange transition-transform group-open:rotate-180">▼</span>
+</summary>
+<div class="p-6 pt-0 text-gray-600 border-t border-gray-100 mt-2" style="color: var(--text-muted)">
+            The battery is designed for long-term use (over 1000 charge cycles). While not user-replaceable, we offer a specialized battery service via our support team.
+          </div>
+</details>
+<details class="skeuo-card group overflow-hidden" style="color: var(--text-main);">
+<summary class="p-6 cursor-pointer font-bold flex justify-between items-center list-none select-none">
+            Can I use them with a wire?
+            <span class="text-premium-orange transition-transform group-open:rotate-180">▼</span>
+</summary>
+<div class="p-6 pt-0 text-gray-600 border-t border-gray-100 mt-2" style="color: var(--text-muted)">
+            Absolutely. Every Zenith X1 comes with a premium 3.5mm braided audio cable for passive listening when the battery is low.
+          </div>
+</details>
+</div>
+</section>
+<!-- END: FAQ Section -->
+</main>
+<!-- BEGIN: Sticky Add to Cart Bar -->
+<div class="fixed bottom-0 left-0 right-0 z-50 p-4 transform translate-y-full transition-transform duration-500" id="sticky-bar">
+<div class="max-w-5xl mx-auto skeuo-card backdrop-blur-md p-4 flex items-center justify-between gap-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] border-t border-white" style="color: var(--text-main);">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg skeuo-inset overflow-hidden hidden sm:block">
+<img alt="Small Thumbnail" src="https://lh3.googleusercontent.com/aida-public/AB6AXuApqlTCy9__RRW4xXtZrYfgPCgHRcN9QPVQmB5zrIqcVw9WShvWd3X0g6h1yNkyioZIZitzi7LoJo4mEfLlpO8l2QR9mSupANsZVnHStnXTdxGlnpaRDN1enN_3ZK31D8St3gCH66XmwxTPb33zjeNQd7TYPRQKyXCVTnZbTF7-4mefNippnwvaplfhXwdu6g8b12PK--PZ5iCMmcZHAHZ7ULL_Lq07kvUwmueW61BdZ0Qcquj-XfWeqiNE4-KLoRBYHNw5Q79AFd2k"/>
+</div>
+<div>
+<h5 class="font-bold text-sm hidden md:block" style="color: var(--text-main)">Zenith X1 Pro</h5>
+<p class="text-premium-orange font-black">$299.00</p>
+</div>
+</div>
+<div class="flex-1 max-w-xs">
+<button class="w-full skeuo-card skeuo-btn bg-premium-orange text-white py-3 font-bold uppercase tracking-widest text-xs" style="color: var(--text-main);">
+            Add To Cart
+          </button>
+</div>
+</div>
+</div>
+<!-- END: Sticky Add to Cart Bar -->
+<button aria-label="Live Chat" class="fixed bottom-8 right-8 z-[60] w-16 h-16 rounded-full bg-premium-orange text-white skeuo-card skeuo-btn flex items-center justify-center shadow-skeuo-hover hover:scale-105 active:scale-95 transition-all duration-200 border-2 border-white/20" style="color: var(--text-main);">
+<span class="material-symbols-outlined text-3xl">chat</span>
+</button><script data-purpose="interaction-scripts">
+    // Theme Toggling Logic
+    const themeToggle = document.getElementById('theme-toggle');
+    const sunIcon = document.querySelector('.theme-icon-sun');
+    const moonIcon = document.querySelector('.theme-icon-moon');
+
+    themeToggle.addEventListener('click', () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      sunIcon.classList.toggle('hidden');
+      moonIcon.classList.toggle('hidden');
+    });
+
+    // Parallax Effect
+    const mainImage = document.querySelector('.image-zoom img');
+    document.querySelector('.image-zoom').addEventListener('mousemove', (e) => {
+      const { width, height, left, top } = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - left) / width - 0.5;
+      const y = (e.clientY - top) / height - 0.5;
+      mainImage.style.transform = `scale(1.1) translate(${x * 20}px, ${y * 20}px)`;
+    });
+    document.querySelector('.image-zoom').addEventListener('mouseleave', () => {
+      mainImage.style.transform = 'scale(1) translate(0, 0)';
+    });
+
+    // Magnetic Effect for Primary Buttons
+    const magneticBtns = document.querySelectorAll('.magnetic-btn');
+    magneticBtns.forEach(btn => {
+      btn.addEventListener('mousemove', (e) => {
+        const rect = btn.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        btn.style.transform = `translate(${x * 15}px, ${y * 15}px)`;
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translate(0, 0)';
+      });
+    });
+
+    // Staggered Entrance Observer
+    const staggerObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry, index) => {
+        if (entry.isIntersecting) {
+          setTimeout(() => {
+            entry.target.classList.add('visible');
+          }, index * 100);
+          staggerObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.stagger-reveal').forEach(el => staggerObserver.observe(el));
+
+    // Scroll reveal for sticky add to cart
+    window.addEventListener('scroll', () => {
+      const bar = document.getElementById('sticky-bar');
+      if (window.scrollY > 800) {
+        bar.classList.remove('translate-y-full');
+      } else {
+        bar.classList.add('translate-y-full');
+      }
+    });
+  </script>
+</body></html>

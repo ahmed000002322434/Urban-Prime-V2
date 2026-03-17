@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
+import createAnalyticsEngine from './analyticsEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,7 +109,8 @@ const {
   PUSH_NOTIFICATIONS_ENABLED,
   WEB_PUSH_NOTIFICATION_ICON,
   WEB_PUSH_NOTIFICATION_BADGE,
-  CHAT_RELIABILITY_V2
+  CHAT_RELIABILITY_V2,
+  BRAND_HUB_V3
 } = process.env;
 
 const parsePort = (value, fallback = 5050) => {
@@ -136,9 +138,11 @@ const PUSH_NOTIFICATION_BADGE = String(WEB_PUSH_NOTIFICATION_BADGE || PUSH_NOTIF
 
 const PROFILE_ONBOARDING_V2_ENABLED = toBool(PROFILE_ONBOARDING_V2, true);
 const CHAT_RELIABILITY_V2_ENABLED = toBool(CHAT_RELIABILITY_V2, true);
+const BRAND_HUB_V3_ENABLED = toBool(BRAND_HUB_V3, true);
 const FEATURE_FLAGS = {
   profileOnboardingV2: PROFILE_ONBOARDING_V2_ENABLED,
-  chatReliabilityV2: CHAT_RELIABILITY_V2_ENABLED
+  chatReliabilityV2: CHAT_RELIABILITY_V2_ENABLED,
+  brandHubV3: BRAND_HUB_V3_ENABLED
 };
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -190,6 +194,11 @@ const ALLOWED_TABLES = new Set([
   'admin_users', 'site_settings', 'moderation_flags', 'audit_logs', 'mirror_documents',
   'personas', 'persona_members', 'persona_wallet_ledgers', 'persona_notifications', 'persona_capability_requests',
   'uploaded_assets', 'user_onboarding_state',
+  'brands', 'brand_aliases', 'brand_catalog_nodes', 'brand_catalog_aliases',
+  'brand_match_queue', 'brand_catalog_match_queue', 'brand_claim_requests',
+  'brand_followers', 'brand_catalog_followers',
+  'brand_price_snapshots', 'brand_catalog_price_snapshots',
+  'brand_trust_signals', 'brand_catalog_trust_signals',
   'work_listings', 'work_requests', 'work_proposals', 'work_contracts', 'work_milestones',
   'work_engagements', 'work_escrow_ledger', 'work_disputes', 'work_reputation', 'work_autopilot_runs'
 ]);
@@ -344,6 +353,71 @@ const normalizeHandle = (value) => {
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, '')
     .slice(0, 40) || null;
+};
+
+const normalizeBrandText = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/&/g, ' and ')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const slugifyPathSegment = (value) => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || 'node';
+};
+
+const tokenizeBrandText = (value) => {
+  const normalized = normalizeBrandText(value);
+  if (!normalized) return [];
+  return normalized.split(' ').filter(Boolean);
+};
+
+const scoreBrandSimilarity = (left, right) => {
+  const leftNorm = normalizeBrandText(left);
+  const rightNorm = normalizeBrandText(right);
+  if (!leftNorm || !rightNorm) return 0;
+  if (leftNorm === rightNorm) return 1;
+
+  const leftTokens = tokenizeBrandText(leftNorm);
+  const rightTokens = tokenizeBrandText(rightNorm);
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const intersection = leftTokens.filter((token) => rightSet.has(token)).length;
+  const union = new Set([...leftSet, ...rightSet]).size || 1;
+  const jaccard = intersection / union;
+
+  let prefixBonus = 0;
+  if (leftNorm.startsWith(rightNorm) || rightNorm.startsWith(leftNorm)) prefixBonus = 0.15;
+  const lengthPenalty = Math.min(Math.abs(leftNorm.length - rightNorm.length) / 40, 0.25);
+  return Math.max(0, Math.min(1, jaccard + prefixBonus - lengthPenalty));
+};
+
+const parsePageLimit = (value, fallback = 24, max = 80) => {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, max);
+};
+
+const parsePageOffset = (value) => {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
+const parseCommaSeparatedValues = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 };
 
 const toNullableText = (value) => {
@@ -1050,6 +1124,21 @@ const buildUnifiedProfileResponse = async ({ user, profile, onboardingStateRow }
     onboardingState = stateLookup.row;
   }
 
+  let isAdmin = false;
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'super_admin') {
+    isAdmin = true;
+  } else {
+    const { data: adminRow, error: adminError } = await supabase
+      .from('admin_users')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    if (adminError) throw adminError;
+    if (adminRow) isAdmin = true;
+  }
+
   const { data: personas, error: personasError } = await supabase
     .from('personas')
     .select('*')
@@ -1070,7 +1159,11 @@ const buildUnifiedProfileResponse = async ({ user, profile, onboardingStateRow }
   const activePersona = (personas || []).find((persona) => persona.status === 'active') || (personas || [])[0] || null;
 
   return {
-    user,
+    user: {
+      ...user,
+      is_admin: isAdmin,
+      isAdmin
+    },
     profile,
     personas: personas || [],
     activePersona,
@@ -1108,6 +1201,213 @@ const getUserContext = async (req) => {
     user: ensuredUser.user,
     profile: ensuredProfile.profile
   };
+};
+
+const resolveBrandBySlug = async (slugValue) => {
+  const slug = slugifyPathSegment(slugValue);
+  const { data, error } = await supabase
+    .from('brands')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+const resolveCatalogNodeByPath = async (brandId, pathValue) => {
+  const normalizedPath = String(pathValue || '')
+    .split('/')
+    .map((entry) => slugifyPathSegment(entry))
+    .filter(Boolean)
+    .join('/');
+  if (!normalizedPath) return null;
+  const { data, error } = await supabase
+    .from('brand_catalog_nodes')
+    .select('*')
+    .eq('brand_id', brandId)
+    .eq('path', normalizedPath)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
+const buildBrandCatalogTree = (rows = []) => {
+  const nodeMap = new Map();
+  const rootNodes = [];
+
+  rows.forEach((row) => {
+    if (!row?.id) return;
+    nodeMap.set(String(row.id), { ...row, children: [] });
+  });
+
+  nodeMap.forEach((node) => {
+    const parentId = node.parent_node_id ? String(node.parent_node_id) : '';
+    if (!parentId || !nodeMap.has(parentId)) {
+      rootNodes.push(node);
+      return;
+    }
+    nodeMap.get(parentId).children.push(node);
+  });
+
+  const sortNodes = (nodes) => {
+    nodes.sort((left, right) => {
+      const byOrder = Number(left.sort_order || 0) - Number(right.sort_order || 0);
+      if (byOrder !== 0) return byOrder;
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+    nodes.forEach((entry) => sortNodes(entry.children || []));
+  };
+
+  sortNodes(rootNodes);
+  return rootNodes;
+};
+
+const pickListingPrice = (row = {}) => {
+  const candidates = [
+    row.sale_price,
+    row.rental_price,
+    row.auction_start_price,
+    row.auction_reserve_price
+  ];
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+};
+
+const computePriceSummary = (rows = []) => {
+  const prices = rows
+    .map((row) => pickListingPrice(row))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right);
+
+  if (prices.length === 0) return null;
+  const mid = Math.floor(prices.length / 2);
+  const median = prices.length % 2 === 0 ? (prices[mid - 1] + prices[mid]) / 2 : prices[mid];
+  const min = prices[0];
+  const max = prices[prices.length - 1];
+  const currencySource = rows.find((row) => row?.currency)?.currency;
+  const currency = String(currencySource || 'USD');
+  const dealBandLow = Math.max(0, median * 0.9);
+  const dealBandHigh = median * 1.1;
+
+  return {
+    min: Number(min.toFixed(2)),
+    median: Number(median.toFixed(2)),
+    max: Number(max.toFixed(2)),
+    sampleSize: prices.length,
+    currency,
+    dealBandLow: Number(dealBandLow.toFixed(2)),
+    dealBandHigh: Number(dealBandHigh.toFixed(2))
+  };
+};
+
+const loadBrandPriceSummary = async (brandId, nodeId = null) => {
+  if (!brandId) return null;
+  let query = supabase
+    .from('items')
+    .select('currency,sale_price,rental_price,auction_start_price,auction_reserve_price')
+    .eq('brand_id', brandId)
+    .eq('status', 'published')
+    .limit(5000);
+  if (nodeId) {
+    query = query.eq('brand_catalog_node_id', nodeId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return computePriceSummary(data || []);
+};
+
+const resolveAdminContext = async (req) => {
+  const context = await getUserContext(req);
+  if (context.error) return context;
+
+  const role = String(context.user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'super_admin') {
+    return { ...context, isAdmin: true };
+  }
+
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('id')
+    .eq('user_id', context.user.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { error };
+  if (!data) return { error: new Error('Admin access is required.') };
+  return { ...context, isAdmin: true };
+};
+
+const ensureItemOwnedByUser = async (itemId, userId) => {
+  if (!itemId || !userId) return { allowed: false, item: null };
+  const { data, error } = await supabase
+    .from('items')
+    .select('id,seller_id,brand,metadata,title,category_id')
+    .eq('id', itemId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { allowed: false, item: null };
+  return { allowed: String(data.seller_id || '') === String(userId || ''), item: data };
+};
+
+const loadBrandTrustMap = async (brandIds = []) => {
+  const ids = Array.from(new Set(brandIds.map((entry) => String(entry || '').trim()).filter(Boolean)));
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('brand_trust_signals')
+    .select('*')
+    .in('brand_id', ids);
+  if (error) throw error;
+  const map = new Map();
+  (data || []).forEach((row) => map.set(String(row.brand_id), row));
+  return map;
+};
+
+const loadBrandStatsMap = async (brandIds = []) => {
+  const ids = Array.from(new Set(brandIds.map((entry) => String(entry || '').trim()).filter(Boolean)));
+  const map = new Map(ids.map((id) => [id, { itemCount: 0, storeCount: 0, followerCount: 0 }]));
+  if (ids.length === 0) return map;
+
+  const [itemsResult, followersResult] = await Promise.all([
+    supabase
+      .from('items')
+      .select('brand_id,store_id,seller_id')
+      .in('brand_id', ids)
+      .limit(10000),
+    supabase
+      .from('brand_followers')
+      .select('brand_id,user_id')
+      .in('brand_id', ids)
+      .limit(10000)
+  ]);
+
+  if (itemsResult.error) throw itemsResult.error;
+  if (followersResult.error) throw followersResult.error;
+
+  const storeSets = new Map(ids.map((id) => [id, new Set()]));
+  (itemsResult.data || []).forEach((row) => {
+    const brandId = String(row.brand_id || '');
+    if (!brandId || !map.has(brandId)) return;
+    const current = map.get(brandId);
+    current.itemCount += 1;
+    const storeKey = row.store_id || row.seller_id;
+    if (storeKey) storeSets.get(brandId).add(String(storeKey));
+  });
+
+  (followersResult.data || []).forEach((row) => {
+    const brandId = String(row.brand_id || '');
+    if (!brandId || !map.has(brandId)) return;
+    map.get(brandId).followerCount += 1;
+  });
+
+  storeSets.forEach((set, brandId) => {
+    if (!map.has(brandId)) return;
+    map.get(brandId).storeCount = set.size;
+  });
+
+  return map;
 };
 
 const ensurePersonaHandleAvailable = async (handle, ignorePersonaId = null) => {
@@ -1553,8 +1853,21 @@ const requireTable = (req, res, next) => {
   return next();
 };
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, firebaseAdmin: Boolean(firebaseApp), featureFlags: FEATURE_FLAGS });
+const analyticsEngine = createAnalyticsEngine({
+  app,
+  supabase,
+  requireAuth,
+  userCanAccessPersona,
+  resolveUserIdFromFirebaseUid,
+  writeAuditLog
+});
+
+analyticsEngine.registerRoutes();
+analyticsEngine.startQueueWorker();
+
+app.get('/health', async (_req, res) => {
+  const analyticsHealth = await analyticsEngine.getHealthSnapshot();
+  res.json({ ok: true, firebaseAdmin: Boolean(firebaseApp), featureFlags: FEATURE_FLAGS, analytics: analyticsHealth });
 });
 
 app.post('/auth/sync-user', strictAuthRateLimiter, requireAuth, async (req, res) => {
@@ -3391,6 +3704,40 @@ app.post('/activity/events', requireAuth, async (req, res) => {
     });
   }
 
+  try {
+    await analyticsEngine.enqueueFromActivity({
+      action,
+      ownerPersonaId,
+      ownerFirebaseUid: owner_firebase_uid,
+      ownerUserId,
+      actorUserId,
+      actorFirebaseUid: actor_firebase_uid || null,
+      actorPersonaId: actor_persona_id || null,
+      actorName: actor_name || null,
+      itemId: item_id,
+      itemTitle,
+      listingType: listing_type || null,
+      quantity: quantity || null,
+      durationMs: duration_ms || null,
+      metadata: {
+        ...(metadata || {}),
+        source: metadata?.source || 'activity',
+        referrer: metadata?.referrer || null,
+        deviceType: metadata?.deviceType || metadata?.device_type || null,
+        sessionId: metadata?.sessionId || metadata?.session_id || null,
+        urlPath: metadata?.urlPath || metadata?.url_path || null,
+        amount: metadata?.amount || null,
+        currency: metadata?.currency || null
+      },
+      createdAt: data?.created_at || new Date().toISOString(),
+      amount: metadata?.amount || null,
+      currency: metadata?.currency || null,
+      req
+    });
+  } catch (analyticsError) {
+    console.warn('Activity analytics enqueue failed:', analyticsError?.message || analyticsError);
+  }
+
   return res.status(201).json({ data });
 });
 
@@ -4539,6 +4886,1437 @@ app.post('/work/autopilot/health', requireAuth, async (req, res) => {
     return res.status(201).json({ data: output });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to get autopilot health.' });
+  }
+});
+
+const BRAND_MATCH_AUTO_THRESHOLD = 0.93;
+const BRAND_MATCH_REVIEW_THRESHOLD = 0.75;
+const BRAND_SELECT_FIELDS = 'id,name,slug,normalized_name,logo_url,cover_url,description,status,verification_level,country,website,story,claimed_by_user_id,created_at,updated_at';
+const BRAND_NODE_SELECT_FIELDS = 'id,brand_id,parent_node_id,name,slug,normalized_name,node_type,depth,path,sort_order,status,source,created_at,updated_at';
+
+const classifyBrandCandidate = async (rawBrand) => {
+  const normalized = normalizeBrandText(rawBrand);
+  if (!normalized) {
+    return { normalized, confidence: 0, outcome: 'unresolved', brand: null, source: null };
+  }
+
+  const [exactBrandResult, exactAliasResult] = await Promise.all([
+    supabase
+      .from('brands')
+      .select(BRAND_SELECT_FIELDS)
+      .eq('normalized_name', normalized)
+      .eq('status', 'active')
+      .limit(3),
+    supabase
+      .from('brand_aliases')
+      .select('brand_id,normalized_alias,confidence')
+      .eq('normalized_alias', normalized)
+      .limit(20)
+  ]);
+
+  if (exactBrandResult.error) throw exactBrandResult.error;
+  if (exactAliasResult.error) throw exactAliasResult.error;
+
+  const exactBrand = (exactBrandResult.data || [])[0];
+  if (exactBrand) {
+    return {
+      normalized,
+      confidence: 0.995,
+      outcome: 'auto',
+      brand: exactBrand,
+      source: 'auto_exact_brand'
+    };
+  }
+
+  const aliasRows = exactAliasResult.data || [];
+  const aliasBrandIds = Array.from(new Set(aliasRows.map((row) => String(row.brand_id || '')).filter(Boolean)));
+  if (aliasBrandIds.length === 1) {
+    const { data: aliasBrand, error: aliasBrandError } = await supabase
+      .from('brands')
+      .select(BRAND_SELECT_FIELDS)
+      .eq('id', aliasBrandIds[0])
+      .eq('status', 'active')
+      .maybeSingle();
+    if (aliasBrandError) throw aliasBrandError;
+    if (aliasBrand) {
+      return {
+        normalized,
+        confidence: 0.985,
+        outcome: 'auto',
+        brand: aliasBrand,
+        source: 'auto_exact_alias'
+      };
+    }
+  }
+
+  const primaryToken = normalized.split(' ')[0] || normalized;
+  const fuzzyBrandsResult = await supabase
+    .from('brands')
+    .select(BRAND_SELECT_FIELDS)
+    .eq('status', 'active')
+    .ilike('normalized_name', `%${primaryToken}%`)
+    .limit(250);
+  if (fuzzyBrandsResult.error) throw fuzzyBrandsResult.error;
+  const fuzzyBrands = fuzzyBrandsResult.data || [];
+  if (fuzzyBrands.length === 0) {
+    return { normalized, confidence: 0, outcome: 'unresolved', brand: null, source: null };
+  }
+
+  const fuzzyBrandIds = fuzzyBrands.map((row) => row.id).filter(Boolean);
+  const fuzzyAliasesResult = await supabase
+    .from('brand_aliases')
+    .select('brand_id,normalized_alias,confidence')
+    .in('brand_id', fuzzyBrandIds)
+    .limit(2000);
+  if (fuzzyAliasesResult.error) throw fuzzyAliasesResult.error;
+  const aliasByBrandId = new Map();
+  (fuzzyAliasesResult.data || []).forEach((row) => {
+    const key = String(row.brand_id || '');
+    if (!key) return;
+    const list = aliasByBrandId.get(key) || [];
+    list.push(row);
+    aliasByBrandId.set(key, list);
+  });
+
+  let best = { brand: null, confidence: 0, source: 'auto_fuzzy_brand' };
+  fuzzyBrands.forEach((brandRow) => {
+    const brandScore = scoreBrandSimilarity(normalized, brandRow.normalized_name || brandRow.name);
+    let aliasScore = 0;
+    const aliasRowsForBrand = aliasByBrandId.get(String(brandRow.id)) || [];
+    aliasRowsForBrand.forEach((aliasRow) => {
+      const score = scoreBrandSimilarity(normalized, aliasRow.normalized_alias || '');
+      if (score > aliasScore) aliasScore = score;
+    });
+    const score = Math.max(brandScore, aliasScore);
+    if (score > best.confidence) {
+      best = {
+        brand: brandRow,
+        confidence: Number(score.toFixed(4)),
+        source: aliasScore > brandScore ? 'auto_fuzzy_alias' : 'auto_fuzzy_brand'
+      };
+    }
+  });
+
+  if (!best.brand) {
+    return { normalized, confidence: 0, outcome: 'unresolved', brand: null, source: null };
+  }
+
+  if (best.confidence >= BRAND_MATCH_AUTO_THRESHOLD) {
+    return { normalized, confidence: best.confidence, outcome: 'auto', brand: best.brand, source: best.source };
+  }
+  if (best.confidence >= BRAND_MATCH_REVIEW_THRESHOLD) {
+    return { normalized, confidence: best.confidence, outcome: 'review', brand: best.brand, source: best.source };
+  }
+  return { normalized, confidence: best.confidence, outcome: 'unresolved', brand: null, source: best.source };
+};
+
+const classifyCatalogNodeCandidate = async ({ brandId, rawPath }) => {
+  const normalizedPath = String(rawPath || '')
+    .split(/[>/|]/g)
+    .map((entry) => slugifyPathSegment(entry))
+    .filter(Boolean)
+    .join('/');
+
+  if (!brandId || !normalizedPath) {
+    return { normalizedPath, confidence: 0, outcome: 'unresolved', node: null, source: null };
+  }
+
+  const [directPathResult, aliasResult] = await Promise.all([
+    supabase
+      .from('brand_catalog_nodes')
+      .select(BRAND_NODE_SELECT_FIELDS)
+      .eq('brand_id', brandId)
+      .eq('path', normalizedPath)
+      .eq('status', 'active')
+      .maybeSingle(),
+    supabase
+      .from('brand_catalog_aliases')
+      .select('node_id,normalized_alias,confidence')
+      .eq('brand_id', brandId)
+      .eq('normalized_alias', normalizeBrandText(rawPath))
+      .limit(10)
+  ]);
+
+  if (directPathResult.error) throw directPathResult.error;
+  if (aliasResult.error) throw aliasResult.error;
+
+  if (directPathResult.data) {
+    return {
+      normalizedPath,
+      confidence: 0.995,
+      outcome: 'auto',
+      node: directPathResult.data,
+      source: 'auto_exact_path'
+    };
+  }
+
+  const aliasRows = aliasResult.data || [];
+  const aliasNodeId = aliasRows[0]?.node_id ? String(aliasRows[0].node_id) : '';
+  if (aliasNodeId) {
+    const { data: aliasNode, error: aliasNodeError } = await supabase
+      .from('brand_catalog_nodes')
+      .select(BRAND_NODE_SELECT_FIELDS)
+      .eq('id', aliasNodeId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (aliasNodeError) throw aliasNodeError;
+    if (aliasNode) {
+      return {
+        normalizedPath,
+        confidence: 0.985,
+        outcome: 'auto',
+        node: aliasNode,
+        source: 'auto_exact_alias'
+      };
+    }
+  }
+
+  const nodeResult = await supabase
+    .from('brand_catalog_nodes')
+    .select(BRAND_NODE_SELECT_FIELDS)
+    .eq('brand_id', brandId)
+    .eq('status', 'active')
+    .limit(1200);
+  if (nodeResult.error) throw nodeResult.error;
+  const nodes = nodeResult.data || [];
+  if (nodes.length === 0) {
+    return { normalizedPath, confidence: 0, outcome: 'unresolved', node: null, source: null };
+  }
+
+  const normalizedPathText = normalizedPath.replace(/\//g, ' ');
+  let best = { node: null, confidence: 0, source: 'auto_fuzzy_path' };
+  nodes.forEach((node) => {
+    const pathScore = scoreBrandSimilarity(normalizedPathText, String(node.path || '').replace(/\//g, ' '));
+    const nameScore = scoreBrandSimilarity(normalizedPathText, node.normalized_name || node.name);
+    const score = Math.max(pathScore, nameScore);
+    if (score > best.confidence) {
+      best = {
+        node,
+        confidence: Number(score.toFixed(4)),
+        source: nameScore > pathScore ? 'auto_fuzzy_name' : 'auto_fuzzy_path'
+      };
+    }
+  });
+
+  if (!best.node) {
+    return { normalizedPath, confidence: 0, outcome: 'unresolved', node: null, source: null };
+  }
+  if (best.confidence >= BRAND_MATCH_AUTO_THRESHOLD) {
+    return { normalizedPath, confidence: best.confidence, outcome: 'auto', node: best.node, source: best.source };
+  }
+  if (best.confidence >= BRAND_MATCH_REVIEW_THRESHOLD) {
+    return { normalizedPath, confidence: best.confidence, outcome: 'review', node: best.node, source: best.source };
+  }
+  return { normalizedPath, confidence: best.confidence, outcome: 'unresolved', node: null, source: best.source };
+};
+
+app.get('/brands', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const limit = parsePageLimit(req.query.limit, 24, 80);
+    const offset = parsePageOffset(req.query.offset);
+    const search = String(req.query.search || '').trim();
+    const country = String(req.query.country || '').trim();
+    const status = String(req.query.status || 'active').trim().toLowerCase();
+    const sort = String(req.query.sort || 'name').trim().toLowerCase();
+
+    let query = supabase
+      .from('brands')
+      .select(BRAND_SELECT_FIELDS, { count: 'exact' })
+      .range(offset, offset + limit - 1);
+
+    if (status !== 'all') {
+      query = query.eq('status', status || 'active');
+    }
+
+    if (country) {
+      query = query.ilike('country', country);
+    }
+
+    if (search) {
+      const normalized = normalizeBrandText(search);
+      query = query.or(`name.ilike.%${search}%,normalized_name.ilike.%${normalized}%`);
+    }
+
+    if (sort === 'newest') {
+      query = query.order('created_at', { ascending: false });
+    } else {
+      query = query.order('name', { ascending: true });
+    }
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+
+    const rows = data || [];
+    const ids = rows.map((row) => row.id).filter(Boolean);
+    const [trustMap, statsMap] = await Promise.all([
+      loadBrandTrustMap(ids),
+      loadBrandStatsMap(ids)
+    ]);
+
+    let cards = rows.map((row) => {
+      const trust = trustMap.get(String(row.id)) || null;
+      const stats = statsMap.get(String(row.id)) || { itemCount: 0, storeCount: 0, followerCount: 0 };
+      return {
+        ...row,
+        trust,
+        stats
+      };
+    });
+
+    if (sort === 'trust') {
+      cards = cards.sort((left, right) => Number(right?.trust?.overall_trust_score || 0) - Number(left?.trust?.overall_trust_score || 0));
+    } else if (sort === 'followers') {
+      cards = cards.sort((left, right) => Number(right?.stats?.followerCount || 0) - Number(left?.stats?.followerCount || 0));
+    }
+
+    return res.json({
+      data: cards,
+      count: count || cards.length,
+      limit,
+      offset
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brands.' });
+  }
+});
+
+app.get('/brands/:brandSlug', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brand = await resolveBrandBySlug(req.params.brandSlug);
+    if (!brand || (brand.status !== 'active' && req.query.includeInactive !== '1')) {
+      return res.status(404).json({ error: 'Brand not found.' });
+    }
+
+    const [nodesResult, trustResult, statsMap, priceSummary] = await Promise.all([
+      supabase
+        .from('brand_catalog_nodes')
+        .select(BRAND_NODE_SELECT_FIELDS)
+        .eq('brand_id', brand.id)
+        .eq('status', 'active')
+        .is('parent_node_id', null)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+        .limit(200),
+      supabase
+        .from('brand_trust_signals')
+        .select('*')
+        .eq('brand_id', brand.id)
+        .maybeSingle(),
+      loadBrandStatsMap([brand.id]),
+      loadBrandPriceSummary(brand.id)
+    ]);
+
+    if (nodesResult.error) throw nodesResult.error;
+    if (trustResult.error) throw trustResult.error;
+    const stats = statsMap.get(String(brand.id)) || { itemCount: 0, storeCount: 0, followerCount: 0 };
+
+    return res.json({
+      data: {
+        ...brand,
+        trust: trustResult.data || null,
+        stats,
+        priceSummary,
+        topNodes: nodesResult.data || []
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand profile.' });
+  }
+});
+
+app.get('/brands/:brandSlug/tree', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brand = await resolveBrandBySlug(req.params.brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const { data, error } = await supabase
+      .from('brand_catalog_nodes')
+      .select(BRAND_NODE_SELECT_FIELDS)
+      .eq('brand_id', brand.id)
+      .eq('status', 'active')
+      .order('depth', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
+      .limit(4000);
+    if (error) throw error;
+
+    const rows = data || [];
+    return res.json({
+      data: {
+        brand: { id: brand.id, slug: brand.slug, name: brand.name },
+        tree: buildBrandCatalogTree(rows),
+        flatCount: rows.length
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand tree.' });
+  }
+});
+
+app.get('/brands/:brandSlug/catalog', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brand = await resolveBrandBySlug(req.params.brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const requestedPath = String(req.query.path || '').trim();
+    if (!requestedPath) {
+      const { data, error } = await supabase
+        .from('brand_catalog_nodes')
+        .select(BRAND_NODE_SELECT_FIELDS)
+        .eq('brand_id', brand.id)
+        .eq('status', 'active')
+        .is('parent_node_id', null)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+        .limit(400);
+      if (error) throw error;
+      return res.json({
+        data: {
+          brand: { id: brand.id, slug: brand.slug, name: brand.name },
+          node: null,
+          breadcrumbs: [],
+          children: data || []
+        }
+      });
+    }
+
+    const node = await resolveCatalogNodeByPath(brand.id, requestedPath);
+    if (!node) return res.status(404).json({ error: 'Catalog node not found.' });
+
+    const [childrenResult, trustResult, priceSummary] = await Promise.all([
+      supabase
+        .from('brand_catalog_nodes')
+        .select(BRAND_NODE_SELECT_FIELDS)
+        .eq('brand_id', brand.id)
+        .eq('parent_node_id', node.id)
+        .eq('status', 'active')
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+        .limit(400),
+      supabase
+        .from('brand_catalog_trust_signals')
+        .select('*')
+        .eq('node_id', node.id)
+        .maybeSingle(),
+      loadBrandPriceSummary(brand.id, node.id)
+    ]);
+    if (childrenResult.error) throw childrenResult.error;
+    if (trustResult.error) throw trustResult.error;
+
+    const segments = String(node.path || '').split('/').filter(Boolean);
+    const breadcrumbs = segments.map((segment, index) => ({
+      name: segment.replace(/-/g, ' '),
+      path: segments.slice(0, index + 1).join('/')
+    }));
+
+    return res.json({
+      data: {
+        brand: { id: brand.id, slug: brand.slug, name: brand.name },
+        node,
+        breadcrumbs,
+        trust: trustResult.data || null,
+        priceSummary,
+        children: childrenResult.data || []
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand catalog node.' });
+  }
+});
+
+app.get('/brands/:brandSlug/items', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brand = await resolveBrandBySlug(req.params.brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const limit = parsePageLimit(req.query.limit, 30, 120);
+    const offset = parsePageOffset(req.query.offset);
+    const includeDraft = String(req.query.includeDraft || '').trim() === '1';
+    const requestedPath = String(req.query.path || '').trim();
+
+    let nodeId = String(req.query.nodeId || '').trim() || null;
+    if (!nodeId && requestedPath) {
+      const node = await resolveCatalogNodeByPath(brand.id, requestedPath);
+      nodeId = node?.id || null;
+      if (!nodeId) {
+        return res.status(404).json({ error: 'Catalog path not found for this brand.' });
+      }
+    }
+
+    let query = supabase
+      .from('items')
+      .select('id,seller_id,store_id,category_id,title,description,listing_type,status,condition,brand,brand_id,brand_catalog_node_id,currency,sale_price,rental_price,auction_start_price,auction_reserve_price,stock,is_featured,is_verified,metadata,created_at,updated_at', { count: 'exact' })
+      .eq('brand_id', brand.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (!includeDraft) {
+      query = query.eq('status', 'published');
+    }
+    if (nodeId) {
+      query = query.eq('brand_catalog_node_id', nodeId);
+    }
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+    return res.json({
+      data: data || [],
+      count: count || 0,
+      limit,
+      offset,
+      filters: {
+        brandId: brand.id,
+        nodeId
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand items.' });
+  }
+});
+
+app.get('/brands/:brandSlug/stores', async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brand = await resolveBrandBySlug(req.params.brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const requestedPath = String(req.query.path || '').trim();
+    let nodeId = String(req.query.nodeId || '').trim() || null;
+    if (!nodeId && requestedPath) {
+      const node = await resolveCatalogNodeByPath(brand.id, requestedPath);
+      nodeId = node?.id || null;
+      if (!nodeId) return res.status(404).json({ error: 'Catalog path not found for this brand.' });
+    }
+
+    let itemQuery = supabase
+      .from('items')
+      .select('store_id,seller_id')
+      .eq('brand_id', brand.id)
+      .eq('status', 'published')
+      .limit(5000);
+    if (nodeId) itemQuery = itemQuery.eq('brand_catalog_node_id', nodeId);
+    const { data: itemRows, error: itemError } = await itemQuery;
+    if (itemError) throw itemError;
+
+    const storeIds = Array.from(new Set((itemRows || []).map((row) => String(row.store_id || '').trim()).filter(Boolean)));
+    const sellerIds = Array.from(new Set((itemRows || []).map((row) => String(row.seller_id || '').trim()).filter(Boolean)));
+
+    let stores = [];
+    if (storeIds.length > 0) {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('id,owner_id,name,slug,description,logo_url,cover_url,status,rating,created_at')
+        .in('id', storeIds)
+        .order('rating', { ascending: false });
+      if (error) throw error;
+      stores = data || [];
+    }
+
+    return res.json({
+      data: stores,
+      meta: {
+        directStoreCount: storeIds.length,
+        sellerCount: sellerIds.length
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand stores.' });
+  }
+});
+
+app.get(/^\/brands\/([^/]+)\/catalog\/(.+)\/items$/, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brandSlug = decodeURIComponent(req.params[0] || '');
+    const path = decodeURIComponent(req.params[1] || '');
+    const brand = await resolveBrandBySlug(brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const node = await resolveCatalogNodeByPath(brand.id, path);
+    if (!node) return res.status(404).json({ error: 'Catalog path not found for this brand.' });
+
+    const limit = parsePageLimit(req.query.limit, 30, 120);
+    const offset = parsePageOffset(req.query.offset);
+    const includeDraft = String(req.query.includeDraft || '').trim() === '1';
+
+    let query = supabase
+      .from('items')
+      .select('id,seller_id,store_id,category_id,title,description,listing_type,status,condition,brand,brand_id,brand_catalog_node_id,currency,sale_price,rental_price,auction_start_price,auction_reserve_price,stock,is_featured,is_verified,metadata,created_at,updated_at', { count: 'exact' })
+      .eq('brand_id', brand.id)
+      .eq('brand_catalog_node_id', node.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (!includeDraft) query = query.eq('status', 'published');
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+    return res.json({
+      data: data || [],
+      count: count || 0,
+      limit,
+      offset,
+      filters: {
+        brandId: brand.id,
+        nodeId: node.id,
+        path
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand catalog items.' });
+  }
+});
+
+app.get(/^\/brands\/([^/]+)\/catalog\/(.+)\/stores$/, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brandSlug = decodeURIComponent(req.params[0] || '');
+    const path = decodeURIComponent(req.params[1] || '');
+    const brand = await resolveBrandBySlug(brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const node = await resolveCatalogNodeByPath(brand.id, path);
+    if (!node) return res.status(404).json({ error: 'Catalog path not found for this brand.' });
+
+    const { data: itemRows, error: itemError } = await supabase
+      .from('items')
+      .select('store_id,seller_id')
+      .eq('brand_id', brand.id)
+      .eq('brand_catalog_node_id', node.id)
+      .eq('status', 'published')
+      .limit(5000);
+    if (itemError) throw itemError;
+
+    const storeIds = Array.from(new Set((itemRows || []).map((row) => String(row.store_id || '').trim()).filter(Boolean)));
+    let stores = [];
+    if (storeIds.length > 0) {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('id,owner_id,name,slug,description,logo_url,cover_url,status,rating,created_at')
+        .in('id', storeIds)
+        .order('rating', { ascending: false });
+      if (error) throw error;
+      stores = data || [];
+    }
+
+    return res.json({
+      data: stores,
+      meta: {
+        path,
+        nodeId: node.id,
+        directStoreCount: storeIds.length
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand catalog stores.' });
+  }
+});
+
+app.get(/^\/brands\/([^/]+)\/catalog\/(.+)$/, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const brandSlug = decodeURIComponent(req.params[0] || '');
+    const path = decodeURIComponent(req.params[1] || '');
+    const brand = await resolveBrandBySlug(brandSlug);
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const node = await resolveCatalogNodeByPath(brand.id, path);
+    if (!node) return res.status(404).json({ error: 'Catalog node not found.' });
+
+    const [childrenResult, trustResult, priceSummary] = await Promise.all([
+      supabase
+        .from('brand_catalog_nodes')
+        .select(BRAND_NODE_SELECT_FIELDS)
+        .eq('brand_id', brand.id)
+        .eq('parent_node_id', node.id)
+        .eq('status', 'active')
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+        .limit(400),
+      supabase
+        .from('brand_catalog_trust_signals')
+        .select('*')
+        .eq('node_id', node.id)
+        .maybeSingle(),
+      loadBrandPriceSummary(brand.id, node.id)
+    ]);
+    if (childrenResult.error) throw childrenResult.error;
+    if (trustResult.error) throw trustResult.error;
+
+    const segments = String(node.path || '').split('/').filter(Boolean);
+    const breadcrumbs = segments.map((segment, index) => ({
+      name: segment.replace(/-/g, ' '),
+      path: segments.slice(0, index + 1).join('/')
+    }));
+
+    return res.json({
+      data: {
+        brand: { id: brand.id, slug: brand.slug, name: brand.name },
+        node,
+        breadcrumbs,
+        trust: trustResult.data || null,
+        priceSummary,
+        children: childrenResult.data || []
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand catalog node.' });
+  }
+});
+
+app.post('/brands/suggest', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+    const body = normalizeJsonObject(req.body);
+    const rawBrand = toNullableText(body.brand || body.rawBrand || body.name);
+    const rawLine = toNullableText(body.line || body.rawLine || body.path);
+    if (!rawBrand && !rawLine) {
+      return res.status(400).json({ error: 'brand or line suggestion is required.' });
+    }
+
+    const suggestionId = randomUUID();
+    const now = new Date().toISOString();
+    const payload = {
+      id: suggestionId,
+      user_id: context.user.id,
+      item_id: toNullableText(body.itemId || body.item_id),
+      brand: rawBrand,
+      line: rawLine,
+      notes: toNullableText(body.notes),
+      status: 'pending',
+      created_at: now,
+      updated_at: now
+    };
+
+    const { error } = await supabase.from('mirror_documents').upsert({
+      collection: 'brand_suggestions',
+      doc_id: suggestionId,
+      data: payload,
+      updated_at: now
+    }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+    if (error) throw error;
+
+    return res.status(201).json({ data: payload });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to save suggestion.' });
+  }
+});
+
+app.get('/brands/:brandId/follow-state', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    const brandId = String(req.params.brandId || '').trim();
+    if (!brandId) return res.status(400).json({ error: 'brandId is required.' });
+
+    const { data, error } = await supabase
+      .from('brand_followers')
+      .select('id')
+      .eq('brand_id', brandId)
+      .eq('user_id', context.user.id)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return res.json({ data: { following: Boolean(data?.id) } });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load follow state.' });
+  }
+});
+
+app.post('/brands/:brandId/follow', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+
+    const brandId = String(req.params.brandId || '').trim();
+    if (!brandId) return res.status(400).json({ error: 'brandId is required.' });
+
+    const { data: brand, error: brandError } = await supabase
+      .from('brands')
+      .select('id,status')
+      .eq('id', brandId)
+      .maybeSingle();
+    if (brandError) throw brandError;
+    if (!brand || brand.status !== 'active') return res.status(404).json({ error: 'Brand not found.' });
+
+    const { data, error } = await supabase
+      .from('brand_followers')
+      .upsert({ brand_id: brandId, user_id: context.user.id }, { onConflict: 'brand_id,user_id', ignoreDuplicates: false })
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return res.status(201).json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to follow brand.' });
+  }
+});
+
+app.delete('/brands/:brandId/follow', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    const brandId = String(req.params.brandId || '').trim();
+    if (!brandId) return res.status(400).json({ error: 'brandId is required.' });
+    const { error } = await supabase
+      .from('brand_followers')
+      .delete()
+      .eq('brand_id', brandId)
+      .eq('user_id', context.user.id);
+    if (error) throw error;
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to unfollow brand.' });
+  }
+});
+
+app.post('/brands/:brandId/claim', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    const brandId = String(req.params.brandId || '').trim();
+    if (!brandId) return res.status(400).json({ error: 'brandId is required.' });
+    const body = normalizeJsonObject(req.body);
+
+    const { data: brand, error: brandError } = await supabase
+      .from('brands')
+      .select('id,status')
+      .eq('id', brandId)
+      .maybeSingle();
+    if (brandError) throw brandError;
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const { data, error } = await supabase
+      .from('brand_claim_requests')
+      .insert({
+        brand_id: brandId,
+        requester_user_id: context.user.id,
+        payload: body,
+        status: 'pending'
+      })
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return res.status(201).json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to submit claim request.' });
+  }
+});
+
+app.post('/brands/classify-item', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+
+    const body = normalizeJsonObject(req.body);
+    const itemId = toNullableText(body.itemId || body.item_id);
+    const rawBrand = toNullableText(body.brand || body.rawBrand || body.raw_brand || body.name);
+    if (!rawBrand) {
+      return res.status(400).json({ error: 'raw brand is required.' });
+    }
+
+    const classification = await classifyBrandCandidate(rawBrand);
+    const now = new Date().toISOString();
+
+    if (itemId) {
+      const ownership = await ensureItemOwnedByUser(itemId, context.user.id);
+      if (!ownership.item) return res.status(404).json({ error: 'Item not found.' });
+      if (!ownership.allowed) return res.status(403).json({ error: 'You can classify only your own item.' });
+    }
+
+    if (itemId && classification.outcome === 'auto' && classification.brand) {
+      const { error: updateError } = await supabase
+        .from('items')
+        .update({
+          brand: rawBrand,
+          brand_id: classification.brand.id,
+          brand_match_confidence: classification.confidence,
+          brand_match_source: classification.source || 'auto'
+        })
+        .eq('id', itemId);
+      if (updateError) throw updateError;
+    }
+
+    if (itemId && classification.outcome === 'review') {
+      const { error: queueError } = await supabase
+        .from('brand_match_queue')
+        .insert({
+          item_id: itemId,
+          raw_brand: rawBrand,
+          normalized_brand: classification.normalized,
+          proposed_brand_id: classification.brand?.id || null,
+          confidence: classification.confidence,
+          status: 'pending',
+          reason: 'fuzzy_match_requires_review',
+          created_at: now
+        });
+      if (queueError) throw queueError;
+    }
+
+    return res.json({
+      data: {
+        itemId,
+        rawBrand,
+        normalizedBrand: classification.normalized,
+        confidence: classification.confidence,
+        outcome: classification.outcome,
+        source: classification.source,
+        brand: classification.brand
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to classify brand.' });
+  }
+});
+
+app.post('/brands/classify-item-catalog', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const context = await getUserContext(req);
+    if (context.error) return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+
+    const body = normalizeJsonObject(req.body);
+    const itemId = toNullableText(body.itemId || body.item_id);
+    const fallbackPath = toNullableText(body.path || body.rawPath || body.raw_path || body.line);
+    const explicitBrandId = toNullableText(body.brandId || body.brand_id);
+
+    if (!itemId && !explicitBrandId) {
+      return res.status(400).json({ error: 'itemId or brandId is required.' });
+    }
+
+    let resolvedBrandId = explicitBrandId;
+    let itemRecord = null;
+    if (itemId) {
+      const ownership = await ensureItemOwnedByUser(itemId, context.user.id);
+      if (!ownership.item) return res.status(404).json({ error: 'Item not found.' });
+      if (!ownership.allowed) return res.status(403).json({ error: 'You can classify only your own item.' });
+      itemRecord = ownership.item;
+      resolvedBrandId = resolvedBrandId || ownership.item.brand_id || null;
+    }
+
+    if (!resolvedBrandId) {
+      return res.status(400).json({ error: 'Brand must be resolved before line classification.' });
+    }
+
+    const rawPath = fallbackPath || itemRecord?.metadata?.brandCatalogPath || itemRecord?.title || '';
+    const classification = await classifyCatalogNodeCandidate({
+      brandId: resolvedBrandId,
+      rawPath
+    });
+
+    if (itemId && classification.outcome === 'auto' && classification.node) {
+      const { error: updateError } = await supabase
+        .from('items')
+        .update({
+          brand_catalog_node_id: classification.node.id,
+          brand_catalog_match_confidence: classification.confidence,
+          brand_match_source: classification.source || 'auto'
+        })
+        .eq('id', itemId);
+      if (updateError) throw updateError;
+    }
+
+    if (itemId && classification.outcome === 'review') {
+      const { error: queueError } = await supabase
+        .from('brand_catalog_match_queue')
+        .insert({
+          item_id: itemId,
+          brand_id: resolvedBrandId,
+          raw_path: rawPath,
+          normalized_path: classification.normalizedPath,
+          proposed_node_id: classification.node?.id || null,
+          confidence: classification.confidence,
+          status: 'pending',
+          reason: 'fuzzy_catalog_match_requires_review'
+        });
+      if (queueError) throw queueError;
+    }
+
+    return res.json({
+      data: {
+        itemId,
+        brandId: resolvedBrandId,
+        rawPath,
+        normalizedPath: classification.normalizedPath,
+        confidence: classification.confidence,
+        outcome: classification.outcome,
+        source: classification.source,
+        node: classification.node
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to classify brand catalog node.' });
+  }
+});
+
+app.post('/admin/brands/import', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const rows = Array.isArray(body.brands) ? body.brands : [];
+    if (rows.length === 0) return res.status(400).json({ error: 'brands array is required.' });
+
+    const payload = rows.map((entry) => {
+      const source = normalizeJsonObject(entry);
+      const name = toNullableText(source.name);
+      const slug = slugifyPathSegment(source.slug || name);
+      return {
+        name: name || slug,
+        slug,
+        normalized_name: normalizeBrandText(name || slug),
+        logo_url: toNullableText(source.logo_url || source.logoUrl),
+        cover_url: toNullableText(source.cover_url || source.coverUrl),
+        description: toNullableText(source.description),
+        story: normalizeJsonObject(source.story),
+        website: toNullableText(source.website),
+        country: toNullableText(source.country),
+        status: toNullableText(source.status) || 'active',
+        verification_level: toNullableText(source.verification_level || source.verificationLevel) || 'community',
+        claimed_by_user_id: toNullableText(source.claimed_by_user_id || source.claimedByUserId)
+      };
+    }).filter((entry) => entry.name);
+
+    const { data, error } = await supabase
+      .from('brands')
+      .upsert(payload, { onConflict: 'slug', ignoreDuplicates: false })
+      .select('*');
+    if (error) throw error;
+    return res.status(201).json({ data: data || [], imported: data?.length || 0 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to import brands.' });
+  }
+});
+
+app.post('/admin/brands/catalog/import', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) {
+    return res.status(404).json({ error: 'Brand hub is disabled.' });
+  }
+
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const brandId = toNullableText(body.brandId || body.brand_id);
+    const brandSlug = toNullableText(body.brandSlug || body.brand_slug);
+    const nodes = Array.isArray(body.nodes) ? body.nodes : [];
+    if (nodes.length === 0) return res.status(400).json({ error: 'nodes array is required.' });
+
+    let brand = null;
+    if (brandId) {
+      const { data, error } = await supabase.from('brands').select('id,slug,name').eq('id', brandId).maybeSingle();
+      if (error) throw error;
+      brand = data || null;
+    } else if (brandSlug) {
+      brand = await resolveBrandBySlug(brandSlug);
+    }
+    if (!brand) return res.status(404).json({ error: 'Brand not found.' });
+
+    const createdNodes = [];
+    for (const entry of nodes) {
+      const source = normalizeJsonObject(entry);
+      const name = toNullableText(source.name);
+      if (!name) continue;
+      const parentNodeId = toNullableText(source.parentNodeId || source.parent_node_id);
+      let resolvedParentId = parentNodeId;
+      if (!resolvedParentId && (source.parentPath || source.parent_path)) {
+        const parent = await resolveCatalogNodeByPath(brand.id, source.parentPath || source.parent_path);
+        resolvedParentId = parent?.id || null;
+      }
+
+      const payload = {
+        brand_id: brand.id,
+        parent_node_id: resolvedParentId,
+        name,
+        slug: slugifyPathSegment(source.slug || name),
+        normalized_name: normalizeBrandText(name),
+        node_type: toNullableText(source.nodeType || source.node_type) || 'line',
+        sort_order: Number.parseInt(String(source.sortOrder || source.sort_order || '0'), 10) || 0,
+        status: toNullableText(source.status) || 'active',
+        source: toNullableText(source.source) || 'import',
+        created_by_user_id: context.user.id
+      };
+
+      const { data, error } = await supabase
+        .from('brand_catalog_nodes')
+        .insert(payload)
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      if (data) createdNodes.push(data);
+    }
+
+    return res.status(201).json({ data: createdNodes, imported: createdNodes.length });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to import catalog nodes.' });
+  }
+});
+
+app.get('/admin/brands/match-queue', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const limit = parsePageLimit(req.query.limit, 100, 200);
+    const status = String(req.query.status || 'pending').trim().toLowerCase();
+
+    let query = supabase
+      .from('brand_match_queue')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return res.json({ data: data || [] });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load brand match queue.' });
+  }
+});
+
+app.get('/admin/brands/catalog-match-queue', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const limit = parsePageLimit(req.query.limit, 100, 200);
+    const status = String(req.query.status || 'pending').trim().toLowerCase();
+
+    let query = supabase
+      .from('brand_catalog_match_queue')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return res.json({ data: data || [] });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load catalog match queue.' });
+  }
+});
+
+app.post('/admin/brands/match-review', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const queueId = toNullableText(body.queueId || body.queue_id);
+    const status = String(body.status || '').trim().toLowerCase();
+    const resolvedStatus = ['approved', 'rejected', 'pending'].includes(status) ? status : '';
+    if (!queueId || !resolvedStatus) return res.status(400).json({ error: 'queueId and valid status are required.' });
+
+    const { data: queueRow, error: queueError } = await supabase
+      .from('brand_match_queue')
+      .select('*')
+      .eq('id', queueId)
+      .maybeSingle();
+    if (queueError) throw queueError;
+    if (!queueRow) return res.status(404).json({ error: 'Queue item not found.' });
+
+    const brandId = toNullableText(body.brandId || body.brand_id) || queueRow.proposed_brand_id || null;
+    if (resolvedStatus === 'approved' && !brandId) {
+      return res.status(400).json({ error: 'brandId is required for approval.' });
+    }
+
+    if (resolvedStatus === 'approved' && queueRow.item_id) {
+      const { error: itemUpdateError } = await supabase
+        .from('items')
+        .update({
+          brand_id: brandId,
+          brand: queueRow.raw_brand || null,
+          brand_match_confidence: queueRow.confidence || 0,
+          brand_match_source: 'reviewed'
+        })
+        .eq('id', queueRow.item_id);
+      if (itemUpdateError) throw itemUpdateError;
+    }
+
+    const updates = {
+      status: resolvedStatus,
+      proposed_brand_id: brandId,
+      reviewed_by: context.user.id,
+      reviewed_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('brand_match_queue')
+      .update(updates)
+      .eq('id', queueId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to review brand match.' });
+  }
+});
+
+app.post('/admin/brands/catalog-match-review', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const queueId = toNullableText(body.queueId || body.queue_id);
+    const status = String(body.status || '').trim().toLowerCase();
+    const resolvedStatus = ['approved', 'rejected', 'pending'].includes(status) ? status : '';
+    if (!queueId || !resolvedStatus) return res.status(400).json({ error: 'queueId and valid status are required.' });
+
+    const { data: queueRow, error: queueError } = await supabase
+      .from('brand_catalog_match_queue')
+      .select('*')
+      .eq('id', queueId)
+      .maybeSingle();
+    if (queueError) throw queueError;
+    if (!queueRow) return res.status(404).json({ error: 'Queue item not found.' });
+
+    const nodeId = toNullableText(body.nodeId || body.node_id) || queueRow.proposed_node_id || null;
+    if (resolvedStatus === 'approved' && !nodeId) {
+      return res.status(400).json({ error: 'nodeId is required for approval.' });
+    }
+
+    if (resolvedStatus === 'approved' && queueRow.item_id) {
+      const { error: itemUpdateError } = await supabase
+        .from('items')
+        .update({
+          brand_catalog_node_id: nodeId,
+          brand_catalog_match_confidence: queueRow.confidence || 0,
+          brand_match_source: 'reviewed'
+        })
+        .eq('id', queueRow.item_id);
+      if (itemUpdateError) throw itemUpdateError;
+    }
+
+    const updates = {
+      status: resolvedStatus,
+      proposed_node_id: nodeId,
+      reviewed_by: context.user.id,
+      reviewed_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('brand_catalog_match_queue')
+      .update(updates)
+      .eq('id', queueId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to review catalog match.' });
+  }
+});
+
+app.post('/admin/brands/merge', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const sourceBrandId = toNullableText(body.sourceBrandId || body.source_brand_id);
+    const targetBrandId = toNullableText(body.targetBrandId || body.target_brand_id);
+    if (!sourceBrandId || !targetBrandId || sourceBrandId === targetBrandId) {
+      return res.status(400).json({ error: 'sourceBrandId and targetBrandId are required and must be different.' });
+    }
+
+    const [sourceBrandResult, targetBrandResult] = await Promise.all([
+      supabase.from('brands').select('*').eq('id', sourceBrandId).maybeSingle(),
+      supabase.from('brands').select('*').eq('id', targetBrandId).maybeSingle()
+    ]);
+    if (sourceBrandResult.error) throw sourceBrandResult.error;
+    if (targetBrandResult.error) throw targetBrandResult.error;
+    if (!sourceBrandResult.data || !targetBrandResult.data) {
+      return res.status(404).json({ error: 'Source or target brand not found.' });
+    }
+
+    await Promise.all([
+      supabase.from('items').update({ brand_id: targetBrandId, brand_match_source: 'reviewed' }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_aliases').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_catalog_nodes').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_match_queue').update({ proposed_brand_id: targetBrandId }).eq('proposed_brand_id', sourceBrandId),
+      supabase.from('brand_claim_requests').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_followers').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_price_snapshots').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId),
+      supabase.from('brand_catalog_match_queue').update({ brand_id: targetBrandId }).eq('brand_id', sourceBrandId)
+    ]);
+
+    const mergedStory = {
+      ...normalizeJsonObject(sourceBrandResult.data.story),
+      merged_into_brand_id: targetBrandId,
+      merged_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('brands')
+      .update({ status: 'merged', story: mergedStory })
+      .eq('id', sourceBrandId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'brand_merge',
+      entityType: 'brand',
+      entityId: sourceBrandId,
+      details: { targetBrandId }
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to merge brands.' });
+  }
+});
+
+app.post('/admin/brands/catalog/merge-nodes', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const body = normalizeJsonObject(req.body);
+    const sourceNodeId = toNullableText(body.sourceNodeId || body.source_node_id);
+    const targetNodeId = toNullableText(body.targetNodeId || body.target_node_id);
+    if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+      return res.status(400).json({ error: 'sourceNodeId and targetNodeId are required and must be different.' });
+    }
+
+    const [sourceNodeResult, targetNodeResult] = await Promise.all([
+      supabase.from('brand_catalog_nodes').select('*').eq('id', sourceNodeId).maybeSingle(),
+      supabase.from('brand_catalog_nodes').select('*').eq('id', targetNodeId).maybeSingle()
+    ]);
+    if (sourceNodeResult.error) throw sourceNodeResult.error;
+    if (targetNodeResult.error) throw targetNodeResult.error;
+    if (!sourceNodeResult.data || !targetNodeResult.data) {
+      return res.status(404).json({ error: 'Source or target node not found.' });
+    }
+
+    await Promise.all([
+      supabase.from('items').update({ brand_catalog_node_id: targetNodeId, brand_match_source: 'reviewed' }).eq('brand_catalog_node_id', sourceNodeId),
+      supabase.from('brand_catalog_aliases').update({ node_id: targetNodeId }).eq('node_id', sourceNodeId),
+      supabase.from('brand_catalog_match_queue').update({ proposed_node_id: targetNodeId }).eq('proposed_node_id', sourceNodeId),
+      supabase.from('brand_catalog_price_snapshots').update({ node_id: targetNodeId }).eq('node_id', sourceNodeId),
+      supabase.from('brand_catalog_followers').update({ node_id: targetNodeId }).eq('node_id', sourceNodeId)
+    ]);
+
+    const { data, error } = await supabase
+      .from('brand_catalog_nodes')
+      .update({ status: 'merged', source: 'merge', sort_order: 999999, updated_at: new Date().toISOString() })
+      .eq('id', sourceNodeId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    await supabase.from('mirror_documents').upsert({
+      collection: 'brand_catalog_node_redirects',
+      doc_id: sourceNodeId,
+      data: {
+        merged_into_node_id: targetNodeId,
+        merged_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'brand_catalog_node_merge',
+      entityType: 'brand_catalog_node',
+      entityId: sourceNodeId,
+      details: { targetNodeId }
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to merge catalog nodes.' });
+  }
+});
+
+app.get('/admin/brands/duplicates', requireAuth, async (req, res) => {
+  if (!BRAND_HUB_V3_ENABLED) return res.status(404).json({ error: 'Brand hub is disabled.' });
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) return res.status(403).json({ error: context.error.message || 'Admin access required.' });
+    const limit = parsePageLimit(req.query.limit, 200, 500);
+    const { data, error } = await supabase
+      .from('brands')
+      .select('id,name,slug,normalized_name,status,created_at')
+      .order('normalized_name', { ascending: true })
+      .limit(limit);
+    if (error) throw error;
+
+    const groups = new Map();
+    (data || []).forEach((row) => {
+      const key = String(row.normalized_name || '').trim();
+      if (!key) return;
+      const list = groups.get(key) || [];
+      list.push(row);
+      groups.set(key, list);
+    });
+
+    const duplicates = Array.from(groups.entries())
+      .filter(([, rows]) => rows.length > 1)
+      .map(([normalizedName, rows]) => ({ normalizedName, rows }));
+
+    return res.json({ data: duplicates });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load duplicate candidates.' });
   }
 });
 

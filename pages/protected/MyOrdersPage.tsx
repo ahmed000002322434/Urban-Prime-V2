@@ -15,10 +15,10 @@ const OrderIcon = () => (
 );
 
 const statusColors: Record<string, string> = {
-    pending: 'text-amber-800 bg-amber-100 dark:bg-amber-900 dark:text-amber-200',
-    confirmed: 'text-green-800 bg-green-100 dark:bg-green-900 dark:text-green-200',
-    completed: 'text-gray-800 bg-gray-100 dark:bg-gray-700 dark:text-gray-300',
-    cancelled: 'text-red-800 bg-red-100 dark:bg-red-900 dark:text-red-200',
+    pending: 'text-amber-800 bg-amber-100',
+    confirmed: 'text-green-800 bg-green-100',
+    completed: 'text-gray-800 bg-gray-100',
+    cancelled: 'text-red-800 bg-red-100',
 };
 
 const MyOrdersPage: React.FC = () => {
@@ -71,7 +71,7 @@ const MyOrdersPage: React.FC = () => {
     const purchases = history.filter(item => item.type === 'sale');
 
     return (
-        <main className="flex-1 bg-surface p-4 sm:p-6 rounded-xl shadow-soft border border-border">
+        <main className="clay-card clay-size-lg flex-1 bg-surface p-4 sm:p-6 rounded-xl shadow-soft border border-border">
             <div className="border-b border-border mb-6 flex gap-2 overflow-x-auto no-scrollbar">
                 <TabButton tab="rentals">My Rentals</TabButton>
                 <TabButton tab="purchases">My Purchases</TabButton>
@@ -97,9 +97,9 @@ const MyOrdersPage: React.FC = () => {
                                     <div className="flex items-center gap-4">
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[item.status]}`}>{item.status.toUpperCase()}</span>
                                         {item.status === 'pending' ? (
-                                            <button onClick={() => handleCancelBooking(item.id)} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">Cancel</button>
+                                            <button onClick={() => handleCancelBooking(item.id)} className="clay-button clay-button-primary clay-size-sm clay-tone-danger is-interactive">Cancel</button>
                                         ) : (
-                                            <Link to={`/profile/orders/${item.id}`} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md hover:opacity-80">Details</Link>
+                                            <Link to={`/profile/orders/${item.id}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">Details</Link>
                                         )}
                                     </div>
                                 </li>
@@ -112,7 +112,7 @@ const MyOrdersPage: React.FC = () => {
                             <p className="text-sm text-text-secondary mt-1">
                                 When you rent an item, your booking details will appear here.
                             </p>
-                            <Link to="/browse" className="mt-6 inline-block bg-black dark:bg-white text-white dark:text-black font-bold py-3 px-6 rounded-full hover:opacity-90 transition-opacity">
+                            <Link to="/browse" className="clay-button clay-button-primary clay-size-lg is-interactive mt-6 inline-flex">
                                 Browse Items
                             </Link>
                         </div>
@@ -137,13 +137,13 @@ const MyOrdersPage: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         {item.itemType === 'digital' ? (
-                                            <a href={item.digitalFileUrl} download className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">
+                                            <a href={item.digitalFileUrl} download className="clay-button clay-button-secondary clay-size-sm is-interactive">
                                                 Download
                                             </a>
                                         ) : (
-                                            <button onClick={() => handleBuyAgain(item.itemId)} className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-primary/20 text-primary font-semibold rounded-md hover:bg-primary/30">Buy Again</button>
+                                            <button onClick={() => handleBuyAgain(item.itemId)} className="clay-button clay-button-secondary clay-size-sm is-interactive">Buy Again</button>
                                         )}
-                                        <Link to={`/profile/orders/${item.id}`} className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-semibold rounded-md hover:opacity-80">Details</Link>
+                                        <Link to={`/profile/orders/${item.id}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">Details</Link>
                                     </div>
                                 </li>
                             ))}
@@ -155,7 +155,7 @@ const MyOrdersPage: React.FC = () => {
                             <p className="text-sm text-text-secondary mt-1">
                                 When you buy an item, your order details will appear here.
                             </p>
-                            <Link to="/browse" className="mt-6 inline-block bg-black dark:bg-white text-white dark:text-black font-bold py-3 px-6 rounded-full hover:opacity-90 transition-opacity">
+                            <Link to="/browse" className="clay-button clay-button-primary clay-size-lg is-interactive mt-6 inline-flex">
                                 Browse Items
                             </Link>
                         </div>

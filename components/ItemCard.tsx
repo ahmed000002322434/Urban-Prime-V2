@@ -57,6 +57,14 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const imageUrl = item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/600/750`;
+  const normalizedBrandSlug = item.brand
+    ? String((item as any).brandSlug || item.brand)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+    : '';
+  const brandHref = normalizedBrandSlug ? `/brands/${normalizedBrandSlug}` : null;
   
   // Logic to determine display price
   let displayPrice = 0;
@@ -183,7 +191,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   // Grid view
   if (viewMode === 'grid') {
     return (
-      <div ref={cardRef} className="relative group flex flex-col bg-surface/60 backdrop-blur-xl rounded-2xl shadow-soft border border-border/40 hover:shadow-xl transition-all duration-300 h-full overflow-hidden">
+      <div ref={cardRef} className="relative group flex flex-col glass-panel glass-panel-hover h-full overflow-hidden">
         <Link to={`/item/${item.id}`} className="block">
           <div className="relative overflow-hidden aspect-[4/5] bg-gray-100/10">
             <img src={imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -200,9 +208,37 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             <ListingTypeBadge listingType={item.listingType} />
           </div>
         </Link>
-        <div className="p-3 sm:p-4 flex flex-col flex-grow bg-surface">
+        <div className="p-3 sm:p-4 flex flex-col flex-grow">
           <div className="flex-grow">
-            {item.brand && <p className="text-[10px] font-bold text-text-secondary mb-1 uppercase tracking-widest">{item.brand}</p>}
+            {(item.brand || (item as any).brandCatalogPath) ? (
+              <div className="mb-1 flex flex-wrap items-center gap-1">
+                {item.brand ? (
+                  brandHref ? (
+                    <Link
+                      to={brandHref}
+                      onClick={(event) => event.stopPropagation()}
+                      className="text-[10px] font-bold text-text-secondary uppercase tracking-widest inline-flex hover:text-primary"
+                    >
+                      {item.brand}
+                    </Link>
+                  ) : (
+                    <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">{item.brand}</p>
+                  )
+                ) : null}
+                {(item as any).brandCatalogPath ? (
+                  <Link
+                    to={brandHref ? `${brandHref}/${String((item as any).brandCatalogPath).replace(/^\/+|\/+$/g, '')}` : '#'}
+                    onClick={(event) => {
+                      if (!brandHref) event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    className="text-[10px] font-semibold text-text-secondary/80 inline-flex hover:text-primary"
+                  >
+                    {String((item as any).brandCatalogPath).replace(/\//g, ' / ')}
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
             <h3 className="font-bold text-[13px] sm:text-sm text-text-primary line-clamp-2 leading-snug font-display">
               {isLoadingTranslation ? (
                 <div className="space-y-1.5">
@@ -219,7 +255,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             <span className="text-[10px] text-text-secondary font-medium">({item.reviews.length})</span>
           </div>
           <div 
-            className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 border-t pt-3 border-gray-100 dark:border-gray-700"
+            className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 border-t pt-3 border-white/10"
             onMouseEnter={handleMouseEnterLower}
             onMouseLeave={handleMouseLeaveLower}
           >
@@ -253,7 +289,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
 
   // List view
   return (
-     <div ref={cardRef} className="bg-surface rounded-xl shadow-soft border border-border/50 hover:shadow-md transition-shadow flex flex-col sm:flex-row gap-0 overflow-hidden relative">
+     <div ref={cardRef} className="glass-panel glass-panel-hover flex flex-col sm:flex-row gap-0 overflow-hidden relative">
       <div className="absolute top-2 right-2 z-10">
           <WishlistButton itemId={item.id} />
       </div>
@@ -279,7 +315,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
           ) : translatedItem.description}
         </p>
         
-        <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700" 
+        <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/10" 
              onMouseEnter={handleMouseEnterLower}
              onMouseLeave={handleMouseLeaveLower}
         >
@@ -292,7 +328,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
                 <p className="font-extrabold text-lg sm:text-xl text-text-primary tracking-tight">{currency.symbol}{displayPrice.toFixed(2)}<span className="text-sm font-normal text-text-secondary capitalize ml-1">{priceLabel}</span></p>
             </div>
             <div className="flex gap-2">
-                 <button onClick={() => onQuickView(item)} className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-bold text-sm">
+                 <button onClick={() => onQuickView(item)} className="p-2.5 glass-button rounded-lg text-text-secondary transition-colors font-bold text-sm">
                     Quick View
                 </button>
                 <button onClick={handleAddToCartClick} className={`relative overflow-hidden px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg text-sm hover:opacity-80 transition-colors shadow-md ${isAnimatingCart ? cartAnimationClass : ''}`}>

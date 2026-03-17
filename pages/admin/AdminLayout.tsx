@@ -6,9 +6,9 @@ import AdminSidebar from '../../components/admin/AdminSidebar';
 
 const AdminLayout: React.FC = () => {
   return (
-    <div className="min-h-screen flex bg-gray-100 dark:bg-dark-background font-sans">
+    <div className="admin-shell dashboard-shell dashboard-monochrome-theme min-h-screen flex font-sans">
       <AdminSidebar />
-      <main className="flex-1 p-6 sm:p-10">
+      <main className="dashboard-main flex-1 p-6 sm:p-10">
         <Outlet />
       </main>
     </div>

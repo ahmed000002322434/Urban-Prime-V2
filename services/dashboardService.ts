@@ -1,6 +1,7 @@
 import { auth } from '../firebase';
 import { backendFetch, isBackendConfigured } from './backendClient';
-import type { BuyerDashboardSnapshot, SellerDashboardSnapshot } from '../types';
+import { localDb } from './localDb';
+import type { Booking, BuyerDashboardSnapshot, Item, SellerDashboardSnapshot } from '../types';
 
 const getAuthContext = async (): Promise<{ token?: string; firebaseUid?: string }> => {
   if (!auth.currentUser) return {};
@@ -25,9 +26,126 @@ const request = async (path: string) => {
   return backendFetch(path, { headers }, authContext.token);
 };
 
+const getLocalUserId = async () => {
+  if (auth.currentUser?.uid) return auth.currentUser.uid;
+  await localDb.init();
+  const users = await localDb.list<any>('users');
+  return users[0]?.id || '';
+};
+
+const buildBuyerSnapshot = async (limit: number): Promise<BuyerDashboardSnapshot> => {
+  await localDb.init();
+  const userId = await getLocalUserId();
+  const bookings = await localDb.list<Booking>('bookings');
+  const userBookings = userId ? bookings.filter((booking) => booking.renterId === userId) : [];
+  const pendingOrders = userBookings.filter((booking) => booking.status === 'pending').length;
+  const completedOrders = userBookings.filter((booking) => booking.status === 'completed').length;
+  const activeRentals = userBookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'delivered').length;
+  const upcomingReturns = userBookings.filter((booking) => booking.status === 'delivered' || booking.status === 'shipped');
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalOrders: userBookings.length,
+      pendingOrders,
+      completedOrders,
+      activeRentals,
+      upcomingReturns: upcomingReturns.length,
+      totalPurchases: userBookings.reduce((sum, booking) => sum + Number(booking.totalPrice || 0), 0),
+      wishlistItems: 0,
+      unreadNotifications: 0,
+      conversations: 0
+    },
+    recentOrders: userBookings
+      .slice()
+      .sort((a, b) => new Date(b.startDate || 0).getTime() - new Date(a.startDate || 0).getTime())
+      .slice(0, limit)
+      .map((booking) => ({
+        id: booking.id || `booking-${booking.itemId}`,
+        status: booking.status || 'pending',
+        total: Number(booking.totalPrice || 0),
+        currency: booking.currency || 'USD',
+        createdAt: booking.startDate || new Date().toISOString(),
+        itemCount: 1,
+        quantityTotal: 1,
+        rentalItems: booking.type === 'rent' ? 1 : 0,
+        saleItems: booking.type === 'sale' ? 1 : 0
+      })),
+    upcomingReturns: upcomingReturns.slice(0, limit).map((booking) => ({
+      orderId: booking.orderId || booking.id || '',
+      orderItemId: booking.id || '',
+      itemId: booking.itemId || null,
+      itemTitle: booking.itemTitle || 'Item',
+      rentalEnd: booking.endDate || new Date().toISOString(),
+      quantity: 1
+    }))
+  };
+};
+
+const buildSellerSnapshot = async (limit: number): Promise<SellerDashboardSnapshot> => {
+  await localDb.init();
+  const userId = await getLocalUserId();
+  const items = await localDb.list<Item>('items');
+  const ownedItems = userId
+    ? items.filter((item) => item.owner?.id === userId || (item as any).ownerId === userId)
+    : [];
+  const bookings = await localDb.list<Booking>('bookings');
+  const sellerBookings = userId ? bookings.filter((booking) => booking.provider?.id === userId) : [];
+
+  const pendingOrders = sellerBookings.filter((booking) => booking.status === 'pending').length;
+  const completedOrders = sellerBookings.filter((booking) => booking.status === 'completed').length;
+  const totalRevenue = sellerBookings.reduce((sum, booking) => sum + Number(booking.totalPrice || 0), 0);
+  const lowStockItems = ownedItems.filter((item) => Number(item.stock || 0) <= 1);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalRevenue,
+      pendingOrders,
+      completedOrders,
+      totalSalesUnits: sellerBookings.length,
+      totalViews: 0,
+      conversionRate: 0,
+      lowStockCount: lowStockItems.length,
+      unreadMessages: 0
+    },
+    earningsByMonth: [],
+    categorySales: [],
+    recentOrders: sellerBookings
+      .slice()
+      .sort((a, b) => new Date(b.startDate || 0).getTime() - new Date(a.startDate || 0).getTime())
+      .slice(0, limit)
+      .map((booking) => ({
+        id: booking.id || `booking-${booking.itemId}`,
+        status: booking.status || 'pending',
+        total: Number(booking.totalPrice || 0),
+        currency: booking.currency || 'USD',
+        createdAt: booking.startDate || new Date().toISOString(),
+        itemCount: 1,
+        quantityTotal: 1
+      })),
+    lowStockItems: lowStockItems.slice(0, limit).map((item) => ({
+      id: item.id,
+      title: item.title,
+      stock: Number(item.stock || 0),
+      status: item.status || 'active'
+    })),
+    insights: [],
+    setup: {
+      hasStore: ownedItems.length > 0,
+      hasProducts: ownedItems.length > 0,
+      hasContent: false,
+      hasApps: false
+    }
+  };
+};
+
 export const dashboardService = {
   getBuyerDashboardSnapshot: async (limit = 8): Promise<BuyerDashboardSnapshot> => {
     const safeLimit = Math.min(Math.max(limit, 1), 30);
+    if (!isBackendConfigured()) {
+      return buildBuyerSnapshot(safeLimit);
+    }
     const response = await request(`/dashboard/buyer?limit=${safeLimit}`);
     const data = response?.data || {};
 
@@ -71,6 +189,9 @@ export const dashboardService = {
   },
   getSellerDashboardSnapshot: async (limit = 8): Promise<SellerDashboardSnapshot> => {
     const safeLimit = Math.min(Math.max(limit, 1), 30);
+    if (!isBackendConfigured()) {
+      return buildSellerSnapshot(safeLimit);
+    }
     const response = await request(`/dashboard/seller?limit=${safeLimit}`);
     const data = response?.data || {};
 

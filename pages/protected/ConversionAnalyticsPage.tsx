@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import analyticsService from '../../services/analyticsService';
@@ -9,82 +9,58 @@ const ConversionAnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
   const { activePersona } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState({
-    overallConversion: 0,
-    cartAdditionRate: 0,
-    checkoutCompletionRate: 0,
-    totalViews: 0,
-    cartAdditions: 0,
-    checkouts: 0,
-    productConversions: [] as Array<{
-      itemId: string;
-      title: string;
-      conversionRate: number;
-      views: number;
-      carts: number;
-      checkouts: number;
-    }>,
-    funnelData: [] as Array<{ stage: string; count: number; percentage: number }>
-  });
+  const [analytics, setAnalytics] = useState<any>(null);
 
   useEffect(() => {
-    const fetchConversionData = async () => {
+    let cancelled = false;
+
+    const run = async () => {
       if (!activePersona?.id) {
         setLoading(false);
         return;
       }
 
+      setLoading(true);
       try {
-        const analytics = await analyticsService.getSellerAnalytics(activePersona.id, 30);
-        
-        if (analytics) {
-          const totalViews = analytics.totalViews;
-          const cartAdditions = analytics.totalCartAdds;
-          const checkouts = analytics.completedCheckouts;
-
-          const conversionRate = totalViews > 0 ? (checkouts / totalViews) * 100 : 0;
-          const cartRate = totalViews > 0 ? (cartAdditions / totalViews) * 100 : 0;
-          const checkoutRate = cartAdditions > 0 ? (checkouts / cartAdditions) * 100 : 0;
-
-          const productConversions = analytics.topProducts?.map(p => ({
-            itemId: p.itemId,
-            title: p.itemTitle,
-            conversionRate: p.totalViews > 0 ? (p.totalCheckouts / p.totalViews) * 100 : 0,
-            views: p.totalViews,
-            carts: p.totalCartAdds,
-            checkouts: p.totalCheckouts
-          })) || [];
-
-          const funnelData = [
-            { stage: 'Viewed', count: totalViews, percentage: 100 },
-            { stage: 'Added to Cart', count: cartAdditions, percentage: cartRate },
-            { stage: 'Checked Out', count: checkouts, percentage: conversionRate }
-          ];
-
-          setData({
-            overallConversion: conversionRate,
-            cartAdditionRate: cartRate,
-            checkoutCompletionRate: checkoutRate,
-            totalViews,
-            cartAdditions,
-            checkouts,
-            productConversions,
-            funnelData
-          });
-        }
+        const snapshot = await analyticsService.getSellerAnalytics(activePersona.id, 30);
+        if (!cancelled) setAnalytics(snapshot);
       } catch (error) {
-        console.error('Failed to load conversion data:', error);
+        console.error('Failed to load conversion analytics:', error);
+        if (!cancelled) setAnalytics(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchConversionData();
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [activePersona?.id]);
 
-  if (loading) {
-    return <DashboardPageLoader title="Loading conversion analytics..." />;
-  }
+  const funnel = analytics?.funnel?.stages || [
+    { stage: 'Viewed', count: analytics?.totalViews || 0, percentage: 100 },
+    { stage: 'Added to Cart', count: analytics?.totalCartAdds || 0, percentage: analytics?.totalViews ? ((analytics.totalCartAdds / analytics.totalViews) * 100) : 0 },
+    { stage: 'Checked Out', count: analytics?.completedCheckouts || 0, percentage: analytics?.totalViews ? ((analytics.completedCheckouts / analytics.totalViews) * 100) : 0 }
+  ];
+
+  const topProducts = useMemo(() => {
+    return (analytics?.topProducts || []).map((product: any) => ({
+      itemId: product.itemId,
+      title: product.itemTitle,
+      views: product.totalViews,
+      carts: product.totalCartAdds,
+      checkouts: product.totalCheckouts,
+      conversionRate: product.totalViews > 0 ? (product.totalCheckouts / product.totalViews) * 100 : 0
+    }));
+  }, [analytics]);
+
+  if (loading) return <DashboardPageLoader title="Loading conversion analytics..." />;
+
+  const eventBased = analytics?.conversionRateEventBased ?? analytics?.conversionRate ?? 0;
+  const visitorBased = analytics?.conversionRateVisitorBased ?? eventBased;
+  const cartRate = analytics?.totalViews ? ((analytics.totalCartAdds / analytics.totalViews) * 100) : 0;
+  const checkoutRate = analytics?.totalCartAdds ? ((analytics.completedCheckouts / analytics.totalCartAdds) * 100) : 0;
 
   return (
     <div className="dashboard-page space-y-6">
@@ -92,63 +68,58 @@ const ConversionAnalyticsPage: React.FC = () => {
         <BackButton to="/store/manager/analytics" alwaysShowText />
         <div>
           <h1 className="text-3xl font-bold text-[#1f1f1f]">Conversion Analytics</h1>
-          <p className="text-sm text-[#666] mt-1">Analyze your sales funnel and conversion metrics</p>
+          <p className="text-sm text-[#666] mt-1">Event and visitor conversion intelligence with live funnel stage drop-off.</p>
         </div>
       </div>
 
-      {/* Key Metrics */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Overall Conversion</p>
-          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{data.overallConversion.toFixed(2)}%</p>
-          <p className="mt-1 text-xs text-[#727272]">Views to checkout</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Event Conversion</p>
+          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{eventBased.toFixed(2)}%</p>
+          <p className="mt-1 text-xs text-[#727272]">Completed checkouts / views</p>
         </div>
-
         <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Cart Addition Rate</p>
-          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{data.cartAdditionRate.toFixed(2)}%</p>
-          <p className="mt-1 text-xs text-[#727272]">Views to cart</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Visitor Conversion</p>
+          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{visitorBased.toFixed(2)}%</p>
+          <p className="mt-1 text-xs text-[#727272]">Unique buyers / unique visitors</p>
         </div>
-
         <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Checkout Completion</p>
-          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{data.checkoutCompletionRate.toFixed(2)}%</p>
-          <p className="mt-1 text-xs text-[#727272]">Cart to checkout</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">Cart Completion</p>
+          <p className="mt-3 text-4xl font-bold text-[#1f1f1f]">{checkoutRate.toFixed(2)}%</p>
+          <p className="mt-1 text-xs text-[#727272]">Checkout completed / cart adds</p>
         </div>
       </div>
 
-      {/* Sales Funnel */}
       <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
-        <h2 className="text-xl font-bold text-[#1f1f1f] mb-6">Sales Funnel</h2>
+        <h2 className="text-xl font-bold text-[#1f1f1f] mb-6">Live Funnel</h2>
         <div className="space-y-4">
-          {data.funnelData.map((stage, idx) => (
-            <div key={idx} className="space-y-2">
+          {funnel.map((stage: any) => (
+            <div key={stage.stage} className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-[#1f1f1f]">{stage.stage}</p>
                 <p className="text-sm text-[#666]">{stage.count.toLocaleString()} ({stage.percentage.toFixed(1)}%)</p>
               </div>
               <div className="h-10 rounded-lg bg-[#f0f0f0] overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#f39c12] to-[#ec4899] transition-all flex items-center justify-end pr-3"
-                  style={{ width: `${stage.percentage}%` }}
+                  className="h-full bg-gradient-to-r from-[#0fb9b1] to-[#3b82f6] transition-all flex items-center justify-end pr-3"
+                  style={{ width: `${Math.min(stage.percentage, 100)}%` }}
                 >
-                  {stage.percentage > 15 && (
+                  {stage.percentage > 15 ? (
                     <span className="text-white font-bold text-sm">{stage.percentage.toFixed(1)}%</span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
           ))}
         </div>
         <p className="text-xs text-[#666] mt-6">
-          ℹ️ Each stage represents the percentage of users who progressed from the previous stage
+          Cart addition rate: {cartRate.toFixed(2)}% • Largest drop-off stage: {analytics?.funnel?.dropOffStage || 'N/A'} ({(analytics?.funnel?.dropOffRate || 0).toFixed(1)}%)
         </p>
       </div>
 
-      {/* Product Conversion Rates */}
       <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
         <h2 className="text-xl font-bold text-[#1f1f1f] mb-4">Product Conversion Rates</h2>
-        {data.productConversions.length > 0 ? (
+        {topProducts.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -161,9 +132,9 @@ const ConversionAnalyticsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.productConversions.slice(0, 20).map((product, idx) => (
-                  <tr 
-                    key={idx} 
+                {topProducts.slice(0, 20).map((product) => (
+                  <tr
+                    key={product.itemId}
                     className="border-b border-[#f0f0f0] hover:bg-[#f7f7f7] cursor-pointer"
                     onClick={() => navigate(`/item/${product.itemId}`)}
                   >
@@ -171,17 +142,7 @@ const ConversionAnalyticsPage: React.FC = () => {
                     <td className="px-4 py-3">{product.views}</td>
                     <td className="px-4 py-3">{product.carts}</td>
                     <td className="px-4 py-3">{product.checkouts}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-2 rounded-full bg-[#e0e0e0] overflow-hidden">
-                          <div
-                            className="h-full bg-[#8b5cf6]"
-                            style={{ width: `${Math.min(product.conversionRate, 100)}%` }}
-                          />
-                        </div>
-                        <span className="font-bold text-[#8b5cf6]">{product.conversionRate.toFixed(1)}%</span>
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 font-semibold text-[#0fb9b1]">{product.conversionRate.toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -192,50 +153,6 @@ const ConversionAnalyticsPage: React.FC = () => {
             <p>No conversion data available yet</p>
           </div>
         )}
-      </div>
-
-      {/* Insights */}
-      <div className="rounded-xl border border-[#d8d8d8] bg-white p-6">
-        <h2 className="text-xl font-bold text-[#1f1f1f] mb-4">Key Insights</h2>
-        <div className="space-y-3">
-          {data.overallConversion > 5 ? (
-            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-              <p className="text-sm text-green-800">
-                ✓ Your conversion rate of {data.overallConversion.toFixed(2)}% is strong. Keep optimizing product descriptions!
-              </p>
-            </div>
-          ) : data.overallConversion > 0 ? (
-            <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-              <p className="text-sm text-yellow-800">
-                ⚠ Your conversion rate is {data.overallConversion.toFixed(2)}%. Focus on improving product images and descriptions.
-              </p>
-            </div>
-          ) : null}
-
-          {data.checkoutCompletionRate < 50 && data.cartAdditions > 0 ? (
-            <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-              <p className="text-sm text-yellow-800">
-                ⚠ {((100 - data.checkoutCompletionRate).toFixed(1))}% of cart additions are abandoned. Consider optimizing checkout process.
-              </p>
-            </div>
-          ) : null}
-
-          {data.totalViews > 0 && data.cartAdditions === 0 ? (
-            <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-              <p className="text-sm text-yellow-800">
-                ⚠ No cart additions yet. Consider reviewing your pricing and product appeal.
-              </p>
-            </div>
-          ) : null}
-
-          {data.totalViews === 0 ? (
-            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-              <p className="text-sm text-blue-800">
-                ℹ No traffic yet. Share your store link to get started!
-              </p>
-            </div>
-          ) : null}
-        </div>
       </div>
     </div>
   );

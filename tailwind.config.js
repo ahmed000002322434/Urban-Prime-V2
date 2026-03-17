@@ -48,13 +48,36 @@ export default {
       },
       animation: {
         'slow-spin': 'spin 10s linear infinite',
-        marquee: 'marquee 25s linear infinite'
+        marquee: 'marquee 25s linear infinite',
+        'gravity-float': 'gravity-float 6s ease-in-out infinite',
+        'gravity-glow': 'gravity-glow-pulse 4s ease-in-out infinite',
+        'gravity-shimmer': 'gravity-shimmer 2s ease-in-out infinite'
       },
       keyframes: {
         marquee: {
           '0%': { transform: 'translateX(0%)' },
           '100%': { transform: 'translateX(-100%)' }
+        },
+        'gravity-float': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' }
+        },
+        'gravity-glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 20px -5px rgba(108,142,255,0.15)' },
+          '50%': { boxShadow: '0 0 35px -5px rgba(108,142,255,0.25)' }
+        },
+        'gravity-shimmer': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' }
         }
+      },
+      backdropBlur: {
+        '3xl': '64px',
+        '4xl': '96px'
+      },
+      transitionTimingFunction: {
+        'gravity': 'cubic-bezier(0.16, 1, 0.3, 1)',
+        'gravity-bounce': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)'
       }
     }
   }

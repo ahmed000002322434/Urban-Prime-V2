@@ -9,6 +9,7 @@ import { formatCurrency } from '../../utils/financeUtils';
 import { useNotification } from '../../context/NotificationContext';
 import TransactionHistory from '../../components/TransactionHistory';
 import { Link } from 'react-router-dom';
+import { ClayButton, ClayCard, ClayInput, ClaySectionHeader } from '../../components/dashboard/clay';
 
 const WithdrawIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>;
 const LockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>;
@@ -113,7 +114,7 @@ const WalletPage: React.FC = () => {
             {/* WITHDRAWAL MODAL */}
             {isWithdrawModalOpen && (
                 <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsWithdrawModalOpen(false)}>
-                    <div className="bg-surface w-full max-w-md rounded-2xl shadow-2xl p-6 border border-border" onClick={e => e.stopPropagation()}>
+                    <div className="clay-card clay-size-lg w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold font-display text-text-primary mb-4">Withdraw Funds</h2>
                         
                         <div className="bg-surface-soft p-4 rounded-xl mb-6 text-center border border-border">
@@ -126,11 +127,11 @@ const WalletPage: React.FC = () => {
                                 <label className="block text-sm font-bold text-text-secondary mb-1">Amount</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary font-bold">$</span>
-                                    <input 
+                                    <ClayInput
                                         type="number" 
                                         value={withdrawAmount} 
                                         onChange={e => setWithdrawAmount(e.target.value)} 
-                                        className="w-full pl-8 p-3 border border-border rounded-lg bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none font-semibold"
+                                        className="pl-8 font-semibold"
                                         placeholder="0.00"
                                         min="1"
                                         max={availableBalance}
@@ -143,17 +144,17 @@ const WalletPage: React.FC = () => {
                             <div>
                                 <label className="block text-sm font-bold text-text-secondary mb-1">Payout Method</label>
                                 {payoutMethods.length > 0 ? (
-                                    <select 
+                                    <ClayInput
+                                        as="select"
                                         value={selectedMethodId} 
                                         onChange={e => setSelectedMethodId(e.target.value)}
-                                        className="w-full p-3 border border-border rounded-lg bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
                                     >
                                         {payoutMethods.map(m => (
                                             <option key={m.id} value={m.id}>
                                                 {m.type === 'paypal' ? `PayPal (${m.email})` : `${m.bankName} (...${m.last4})`}
                                             </option>
                                         ))}
-                                    </select>
+                                    </ClayInput>
                                 ) : (
                                         <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
                                         No payout methods found. Please add one in <Link to="/profile/finances" className="underline font-bold">Finances</Link>.
@@ -162,14 +163,15 @@ const WalletPage: React.FC = () => {
                             </div>
 
                             <div className="flex gap-3 mt-6">
-                                <button type="button" onClick={() => setIsWithdrawModalOpen(false)} className="flex-1 py-3 font-bold text-text-secondary hover:bg-surface-soft rounded-xl transition-colors">Cancel</button>
-                                <button 
+                                <ClayButton type="button" onClick={() => setIsWithdrawModalOpen(false)} variant="ghost" className="flex-1">Cancel</ClayButton>
+                                <ClayButton 
                                     type="submit" 
                                     disabled={isWithdrawing || payoutMethods.length === 0 || parseFloat(withdrawAmount) > availableBalance || parseFloat(withdrawAmount) <= 0}
-                                    className="flex-1 py-3 bg-black dark:bg-white text-white dark:text-black font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex justify-center"
+                                    variant="primary"
+                                    className="flex-1"
                                 >
                                     {isWithdrawing ? <Spinner size="sm" className="text-current"/> : 'Confirm Withdraw'}
-                                </button>
+                                </ClayButton>
                             </div>
                         </form>
                     </div>
@@ -177,53 +179,50 @@ const WalletPage: React.FC = () => {
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                 <h1 className="text-3xl font-bold font-display text-text-primary">My Wallet</h1>
+                 <ClaySectionHeader title="My Wallet" subtitle="Track payouts, escrow, and transaction flow." />
                  <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 text-sm font-semibold text-text-secondary">
                         <input type="checkbox" checked={autoPayout} onChange={e => setAutoPayout(e.target.checked)} />
                         Auto Payouts
                     </label>
-                    <button 
-                        onClick={() => setIsWithdrawModalOpen(true)}
-                        className="px-6 py-2.5 bg-primary text-white font-bold rounded-lg shadow-lg hover:shadow-primary/30 transition-all flex items-center gap-2 active:scale-95"
-                    >
-                        <WithdrawIcon /> Withdraw Funds
-                    </button>
+                    <ClayButton onClick={() => setIsWithdrawModalOpen(true)} variant="primary" icon={<WithdrawIcon />}>
+                        Withdraw Funds
+                    </ClayButton>
                  </div>
             </div>
 
             {/* Balance Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                <div className="clay-card clay-size-lg">
                     <h2 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Available Balance</h2>
                     <p className="text-3xl font-extrabold text-green-600 mt-2">{formatCurrency(availableBalance, currency.code)}</p>
                     <p className="text-xs text-text-secondary mt-1">Ready to withdraw</p>
                 </div>
                 
-                 <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                 <div className="clay-card clay-size-lg">
                     <h2 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Processing</h2>
                     <p className="text-3xl font-extrabold text-gray-500 mt-2">{formatCurrency(processingBalance, currency.code)}</p>
                     <p className="text-xs text-text-secondary mt-1">Pending withdrawals</p>
                 </div>
 
                 {/* Held Deposits Card */}
-                <div className="bg-surface p-6 rounded-xl shadow-soft border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-900/10">
+                <div className="clay-card clay-size-lg border border-blue-200 bg-blue-50/60">
                     <div className="flex items-center gap-2 mb-2">
                         <div className="text-blue-500"><LockIcon /></div>
-                        <h2 className="text-sm font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Deposits in Escrow</h2>
+                        <h2 className="text-sm font-bold text-blue-700 uppercase tracking-wider">Deposits in Escrow</h2>
                     </div>
-                    <p className="text-3xl font-extrabold text-blue-800 dark:text-blue-200">{formatCurrency(heldDeposits, currency.code)}</p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Temporarily held funds</p>
+                    <p className="text-3xl font-extrabold text-blue-800">{formatCurrency(heldDeposits, currency.code)}</p>
+                    <p className="text-xs text-blue-600 mt-1">Temporarily held funds</p>
                 </div>
 
-                 <div className="bg-surface p-6 rounded-xl shadow-soft border border-border bg-gradient-to-br from-primary/5 to-transparent">
+                 <div className="clay-card clay-size-lg bg-gradient-to-br from-primary/5 to-transparent">
                     <h2 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Total Earned</h2>
                     <p className="text-3xl font-extrabold text-primary mt-2">{formatCurrency(totalEarned, currency.code)}</p>
                     <p className="text-xs text-text-secondary mt-1">Lifetime earnings</p>
                 </div>
             </div>
             
-            <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+            <div className="clay-card clay-size-lg">
                 <div className="flex justify-between items-center border-b border-border pb-4 mb-4">
                     <h2 className="text-xl font-bold font-display text-text-primary">Transaction History</h2>
                     <button className="text-sm font-bold text-primary hover:underline">Export CSV</button>
@@ -235,4 +234,3 @@ const WalletPage: React.FC = () => {
 };
 
 export default WalletPage;
-

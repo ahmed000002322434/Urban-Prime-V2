@@ -1,307 +1,254 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
-import analyticsService, { SellerAnalyticsDashboard, TrendData } from '../../services/analyticsService';
-import listerService from '../../services/listerService';
+import analyticsService, { SellerAnalyticsDashboard } from '../../services/analyticsService';
+import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
+
+const EMPTY: SellerAnalyticsDashboard = {
+  totalRevenue: 0,
+  totalOrders: 0,
+  totalViews: 0,
+  conversionRate: 0,
+  averageOrderValue: 0,
+  pendingOrders: 0,
+  completedOrders: 0,
+  returnedOrders: 0,
+  topProducts: [],
+  viewsTrend: [],
+  ordersTrend: [],
+  revenueTrend: [],
+  cartAbandonmentRate: 0,
+  totalCartAdds: 0,
+  completedCheckouts: 0
+};
+
+const RANGE_TO_DAYS: Record<string, number> = {
+  week: 7,
+  month: 30,
+  quarter: 90
+};
 
 const StoreAnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, userPersona } = useAuth();
-  const [timeRange, setTimeRange] = useState('month');
+  const { activePersona } = useAuth();
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter'>('month');
   const [loading, setLoading] = useState(true);
-  const [analytics, setAnalytics] = useState<SellerAnalyticsDashboard | null>(null);
-  const [topItems, setTopItems] = useState<Array<{ name: string; revenue: number; orders: number; views: number }>>([]);
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<SellerAnalyticsDashboard>(EMPTY);
+  const [refreshTick, setRefreshTick] = useState(0);
 
-  const getDaysBack = (range: string): number => {
-    switch (range) {
-      case 'week':
-        return 7;
-      case 'month':
-        return 30;
-      case 'year':
-        return 365;
-      default:
-        return 30;
-    }
-  };
+  const daysBack = RANGE_TO_DAYS[timeRange] || 30;
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      if (!currentUser?.uid || !userPersona?.id) {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!activePersona?.id) {
+        setAnalytics(EMPTY);
         setLoading(false);
         return;
       }
 
       setLoading(true);
       try {
-        const daysBack = getDaysBack(timeRange);
-        
-        // Fetch seller analytics
-        const analyticsData = await analyticsService.getSellerAnalytics(
-          userPersona.id,
-          daysBack
-        );
-        
-        setAnalytics(analyticsData);
-
-        // Fetch real-time metrics
-        const metrics = await analyticsService.getRealTimeMetrics(userPersona.id);
-        console.log('Real-time metrics:', metrics);
-
-        // Fetch recent bookings/orders
-        try {
-          const bookings = await listerService.getBookings(userPersona.id, 10);
-          const formattedOrders = bookings.slice(0, 3).map(booking => ({
-            id: `#${booking.id?.slice(0, 5).toUpperCase() || 'ORDER'}`,
-            customer: booking.buyerName || 'Guest',
-            item: booking.itemTitle || 'Product',
-            amount: `$${(booking.totalPrice || 0).toFixed(2)}`,
-            status: booking.status || 'pending'
-          }));
-          setRecentOrders(formattedOrders);
-        } catch (error) {
-          console.warn('Failed to fetch bookings:', error);
+        const snapshot = await analyticsService.getSellerAnalytics(activePersona.id, daysBack);
+        if (!cancelled && snapshot) {
+          setAnalytics(snapshot);
+        } else if (!cancelled) {
+          setAnalytics(EMPTY);
         }
-
-        setLoading(false);
       } catch (error) {
-        console.error('Failed to fetch analytics:', error);
-        setLoading(false);
+        console.error('Store analytics load failed:', error);
+        if (!cancelled) setAnalytics(EMPTY);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchAnalytics();
-  }, [timeRange, currentUser?.uid, userPersona?.id]);
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePersona?.id, daysBack, refreshTick]);
 
-  const stats = analytics ? {
-    totalRevenue: analytics.totalRevenue || 0,
-    totalOrders: analytics.completedCheckouts || 0,
-    conversionRate: parseFloat((analytics.conversionRate || 0).toFixed(1)),
-    avgOrderValue: parseFloat((analytics.averageOrderValue || 0).toFixed(2)),
-    cartAbandonmentRate: parseFloat((analytics.cartAbandonmentRate || 0).toFixed(1)),
-  } : {
-    totalRevenue: 0,
-    totalOrders: 0,
-    conversionRate: 0,
-    avgOrderValue: 0,
-    cartAbandonmentRate: 0,
-  };
+  useEffect(() => {
+    if (!activePersona?.id) return;
 
-  // Transform trend data for chart display
-  const lineChartData = (analytics?.revenueTrend || []).map((trend, idx) => ({
-    day: trend.label,
-    orders: Math.floor(Math.random() * 50),
-    revenue: trend.value
-  })).slice(-7);
+    let pendingRefresh: number | undefined;
+    const unsubscribe = analyticsService.subscribeSellerStream(
+      activePersona.id,
+      (message) => {
+        if (message.event !== 'analytics' || !message.data?.type) return;
+        if (pendingRefresh) window.clearTimeout(pendingRefresh);
+        pendingRefresh = window.setTimeout(() => {
+          setRefreshTick((value) => value + 1);
+        }, 500);
+      },
+      (error) => {
+        console.warn('Realtime analytics stream failed:', error);
+      }
+    );
+
+    return () => {
+      if (pendingRefresh) window.clearTimeout(pendingRefresh);
+      unsubscribe();
+    };
+  }, [activePersona?.id]);
+
+  const metrics = useMemo(() => ([
+    { label: 'Revenue', value: `$${analytics.totalRevenue.toLocaleString()}`, helper: 'All order statuses' },
+    { label: 'Orders', value: analytics.totalOrders.toLocaleString(), helper: 'All status orders' },
+    { label: 'Conversion', value: `${(analytics.conversionRateEventBased ?? analytics.conversionRate ?? 0).toFixed(2)}%`, helper: 'Event-based conversion' },
+    { label: 'Unique Visitors', value: (analytics.uniqueVisitors ?? 0).toLocaleString(), helper: 'Distinct traffic' },
+    { label: 'Cart Abandonment', value: `${(analytics.cartAbandonmentRate ?? 0).toFixed(2)}%`, helper: 'Cart to checkout loss' },
+    { label: 'Avg Order Value', value: `$${(analytics.averageOrderValue ?? 0).toFixed(2)}`, helper: 'Revenue per order' }
+  ]), [analytics]);
+
+  if (loading) {
+    return <DashboardPageLoader title="Loading store analytics..." />;
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
-      <motion.header
-        className="bg-black/40 backdrop-blur border-b border-purple-500/20 sticky top-0 z-50"
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-      >
-        <div className="container mx-auto max-w-7xl px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-black text-white mb-1">📊 Store Analytics</h1>
-              <p className="text-purple-300 text-sm">Track your business performance</p>
-            </div>
-            <div className="flex gap-3">
-              <select
-                value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value)}
-                className="px-4 py-2 bg-white/10 border border-purple-500/30 text-white rounded-lg hover:bg-white/20 transition-all"
-              >
-                <option value="week">Last Week</option>
-                <option value="month">Last Month</option>
-                <option value="year">Last Year</option>
-              </select>
-              <button
-                onClick={() => navigate('/store/manager')}
-                className="px-6 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700"
-              >
-                Back to Dashboard
-              </button>
-            </div>
+    <div className="dashboard-page space-y-6">
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-[#1f1f1f]">Store analytics</h1>
+            <p className="mt-1 text-sm text-[#666]">Realtime funnel, AI insights, attribution, and forecasting.</p>
           </div>
-        </div>
-      </motion.header>
-
-      <div className="container mx-auto max-w-7xl px-4 py-8">
-        {/* Main Stats Grid */}
-        <motion.div
-          className="grid md:grid-cols-5 gap-4 mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          {[
-            { label: 'Total Revenue', value: loading ? '...' : `$${stats.totalRevenue.toLocaleString()}`, icon: '💰', color: 'from-emerald-600 to-emerald-400' },
-            { label: 'Total Orders', value: loading ? '...' : stats.totalOrders, icon: '📦', color: 'from-blue-600 to-blue-400' },
-            { label: 'Avg Order Value', value: loading ? '...' : `$${stats.avgOrderValue}`, icon: '💵', color: 'from-yellow-600 to-yellow-400' },
-            { label: 'Conversion Rate', value: loading ? '...' : `${stats.conversionRate}%`, icon: '📈', color: 'from-purple-600 to-purple-400' },
-            { label: 'Cart Abandonment', value: loading ? '...' : `${stats.cartAbandonmentRate}%`, icon: '🛒', color: 'from-red-600 to-red-400' },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              className={`bg-gradient-to-br ${stat.color} rounded-xl p-6 text-white shadow-xl`}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: i * 0.05 }}
-              whileHover={{ scale: 1.05, y: -5 }}
+          <div className="flex items-center gap-2">
+            <select
+              value={timeRange}
+              onChange={(event) => setTimeRange(event.target.value as 'week' | 'month' | 'quarter')}
+              className="h-9 rounded-lg border border-[#cccccc] bg-white px-3 text-sm"
             >
-              <div className="text-3xl mb-2">{stat.icon}</div>
-              <p className="text-white/80 text-sm">{stat.label}</p>
-              <p className="text-2xl font-black">{stat.value}</p>
-            </motion.div>
-          ))}
-        </motion.div>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+              <option value="quarter">Last 90 days</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => navigate('/store/manager')}
+              className="inline-flex h-9 items-center rounded-lg border border-[#cccccc] bg-white px-3 text-sm font-semibold hover:bg-[#f7f7f7]"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Revenue Chart */}
-          <motion.div
-            className="lg:col-span-2 bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-6">Weekly Performance</h2>
-            <div className="flex items-end gap-4 h-64">
-              {lineChartData.map((data, i) => {
-                const maxRevenue = Math.max(...lineChartData.map(d => d.revenue));
-                const height = (data.revenue / maxRevenue) * 100;
-                return (
-                  <motion.div
-                    key={data.day}
-                    className="flex-1 flex flex-col items-center"
-                    initial={{ height: 0 }}
-                    animate={{ height: 'auto' }}
-                    transition={{ delay: 0.3 + i * 0.05 }}
-                  >
-                    <div className="text-sm text-gray-300 mb-2">${data.revenue}</div>
-                    <motion.div
-                      className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-lg transition-all hover:opacity-80"
-                      initial={{ height: 0 }}
-                      animate={{ height: `${height}%` }}
-                      transition={{ delay: 0.3 + i * 0.05, duration: 0.6 }}
-                    />
-                    <div className="text-xs text-gray-400 mt-2">{data.day}</div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6a6a6a]">{metric.label}</p>
+            <p className="mt-2 text-2xl font-semibold text-[#1f1f1f]">{metric.value}</p>
+            <p className="mt-1 text-xs text-[#727272]">{metric.helper}</p>
+          </div>
+        ))}
+      </div>
 
-          {/* Top Items */}
-          <motion.div
-            className="bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-6">Top Performing Items</h2>
-            <div className="space-y-4">
-              {loading ? (
-                <div className="text-center py-8 text-gray-400">Loading...</div>
-              ) : analytics?.topProducts && analytics.topProducts.length > 0 ? (
-                analytics.topProducts.slice(0, 3).map((item, i) => (
-                  <motion.div
-                    key={item.itemId}
-                    className="p-4 bg-white/5 rounded-lg border border-purple-500/10 hover:border-purple-500/30 transition-all cursor-pointer"
-                    initial={{ x: 20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: 0.3 + i * 0.1 }}
-                    whileHover={{ x: 4, backgroundColor: 'rgba(168, 85, 247, 0.1)' }}
-                    onClick={() => navigate(`/item/${item.itemId}`)}
-                  >
-                    <p className="font-semibold text-white truncate">{item.itemTitle}</p>
-                    <div className="flex justify-between text-sm text-gray-400 mt-1">
-                      <span>${item.totalCheckouts * 50} revenue</span>
-                      <span>{item.totalCheckouts} orders • {item.totalViews} views</span>
-                    </div>
-                  </motion.div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-400">No sales data yet</div>
-              )}
-            </div>
-          </motion.div>
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#1f1f1f]">Live funnel intelligence</h2>
+          <div className="mt-4 space-y-3">
+            {(analytics.funnel?.stages || []).map((stage) => (
+              <div key={stage.stage}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="font-semibold text-[#1f1f1f]">{stage.stage}</span>
+                  <span className="text-[#666]">{stage.count.toLocaleString()} ({stage.percentage.toFixed(1)}%)</span>
+                </div>
+                <div className="h-2 rounded-full bg-[#ececec]">
+                  <div className="h-2 rounded-full bg-[#0fb9b1]" style={{ width: `${Math.min(stage.percentage, 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-[#666]">
+            Largest drop-off stage: <span className="font-semibold text-[#1f1f1f]">{analytics.funnel?.dropOffStage || 'N/A'}</span>
+          </p>
         </div>
 
-        {/* Customer Insights */}
-        <motion.div
-          className="grid md:grid-cols-3 gap-8 mt-8"
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-        >
-          <div className="bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8">
-            <h3 className="text-xl font-bold text-white mb-4">Total Product Views</h3>
-            <p className="text-4xl font-black text-emerald-400">{loading ? '...' : analytics?.totalViews || 0}</p>
-            <p className="text-sm text-gray-400 mt-2">All-time listing exposure</p>
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#1f1f1f]">AI insights</h2>
+          <div className="mt-3 space-y-2">
+            {(analytics.insights || []).slice(0, 6).map((insight) => (
+              <div key={insight.id} className="rounded-lg border border-[#e6e6e6] bg-[#fafafa] px-3 py-2 text-sm text-[#333]">
+                {insight.message}
+              </div>
+            ))}
+            {(analytics.insights || []).length === 0 ? (
+              <div className="rounded-lg border border-[#e6e6e6] bg-[#fafafa] px-3 py-2 text-sm text-[#666]">
+                No major anomalies detected in this range.
+              </div>
+            ) : null}
           </div>
+        </div>
+      </div>
 
-          <div className="bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8">
-            <h3 className="text-xl font-bold text-white mb-4">Cart Additions</h3>
-            <p className="text-4xl font-black text-blue-400">{loading ? '...' : analytics?.totalCartAdds || 0}</p>
-            <p className="text-sm text-gray-400 mt-2">{loading ? '...' : `${(100 - stats.cartAbandonmentRate).toFixed(1)}% to checkout`}</p>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#1f1f1f]">Forecast (7/30/90 days)</h2>
+          <div className="mt-3 space-y-2">
+            {(analytics.forecasts || []).map((forecast) => (
+              <div key={forecast.horizonDays} className="rounded-lg border border-[#e6e6e6] px-3 py-2 text-sm">
+                <p className="font-semibold text-[#1f1f1f]">{forecast.horizonDays}d • Confidence {(forecast.confidence * 100).toFixed(0)}%</p>
+                <p className="text-[#666]">Revenue ${forecast.expectedRevenue.toFixed(0)} • Units {forecast.expectedUnits.toFixed(0)} • Views {forecast.expectedViews.toFixed(0)}</p>
+              </div>
+            ))}
           </div>
+        </div>
 
-          <div className="bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8">
-            <h3 className="text-xl font-bold text-white mb-4">Conversion Funnel</h3>
-            <p className="text-4xl font-black text-yellow-400">{loading ? '...' : `${stats.conversionRate}%`}</p>
-            <p className="text-sm text-gray-400 mt-2">Views to checkout rate</p>
+        <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+          <h2 className="text-lg font-semibold text-[#1f1f1f]">Top products</h2>
+          <div className="mt-3 space-y-2">
+            {(analytics.topProducts || []).slice(0, 6).map((product) => (
+              <button
+                key={product.itemId}
+                type="button"
+                onClick={() => navigate(`/item/${product.itemId}`)}
+                className="flex w-full items-center justify-between rounded-lg border border-[#e6e6e6] px-3 py-2 text-left hover:bg-[#f8f8f8]"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-[#1f1f1f]">{product.itemTitle}</p>
+                  <p className="text-xs text-[#666]">{product.totalViews} views • {product.totalCheckouts} checkouts</p>
+                </div>
+                <p className="text-sm font-semibold text-[#1f1f1f]">${(product.revenue || 0).toFixed(2)}</p>
+              </button>
+            ))}
           </div>
-        </motion.div>
+        </div>
+      </div>
 
-        {/* Recent Orders */}
-        <motion.div
-          className="bg-gradient-to-br from-purple-900/50 to-slate-900/50 backdrop-blur border border-purple-500/20 rounded-xl p-8 mt-8"
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
-          <h2 className="text-2xl font-bold text-white mb-6">Recent Orders</h2>
-          <div className="space-y-3">
-            {loading ? (
-              <div className="text-center py-8 text-gray-400">Loading orders...</div>
-            ) : recentOrders.length > 0 ? (
-              recentOrders.map((order, i) => (
-                <motion.div
-                  key={order.id}
-                  className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-purple-500/10 hover:border-purple-500/30 transition-all cursor-pointer"
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: 0.5 + i * 0.1 }}
-                  whileHover={{ x: 4 }}
-                  onClick={() => navigate('/orders')}
-                >
-                  <div>
-                    <p className="font-semibold text-white">{order.id}</p>
-                    <p className="text-sm text-gray-400">{order.customer}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-300">{order.item}</p>
-                    <p className="font-bold text-white">{order.amount}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    order.status === 'completed' ? 'bg-green-500/20 text-green-300' :
-                    order.status === 'shipped' ? 'bg-blue-500/20 text-blue-300' :
-                    order.status === 'processing' ? 'bg-yellow-500/20 text-yellow-300' :
-                    'bg-gray-500/20 text-gray-300'
-                  }`}>
-                    {order.status}
-                  </span>
-                </motion.div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-400">No recent orders</div>
-            )}
-          </div>
-        </motion.div>
+      <div className="rounded-xl border border-[#d8d8d8] bg-white p-4">
+        <h2 className="text-lg font-semibold text-[#1f1f1f]">Recent orders</h2>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#e3e3e3] text-left text-xs uppercase tracking-[0.1em] text-[#6a6a6a]">
+                <th className="px-2 py-2">Order</th>
+                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Qty</th>
+                <th className="px-2 py-2">Total</th>
+                <th className="px-2 py-2">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(analytics.recentOrders || []).slice(0, 20).map((order) => (
+                <tr key={order.id} className="border-b border-[#f0f0f0]">
+                  <td className="px-2 py-2 font-medium text-[#1f1f1f]">#{order.id.slice(0, 8)}</td>
+                  <td className="px-2 py-2 text-[#555]">{order.status}</td>
+                  <td className="px-2 py-2 text-[#555]">{order.quantityTotal}</td>
+                  <td className="px-2 py-2 text-[#555]">{order.currency} {order.total.toFixed(2)}</td>
+                  <td className="px-2 py-2 text-[#555]">{new Date(order.createdAt).toLocaleDateString()}</td>
+                </tr>
+              ))}
+              {(analytics.recentOrders || []).length === 0 ? (
+                <tr>
+                  <td className="px-2 py-6 text-center text-[#666]" colSpan={5}>No orders in this period.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

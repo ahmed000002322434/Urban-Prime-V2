@@ -197,6 +197,7 @@ export interface ProfileCompletion {
 export interface FeatureFlags {
   profileOnboardingV2: boolean;
   chatReliabilityV2?: boolean;
+  brandHubV3?: boolean;
 }
 
 export interface UserOnboardingState {
@@ -373,6 +374,7 @@ export interface StoreCreationData {
 export interface CartItem extends Item {
     quantity: number;
     subscription?: SubscriptionDetails;
+    transactionMode?: 'sale' | 'rent';
     rentalPeriod?: {
         startDate: string;
         endDate: string;
@@ -422,6 +424,147 @@ export interface Booking {
     providerPersonaId?: string;
 }
 
+export type BrandVerificationLevel = 'community' | 'verified' | 'official';
+export type BrandStatus = 'active' | 'inactive' | 'merged' | 'archived';
+export type BrandCatalogNodeType = 'line' | 'series' | 'family' | 'model' | 'collection' | 'other';
+
+export interface Brand {
+  id: string;
+  name: string;
+  slug: string;
+  normalizedName: string;
+  logoUrl?: string;
+  coverUrl?: string;
+  description?: string;
+  story: Record<string, unknown>;
+  website?: string;
+  country?: string;
+  status: BrandStatus;
+  verificationLevel: BrandVerificationLevel;
+  claimedByUserId?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  trust?: BrandTrustSignals | null;
+  priceSummary?: BrandPriceSummary | null;
+  stats?: {
+    itemCount: number;
+    storeCount: number;
+    followerCount: number;
+  };
+}
+
+export interface BrandAlias {
+  id: string;
+  brandId: string;
+  alias: string;
+  normalizedAlias: string;
+  source: string;
+  confidence: number;
+  createdAt: string;
+}
+
+export interface BrandCatalogNode {
+  id: string;
+  brandId: string;
+  parentNodeId?: string | null;
+  name: string;
+  slug: string;
+  normalizedName: string;
+  nodeType: BrandCatalogNodeType;
+  depth: number;
+  path: string;
+  sortOrder: number;
+  status: string;
+  source: string;
+  createdAt: string;
+  updatedAt?: string;
+  children?: BrandCatalogNode[];
+}
+
+export interface BrandCatalogPath {
+  name: string;
+  path: string;
+}
+
+export interface BrandTrustSignals {
+  brandId: string;
+  authenticityRiskScore: number;
+  priceIntegrityScore: number;
+  sellerQualityScore: number;
+  overallTrustScore: number;
+  explainability: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export interface BrandCatalogTrustSignals {
+  nodeId: string;
+  authenticityRiskScore: number;
+  priceIntegrityScore: number;
+  sellerQualityScore: number;
+  overallTrustScore: number;
+  explainability: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export interface BrandPriceSummary {
+  min: number;
+  median: number;
+  max: number;
+  sampleSize: number;
+  currency: string;
+  dealBandLow: number;
+  dealBandHigh: number;
+}
+
+export interface BrandCatalogPriceSummary extends BrandPriceSummary {
+  nodeId?: string | null;
+}
+
+export interface BrandMatchQueueItem {
+  id: string;
+  itemId: string;
+  rawBrand?: string;
+  normalizedBrand?: string;
+  proposedBrandId?: string | null;
+  confidence: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+}
+
+export interface BrandCatalogMatchQueueItem {
+  id: string;
+  itemId: string;
+  brandId?: string | null;
+  rawPath?: string;
+  normalizedPath?: string;
+  proposedNodeId?: string | null;
+  confidence: number;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+}
+
+export interface BrandHubFilters {
+  search?: string;
+  country?: string;
+  status?: string;
+  sort?: 'name' | 'newest' | 'trust' | 'followers';
+  limit?: number;
+  offset?: number;
+}
+
+export interface BrandCatalogFilters {
+  path?: string;
+  nodeId?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface Item {
   id: string;
   title: string;
@@ -451,6 +594,12 @@ export interface Item {
   isVerified?: boolean;
   stock: number;
   brand?: string;
+  brandId?: string | null;
+  brandCatalogNodeId?: string | null;
+  brandMatchConfidence?: number | null;
+  brandCatalogMatchConfidence?: number | null;
+  brandMatchSource?: 'manual' | 'auto' | 'reviewed' | null;
+  brandCatalogPath?: string | null;
   condition?: string;
   sku?: string;
   bookedDates?: string[];

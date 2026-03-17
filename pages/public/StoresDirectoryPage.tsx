@@ -23,6 +23,26 @@ const getStoreCover = (store: EnrichedStore) =>
     store.owner?.avatar ||
     '/icons/urbanprime.svg';
 
+const toBrandSlug = (value: string) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+const getTopStoreBrands = (store: EnrichedStore, limit = 3) => {
+    const counts = new Map<string, number>();
+    (store.products || []).forEach((product: any) => {
+        const brandName = String(product?.brand || '').trim();
+        if (!brandName) return;
+        counts.set(brandName, (counts.get(brandName) || 0) + 1);
+    });
+    return [...counts.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, limit)
+        .map(([name]) => ({ name, slug: toBrandSlug(name) }));
+};
+
 const StoresDirectoryPage: React.FC = () => {
     const [allStores, setAllStores] = useState<EnrichedStore[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -248,30 +268,46 @@ const StoresDirectoryPage: React.FC = () => {
                             <p className="text-xs text-text-secondary">{filteredStores.length} matches</p>
                         </div>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            {featuredStores.map((store, index) => (
-                                <motion.article
-                                    key={`featured-${store.id}`}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    whileInView={{ opacity: 1, y: 0 }}
-                                    viewport={{ once: true }}
-                                    transition={{ duration: 0.24, delay: index * 0.04 }}
-                                    className="overflow-hidden rounded-xl border border-border bg-surface-soft"
-                                >
-                                    <Link to={`/s/${store.slug}`} className="block">
-                                        <div className="relative aspect-[16/9] overflow-hidden">
-                                            <img src={getStoreCover(store)} alt={store.name} className="h-full w-full object-cover" />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                                            <p className="absolute bottom-2 left-3 text-sm font-semibold text-white">
-                                                {store.products?.length || 0} products
-                                            </p>
+                            {featuredStores.map((store, index) => {
+                                const topBrands = getTopStoreBrands(store, 2);
+                                return (
+                                    <motion.article
+                                        key={`featured-${store.id}`}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        whileInView={{ opacity: 1, y: 0 }}
+                                        viewport={{ once: true }}
+                                        transition={{ duration: 0.24, delay: index * 0.04 }}
+                                        className="overflow-hidden rounded-xl border border-border bg-surface-soft"
+                                    >
+                                        <Link to={`/s/${store.slug}`} className="block">
+                                            <div className="relative aspect-[16/9] overflow-hidden">
+                                                <img src={getStoreCover(store)} alt={store.name} className="h-full w-full object-cover" />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                                                <p className="absolute bottom-2 left-3 text-sm font-semibold text-white">
+                                                    {store.products?.length || 0} products
+                                                </p>
+                                            </div>
+                                        </Link>
+                                        <div className="p-3">
+                                            <p className="truncate text-sm font-semibold text-text-primary">{store.name || 'Store'}</p>
+                                            <p className="truncate text-xs text-text-secondary">by {store.owner?.name || 'Owner'}</p>
+                                            {topBrands.length > 0 ? (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                    {topBrands.map((brand) => (
+                                                        <Link
+                                                            key={`${store.id}-${brand.slug}`}
+                                                            to={`/brands/${brand.slug}`}
+                                                            className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-secondary hover:border-primary/50 hover:text-primary"
+                                                        >
+                                                            {brand.name}
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                         </div>
-                                    </Link>
-                                    <div className="p-3">
-                                        <p className="truncate text-sm font-semibold text-text-primary">{store.name || 'Store'}</p>
-                                        <p className="truncate text-xs text-text-secondary">by {store.owner?.name || 'Owner'}</p>
-                                    </div>
-                                </motion.article>
-                            ))}
+                                    </motion.article>
+                                );
+                            })}
                         </div>
                     </section>
                 ) : null}
@@ -305,6 +341,7 @@ const StoresDirectoryPage: React.FC = () => {
                                     const followerCount = Array.isArray(store.owner?.followers) ? store.owner.followers.length : 0;
                                     const rating = Number(store.owner?.rating || 0);
                                     const createdYear = store.createdAt ? new Date(store.createdAt).getFullYear() : null;
+                                    const topBrands = getTopStoreBrands(store);
                                     return (
                                         <motion.article
                                             key={store.id}
@@ -352,6 +389,19 @@ const StoresDirectoryPage: React.FC = () => {
                                                     <span>{store.city || 'Location not set'}</span>
                                                     <span>{createdYear ? `Since ${createdYear}` : 'New store'}</span>
                                                 </div>
+                                                {topBrands.length > 0 ? (
+                                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                                        {topBrands.map((brand) => (
+                                                            <Link
+                                                                key={`${store.id}-${brand.slug}`}
+                                                                to={`/brands/${brand.slug}`}
+                                                                className="rounded-full border border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-secondary hover:border-primary/50 hover:text-primary"
+                                                            >
+                                                                {brand.name}
+                                                            </Link>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
                                                 <div className="mt-4 grid grid-cols-3 gap-2">
                                                     <Link
                                                         to={`/s/${store.slug}`}

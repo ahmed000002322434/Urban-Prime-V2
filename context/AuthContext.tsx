@@ -17,7 +17,8 @@ import type {
 import { authService, userService } from '../services/itemService';
 import profileOnboardingService from '../services/profileOnboardingService';
 import personaService from '../services/personaService';
-import { auth } from '../firebase';
+import { auth, isFirebaseDisabled } from '../firebase';
+import { localDb } from '../services/localDb';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Spinner from '../components/Spinner';
 import { enforceAvatarIdentity, needsAvatarNormalization } from '../utils/avatarEnforcement';
@@ -215,7 +216,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const active = personaService.getActivePersona(currentUser.id, list);
     setActivePersonaState(active);
     if (active) {
-      setUser((prev) => (prev ? { ...prev, activePersonaId: active.id, capabilities: active.capabilities } : prev));
+      setUser((prev) => {
+        const base = prev && prev.id === currentUser.id ? prev : currentUser;
+        return enforceAvatarIdentity({ ...base, activePersonaId: active.id, capabilities: active.capabilities });
+      });
     }
     return list;
   }, []);
@@ -318,7 +322,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         activePersona: active,
         completion,
         featureFlags: {
-          profileOnboardingV2: onboardingFeatureDefault
+          profileOnboardingV2: onboardingFeatureDefault,
+          brandHubV3: true
         }
       };
       writeCachedUnifiedProfile(firebaseUser.uid, fallbackUnified);
@@ -327,6 +332,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [applyUnifiedProfile, buildFallbackUser, ensureCurrentUserAvatarNormalized, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]);
 
   useEffect(() => {
+    if (isFirebaseDisabled()) {
+      let cancelled = false;
+      setIsLoading(true);
+      (async () => {
+        await localDb.init();
+        const localUsers = await localDb.list<User>('users');
+        const fallbackUser = enforceAvatarIdentity(
+          localUsers[0] || {
+            id: 'local-user',
+            name: 'Local User',
+            email: '',
+            avatar: '/icons/urbanprime.svg',
+            phone: '',
+            city: '',
+            country: '',
+            purpose: undefined,
+            interests: [],
+            currencyPreference: '',
+            following: [],
+            followers: [],
+            wishlist: [],
+            cart: [],
+            badges: [],
+            memberSince: new Date().toISOString(),
+            status: 'active',
+            accountLifecycle: 'member',
+            capabilities: personaService.getCapabilitiesForPersonaType('consumer')
+          } as User
+        );
+
+        if (cancelled) return;
+        setIsProfileOnboardingEnabled(false);
+        setUser(fallbackUser);
+        const syncedPersonas = await syncPersonas(fallbackUser);
+        const active = personaService.getActivePersona(fallbackUser.id, syncedPersonas);
+        setActivePersonaState(active);
+        setProfileCompletion(completedBypassCompletion);
+        setIsLoading(false);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const timeoutId = setTimeout(() => {
       setIsLoading(false);
     }, 1500);
@@ -376,13 +425,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = useCallback(
     async (email: string, pass: string) => {
-      await authService.login(email, pass);
+      const authUser = await authService.login(email, pass);
+
+      // --- Admin Portal Portal Bypass ---
+      if (authUser.id === 'admin-bypass') {
+        setUser(authUser);
+        // Also ensure default persona is synced for admin bypass
+        await syncPersonas(authUser);
+        return authUser;
+      }
+
       const unified = await refreshProfile();
       if (unified?.user) return unified.user;
       if (user) return user;
       throw new Error('Login succeeded but profile could not be loaded.');
     },
-    [refreshProfile, user]
+    [refreshProfile, syncPersonas, user]
   );
 
   const register = useCallback(
