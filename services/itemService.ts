@@ -114,6 +114,7 @@ const customOfferCache = new Map<string, { offer: CustomOffer; cachedAt: number 
 const CUSTOM_OFFER_CACHE_TTL_MS = 120_000;
 let activeUserSearchCache: { users: User[]; expiresAt: number } | null = null;
 const ACTIVE_USER_SEARCH_CACHE_TTL_MS = 60_000;
+const hasBackendApiKey = Boolean((import.meta.env.VITE_BACKEND_API_KEY as string | undefined)?.trim());
 
 const getCachedSupabaseUserRow = (id: string) => {
     const cached = supabaseUserRowCache.get(id);
@@ -141,8 +142,12 @@ const resolveSupabaseUserId = async (userIdOrFirebaseUid: string): Promise<strin
     if (missUntil > Date.now()) return null;
     try {
         const token = await getBackendToken();
+        if (!token && !hasBackendApiKey) {
+            supabaseUserMissCache.set(normalizedInput, Date.now() + SUPABASE_USER_MISS_TTL_MS);
+            return null;
+        }
         const byFirebaseRes = await backendFetch(
-            `/api/users?eq.firebase_uid=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
+            `/api/users?firebase_uid=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
             {},
             token
         );
@@ -154,7 +159,7 @@ const resolveSupabaseUserId = async (userIdOrFirebaseUid: string): Promise<strin
 
         if (!supabaseId) {
             const byIdRes = await backendFetch(
-                `/api/users?eq.id=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
+                `/api/users?id=${encodeURIComponent(normalizedInput)}&select=id,firebase_uid&limit=1`,
                 {},
                 token
             );
@@ -1376,7 +1381,7 @@ const logItemEventInternal = async (event: ItemEvent) => {
             }
         };
 
-        if (isBackendConfigured()) {
+        if (false && isBackendConfigured()) {
             try {
                 const token = await getBackendToken();
                 await backendFetch('/api/audit_logs', {
@@ -1557,11 +1562,13 @@ export const authService = {
 // --- USER SERVICE ---
 export const userService = {
     getUserById: async (uid: string): Promise<User | null> => {
-        if (isBackendConfigured()) {
+        const token = await getBackendToken();
+        const canUseBackend = Boolean(token || hasBackendApiKey);
+
+        if (isBackendConfigured() && canUseBackend) {
             try {
-                const token = await getBackendToken();
-                const queryByFirebaseUid = `/api/users?eq.firebase_uid=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
-                const queryBySupabaseId = `/api/users?eq.id=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
+                const queryByFirebaseUid = `/api/users?firebase_uid=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
+                const queryBySupabaseId = `/api/users?id=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
                 const responses = await Promise.all([
                     backendFetch(queryByFirebaseUid, {}, token).catch(() => null),
                     isUuidLike(uid) ? backendFetch(queryBySupabaseId, {}, token).catch(() => null) : Promise.resolve(null)
@@ -1578,7 +1585,7 @@ export const userService = {
             }
         }
 
-        if (supabaseMirror.enabled) {
+        if (canUseBackend && supabaseMirror.enabled) {
             const mirrored = await supabaseMirror.get<User>('users', uid);
             if (mirrored) return enforceAvatarIdentity(mirrored);
         }
@@ -1752,7 +1759,7 @@ export const userService = {
         return filterUsersByPersonaType(users, 'affiliate', 'affiliate');
     },
     normalizeAllUserAvatars: async (): Promise<{ checked: number; updated: number }> => {
-        if (isBackendConfigured()) {
+        if (isBackendConfigured() && String(import.meta.env.VITE_ENABLE_AVATAR_NORMALIZATION || '').toLowerCase() === 'true') {
             try {
                 const token = await getBackendToken();
                 const usersRes = await backendFetch('/api/users?select=id,name,email,avatar_url&limit=2000', {}, token);
@@ -3354,7 +3361,8 @@ export const itemService = {
                     price: rentMode
                         ? (i.rentalPrice || i.rentalRates?.daily || i.price || 0)
                         : (i.salePrice || i.price || 0),
-                    transactionMode: rentMode ? 'rent' : 'sale'
+                    transactionMode: rentMode ? 'rent' : 'sale',
+                    spotlightAttribution: i.spotlightAttribution || null
                 };
             }),
             shippingInfo,
@@ -3419,7 +3427,8 @@ export const itemService = {
                 paymentStatus: 'escrow',
                 type: rentMode ? 'rent' : 'sale',
                 securityDeposit: depositAmount,
-                depositStatus: depositAmount > 0 ? 'held' : undefined
+                depositStatus: depositAmount > 0 ? 'held' : undefined,
+                spotlightAttribution: item.spotlightAttribution || null
             });
 
             const sellerId = String(item.owner?.id || '').trim();
@@ -3452,6 +3461,15 @@ export const itemService = {
         await Promise.all(items.map(async (item) => {
             if (!item.owner?.id || item.owner.id === userId) return;
             const action: ItemEventAction = isRentMode(item) ? 'rent' : 'purchase';
+            const lineAmount = (() => {
+                if (isRentMode(item) && item.rentalPeriod && item.rentalRates?.daily) {
+                    const start = new Date(item.rentalPeriod.startDate);
+                    const end = new Date(item.rentalPeriod.endDate);
+                    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                    return item.rentalRates.daily * Math.max(1, days) * item.quantity;
+                }
+                return ((item.salePrice || item.price || 0) * item.quantity);
+            })();
             await itemService.logItemEvent({
                 action,
                 ownerId: item.owner.id,
@@ -3462,8 +3480,41 @@ export const itemService = {
                 actorId: userId,
                 actorPersonaId: options?.actorPersonaId || null,
                 actorName: options?.actorName || shippingInfo?.name || 'Customer',
-                quantity: item.quantity
+                quantity: item.quantity,
+                metadata: item.spotlightAttribution
+                    ? {
+                        spotlightContentId: item.spotlightAttribution.spotlightContentId,
+                        spotlightProductLinkId: item.spotlightAttribution.spotlightProductLinkId || null,
+                        spotlightCampaignKey: item.spotlightAttribution.campaignKey || null,
+                        spotlightAttributionExpiresAt: item.spotlightAttribution.expiresAt || null
+                    }
+                    : {}
             });
+            if (item.spotlightAttribution?.spotlightContentId && isBackendConfigured()) {
+                try {
+                    const token = await getBackendToken();
+                    await backendFetch('/spotlight/product-events', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            content_id: item.spotlightAttribution.spotlightContentId,
+                            product_link_id: item.spotlightAttribution.spotlightProductLinkId || null,
+                            item_id: item.id,
+                            event_name: 'purchase',
+                            order_id: orderId,
+                            amount: lineAmount,
+                            campaign_key: item.spotlightAttribution.campaignKey || null,
+                            viewer_firebase_uid: userId,
+                            metadata: {
+                                quantity: item.quantity,
+                                listingType: item.listingType,
+                                transactionMode: isRentMode(item) ? 'rent' : 'sale'
+                            }
+                        })
+                    }, token);
+                } catch (error) {
+                    console.warn('Spotlight purchase attribution tracking failed:', error);
+                }
+            }
         }));
 
         const buyerName = String(options?.actorName || shippingInfo?.name || 'Customer').trim() || 'Customer';
@@ -5211,13 +5262,6 @@ function getDatesInRange(startDate: Date, endDate: Date) {
     }
     return dates;
 }
-
-
-
-
-
-
-
 
 
 

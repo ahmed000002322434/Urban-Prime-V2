@@ -1,14 +1,14 @@
-
+﻿
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { itemService, reelService, userService } from '../../services/itemService';
-import { mockReelService } from '../../services/mockReelService';
 import { useAuth } from '../../hooks/useAuth';
 import type { Reel, User, ReelComment } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useNotification } from '../../context/NotificationContext';
+import BlueTickBadge from '../../components/spotlight/BlueTickBadge';
 
 // --- ICONS ---
 const PixeLogo = () => <img src="https://i.ibb.co/jkyfqdFV/Gemini-Generated_Image-gqj0u3gqj0u3gqj0.png" alt="Pixe Logo" className="w-8 h-8 object-contain" />;
@@ -32,7 +32,6 @@ const BookmarkFillIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28
 const BookmarkOutlineFillIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white drop-shadow-sm"><path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>;
 const ShareFillIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" className="text-white drop-shadow-sm"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>;
 
-const VerifiedBadgeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#3b82f6" className="text-blue-500 drop-shadow-sm"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>;
 const MusicNoteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>;
 
 const ArrowUpIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>;
@@ -61,12 +60,16 @@ const ReelsPage: React.FC = () => {
     const { user, openAuthModal } = useAuth();
     const { showNotification } = useNotification();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [reels, setReels] = useState<Reel[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
     const [direction, setDirection] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(false);
+    const [playProgress, setPlayProgress] = useState(0);
+    const [videoDuration, setVideoDuration] = useState(0);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const [creator, setCreator] = useState<User | null>(null);
     const [isLiked, setIsLiked] = useState(false);
     const [isSaved, setIsSaved] = useState(false);
@@ -84,6 +87,7 @@ const ReelsPage: React.FC = () => {
     
     // --- DERIVED LOGIC & EFFECTS (AFTER HOOKS) ---
     const activeReel = reels[activeIndex];
+    const focusId = searchParams.get('focus');
 
     useEffect(() => {
         const fetchReels = async () => {
@@ -91,25 +95,25 @@ const ReelsPage: React.FC = () => {
             try {
                 const reelsData = await reelService.getReelsForFeed(user?.id || 'guest');
                 const publishedReels = reelsData.filter(r => r.status === 'published');
-                
-                // Use mock reels if no published reels are available
-                if (publishedReels.length === 0) {
-                    const mockReels = mockReelService.getMockReels();
-                    setReels(mockReels);
-                } else {
-                    setReels(publishedReels);
-                }
+                setReels(publishedReels);
             } catch (err) {
-                console.error('Error fetching reels, using mock data:', err);
-                // Fallback to mock reels if there's an error
-                const mockReels = mockReelService.getMockReels();
-                setReels(mockReels);
+                console.error('Error fetching reels:', err);
+                setReels([]);
             } finally {
                 setIsLoading(false);
             }
         };
         fetchReels();
     }, [user]);
+
+    useEffect(() => {
+        if (!focusId || reels.length === 0) return;
+        const focusIndex = reels.findIndex((reel) => reel.id === focusId);
+        if (focusIndex >= 0) {
+            setActiveIndex(focusIndex);
+            setDirection(1);
+        }
+    }, [focusId, reels]);
     
     useEffect(() => {
         if (!activeReel) return;
@@ -128,6 +132,14 @@ const ReelsPage: React.FC = () => {
     useEffect(() => {
         if (videoRef.current) videoRef.current.muted = isMuted;
     }, [isMuted]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(Boolean(document.fullscreenElement));
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -164,6 +176,18 @@ const ReelsPage: React.FC = () => {
         } else {
             videoRef.current.play();
             setIsPlaying(true);
+        }
+    };
+
+    const handleToggleFullscreen = async () => {
+        const node = containerRef.current;
+        if (!node) return;
+        if (document.fullscreenElement) {
+            await document.exitFullscreen().catch(() => undefined);
+        } else {
+            if (node.requestFullscreen) {
+                await node.requestFullscreen().catch(() => undefined);
+            }
         }
     };
     
@@ -360,6 +384,13 @@ const ReelsPage: React.FC = () => {
                                     playsInline
                                     autoPlay
                                     muted={isMuted}
+                                    onTimeUpdate={(event) => {
+                                        const video = event.currentTarget;
+                                        setPlayProgress(video.duration > 0 ? (video.currentTime / video.duration) * 100 : 0);
+                                    }}
+                                    onLoadedMetadata={(event) => {
+                                        setVideoDuration(event.currentTarget.duration || 0);
+                                    }}
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80 pointer-events-none" />
                                 
@@ -388,15 +419,23 @@ const ReelsPage: React.FC = () => {
                                         <button onClick={() => setIsMuted(!isMuted)} className={`${glassyBtnClass} text-white`}>
                                             {isMuted ? <VolumeXIcon /> : <VolumeIcon />}
                                         </button>
-                                        <button className={`${glassyBtnClass} text-white`}><SearchIcon /></button>
+                                        <button onClick={() => void handleToggleFullscreen()} className={`${glassyBtnClass} text-white`} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+                                                {isFullscreen ? <path d="M8 4H4v4M16 4h4v4M4 16v4h4M20 16v4h-4" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+                                            </svg>
+                                        </button>
                                     </div>
+                                </div>
+
+                                <div className="absolute left-0 right-0 top-0 z-20 h-1 bg-white/10">
+                                    <div className="h-full bg-gradient-to-r from-blue-400 via-sky-500 to-cyan-400 transition-[width] duration-150" style={{ width: `${playProgress}%` }} />
                                 </div>
 
                                 <div className="absolute bottom-0 left-0 right-0 p-6 pt-32 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-20 pointer-events-none">
                                     <div className="pointer-events-auto">
                                         <div className="flex items-center gap-3 mb-3">
                                             <Link to={`/user/${activeReel.creatorId}`} className="text-white font-bold text-lg drop-shadow-md hover:underline">{creator?.name}</Link>
-                                            <VerifiedBadgeIcon />
+                                            <BlueTickBadge className="h-5 w-5" />
                                             {!isFollowing && (
                                                 <button onClick={handleFollow} className="px-3 py-1 bg-transparent border border-white/50 rounded-full text-xs font-bold text-white hover:bg-white/20 transition-colors">
                                                     Follow
@@ -419,8 +458,12 @@ const ReelsPage: React.FC = () => {
                                             <div className="w-32 overflow-hidden relative">
                                                  <p className="text-xs font-bold text-white whitespace-nowrap animate-marquee">
                                                     Original Audio • {creator?.name} • Trending
-                                                 </p>
+                                                </p>
                                             </div>
+                                        </div>
+                                        <div className="mt-4 flex items-center gap-3 text-xs text-white/75">
+                                            <span>{Math.round(playProgress)}%</span>
+                                            <span>{videoDuration ? `${Math.max(0, Math.round(videoDuration - (videoDuration * playProgress) / 100))}s left` : 'Live playback'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -583,4 +626,5 @@ const ReelsPage: React.FC = () => {
 };
 
 export default ReelsPage;
+
 

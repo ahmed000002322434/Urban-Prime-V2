@@ -1,7 +1,7 @@
 
 // pages/public/HomePage.tsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { AnimatePresence, motion, useMotionValue, useSpring, useScroll, useTransform } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { itemService } from '../../services/itemService';
 import type { Item } from '../../types';
@@ -15,98 +15,87 @@ import Magnetic from '../../components/Magnetic';
 // --- Assets & Icons ---
 const PlayIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;
 const StarIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
+const HomePageMobile = lazy(() => import('./HomePageMobile'));
 
-type CollectionCardMeta = {
+type ExploreOption = {
     id: string;
     label: string;
-    title: string;
+    to: string;
+    icon: 'bag' | 'cube' | 'play' | 'store';
     image: string;
-    link: string;
+    detail: string;
     video?: string;
-    cta?: string;
 };
 
-const COLLECTION_FEATURES: CollectionCardMeta[] = [
+const HOME_EXPLORE_OPTIONS: ExploreOption[] = [
     {
-        id: 'best-products',
-        label: 'Curated for Your Lifestyle.',
-        title: 'Discover Products',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3X5BiWrErY17PHVSZXF5Y5RnnSjkNodxHtoRFE4fufJ-VIgqT7XW2_HvxbbE5a4tc-tYN7gszwCMtBZy5aH1E0E6JEBcW8oHuR-ERqeIywX1iqTwP4G1cD7upeGxk31npORRrU5A8A-9KxJEspxWdRX_jo1J3zX4zNwXSuxq2ySlXDTgoztOIud6_n015CX1IJzSQH4uYnpsECZyJG73CWwojr9pJ8ne6uWgPcUjp0fE3bwE_Vt-IcZoYAGk0F8S3tqgAnFDGAX8',
-        link: '/browse',
-        video: '/card-videos/product-card.mp4',
-        cta: 'Browse'
+        id: 'buyables',
+        label: 'Explore Buyables',
+        to: '/browse',
+        icon: 'bag',
+        image: '/explore-cards/buyables.jpg',
+        detail: 'Curated tech, fashion, and essentials in one premium feed.'
     },
     {
-        id: 'services',
-        label: 'Smarter Ways to Get Things Done.',
-        title: 'Explore Services',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWsp5tgC3p3JRyFnrnLY02dzWoUUikqQVXzf_DepH081Fzpa9ukvYChN4wMV3XcoBgXWcATPdcIRDn4Pwwueje_AExEXOioB-TuNsedMfMZYcWe9tKaiVIwk6dC6c8Bquw42pgHmnpZxXyKCTkOUjFr7_ZBwtnfRAWuAC1OXu1FGxNrouZusleIM66wgzhqIljj2Tunarz-iGw-zeC_xStSFwD5hXyiAuoLr469OxaPzUXYD7xU34HQGzKJRPHhq2IYqtqU2NJ8-M',
-        link: '/services/marketplace',
-        video: '/card-videos/explore-services.mp4',
-        cta: 'Engage'
+        id: 'rentables',
+        label: 'Explore Rentables',
+        to: '/renters',
+        icon: 'cube',
+        image: '/explore-cards/rentables.png',
+        detail: 'Access luxury stays and vehicles without full ownership.'
+    },
+    {
+        id: 'pixe',
+        label: 'Explore Pixe',
+        to: '/pixe',
+        icon: 'play',
+        image: '/explore-cards/pixe.png',
+        detail: 'Scroll cinematic short videos and live visual shopping.'
     },
     {
         id: 'stores',
-        label: 'Explore New Shopping Worlds.',
-        title: 'Visit Stores',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_jcgo7mD9QB9kkX9TXoddziI0XLKtFv0ot9Iu-4j4ZP9JBQWrc0f7WihNLwfeV-eZljBgSyp_R-oaXOtLAdo9a1nl5FA7z4_5Drw-6eMkVmSljE4p1kqpe9eF2oYEQnGQxEIk1AJN8iwM-hhX2wc2l4dxEHE7nML1nLoQGwnZHJCsdvQu4UuidIakldQUXHogSC_8CDwSGaVzAZtsFmdCR1KRCAX5ITUuAgN3_LuHjj-rc6AwQdFmKC5nMEP1mWNgoDWjhbimvJU',
-        link: '/stores',
-        video: '/card-videos/explore-stores.mp4',
-        cta: 'Enter'
-    },
-    {
-        id: 'brands',
-        label: 'Canonical Brand Intelligence.',
-        title: 'Explore Brand Hub',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
-        link: '/brands/explore',
-        video: '/card-videos/electronics.mp4',
-        cta: 'Launch'
+        label: 'Explore Stores',
+        to: '/stores',
+        icon: 'store',
+        image: '/explore-cards/rentables.png',
+        video: '/explore-cards/stores.mp4',
+        detail: 'Jump into flagship storefronts and branded experiences.'
     }
 ];
 
-const COLLECTION_CATALOGUE: CollectionCardMeta[] = [
-    {
-        id: 'luxury-assets',
-        label: 'Assets',
-        title: 'Luxury Assets',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
-        link: '/luxury',
-        video: '/card-videos/luxury-assets.mp4'
-    },
-    {
-        id: 'interiors',
-        label: 'Living',
-        title: 'Interiors',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_jcgo7mD9QB9kkX9TXoddziI0XLKtFv0ot9Iu-4j4ZP9JBQWrc0f7WihNLwfeV-eZljBgSyp_R-oaXOtLAdo9a1nl5FA7z4_5Drw-6eMkVmSljE4p1kqpe9eF2oYEQnGQxEIk1AJN8iwM-hhX2wc2l4dxEHE7nML1nLoQGwnZHJCsdvQu4UuidIakldQUXHogSC_8CDwSGaVzAZtsFmdCR1KRCAX5ITUuAgN3_LuHjj-rc6AwQdFmKC5nMEP1mWNgoDWjhbimvJU',
-        link: '/home-decor',
-        video: '/card-videos/interiors.mp4'
-    },
-    {
-        id: 'travel',
-        label: 'Journey',
-        title: 'Travel',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWsp5tgC3p3JRyFnrnLY02dzWoUUikqQVXzf_DepH081Fzpa9ukvYChN4wMV3XcoBgXWcATPdcIRDn4Pwwueje_AExEXOioB-TuNsedMfMZYcWe9tKaiVIwk6dC6c8Bquw42pgHmnpZxXyKCTkOUjFr7_ZBwtnfRAWuAC1OXu1FGxNrouZusleIM66wgzhqIljj2Tunarz-iGw-zeC_xStSFwD5hXyiAuoLr469OxaPzUXYD7xU34HQGzKJRPHhq2IYqtqU2NJ8-M',
-        link: '/events',
-        video: '/card-videos/travel.mp4'
-    },
-    {
-        id: 'accessories',
-        label: 'Details',
-        title: 'Accessories',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3X5BiWrErY17PHVSZXF5Y5RnnSjkNodxHtoRFE4fufJ-VIgqT7XW2_HvxbbE5a4tc-tYN7gszwCMtBZy5aH1E0E6JEBcW8oHuR-ERqeIywX1iqTwP4G1cD7upeGxk31npORRrU5A8A-9KxJEspxWdRX_jo1J3zX4zNwXSuxq2ySlXDTgoztOIud6_n015CX1IJzSQH4uYnpsECZyJG73CWwojr9pJ8ne6uWgPcUjp0fE3bwE_Vt-IcZoYAGk0F8S3tqgAnFDGAX8',
-        link: '/womens-accessories',
-        video: '/card-videos/accessories.mp4'
-    },
-    {
-        id: 'electronics',
-        label: 'Tech',
-        title: 'Electronics',
-        image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDN_5RNEf2ZoGJmBKNRfbR1DlcaeHsUYwu-w1K-dQncQJE2o-mW_EV8sz1EZ10xoaex0sdOFvBkVcMwjY1X7Mq0TWtL9y4ZrfhpOAPF_bpBz9mZP1s-dSPdjl7i7NXDJUtMJRZ0H1_3pBcdmMkl_upDKJqhS0hCE11Qjl99-yo_kdPqvhiKOKMO0eFoTn2UAkvn5ZYgZAm8I3n6vDw3jaVuTw8Qd1JgHwrgsVt9V9tH-A9JZIr1s21dJ-cwE6pds-qL1GJv_IDRJ6M',
-        link: '/electronics',
-        video: '/card-videos/electronics.mp4'
+const HomeExploreIcon: React.FC<{ type: ExploreOption['icon']; className?: string }> = ({ type, className = 'h-7 w-7' }) => {
+    if (type === 'bag') {
+        return (
+            <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9">
+                <path d="M5 8h14l-1.1 11H6.1z" />
+                <path d="M9 9V7a3 3 0 0 1 6 0v2" />
+            </svg>
+        );
     }
-];
+    if (type === 'cube') {
+        return (
+            <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9">
+                <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" />
+                <path d="m12 12 8-4.5M12 12 4 7.5M12 12v9" />
+            </svg>
+        );
+    }
+    if (type === 'play') {
+        return (
+            <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9">
+                <circle cx="12" cy="12" r="8" />
+                <path d="m10 9 5 3-5 3z" />
+            </svg>
+        );
+    }
+    return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.9">
+            <path d="M4 7h16v12H4z" />
+            <path d="M8 7V5h8v2" />
+            <path d="M9 12h6" />
+        </svg>
+    );
+};
 
 // --- 1. HERO SECTION (Optimized Physics & Glass) ---
 const HeroSection: React.FC = () => {
@@ -228,6 +217,29 @@ const HeroSection: React.FC = () => {
                             </Link>
                         </Magnetic>
 
+                        <Magnetic strength={16} rotateStrength={1.5}>
+                            <Link to="/spotlight" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
+                                ${theme === 'sandstone'
+                                    ? 'bg-[rgba(230,220,200,0.55)] border border-[rgba(78,52,46,0.08)] text-[#3E2723] hover:bg-[rgba(230,220,200,0.82)]'
+                                    : theme === 'icy'
+                                        ? 'bg-white/42 border border-white/60 text-[#0B5FA5] hover:bg-white/65'
+                                        : theme === 'hydra'
+                                            ? 'bg-[rgba(0,20,40,0.62)] border border-[rgba(0,229,255,0.28)] text-[#D7FBFF] hover:bg-[rgba(0,40,80,0.72)]'
+                                            : 'bg-white/64 border border-white/80 text-gray-800 hover:bg-white dark:bg-white/5 dark:border-white/10 dark:text-white dark:hover:bg-white/10 dark:hover:border-white/20'
+                                }`}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform
+                                    ${theme === 'sandstone' ? 'bg-[#6D4C41] text-[#FFF4E3]' 
+                                    : theme === 'icy' ? 'bg-[#0B5FA5] text-white' 
+                                    : theme === 'hydra' ? 'bg-[#00E5FF] text-[#001020]'
+                                    : 'bg-slate-950 text-white dark:bg-white dark:text-black'}`}>
+                                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                                        <path d="M12 3.2l2.1 5.2L19 10.5l-4.9 2.1L12 18l-2.1-5.4L5 10.5l4.9-2.1z" />
+                                    </svg>
+                                </div>
+                                <span>Spotlight</span>
+                            </Link>
+                        </Magnetic>
+
                         <Magnetic strength={15} rotateStrength={1}>
                             <Link to="/reels" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
                                 ${theme === 'sandstone'
@@ -305,202 +317,280 @@ const Marquee: React.FC = () => (
   </div>
 );
 
-// --- 3. COLLECTION DISCOVERY (HOMEPAGE CARDS) ---
+// --- 3. QUICK EXPLORE (MONOCHROME NAVIGATION) ---
 const CollectionDiscovery: React.FC = () => {
-    const featureVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-    const catalogueVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-    const catalogueTrackRef = useRef<HTMLDivElement | null>(null);
-    const [catalogueCards, setCatalogueCards] = useState<CollectionCardMeta[]>(() => [...COLLECTION_CATALOGUE]);
+    const { theme } = useTheme();
+    const [activeCardIndex, setActiveCardIndex] = useState(0);
+    const [isDeckHovered, setIsDeckHovered] = useState(false);
+    const [supportsWheelLock, setSupportsWheelLock] = useState(false);
+    const wheelGateRef = useRef(0);
+    const tiltX = useMotionValue(0);
+    const tiltY = useMotionValue(0);
+    const shineShift = useMotionValue(0);
+    const smoothTiltX = useSpring(tiltX, { stiffness: 170, damping: 22, mass: 0.35 });
+    const smoothTiltY = useSpring(tiltY, { stiffness: 170, damping: 22, mass: 0.35 });
+    const smoothShineShift = useSpring(shineShift, { stiffness: 120, damping: 20, mass: 0.55 });
 
-    useEffect(() => {
-        const videos = [
-            ...featureVideoRefs.current.filter(Boolean),
-            ...catalogueVideoRefs.current.filter(Boolean)
-        ] as HTMLVideoElement[];
-        if (videos.length === 0) return;
-
-        const playAll = () => {
-            videos.forEach((video) => {
-                video.play().catch(() => undefined);
-            });
-        };
-
-        const handleVisibility = () => {
-            if (document.hidden) {
-                videos.forEach((video) => video.pause());
-            } else {
-                playAll();
-            }
-        };
-
-        playAll();
-        document.addEventListener('visibilitychange', handleVisibility);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibility);
-            videos.forEach((video) => video.pause());
-        };
+    const rotateDeck = useCallback((direction: 1 | -1) => {
+        setActiveCardIndex((prev) => {
+            const total = HOME_EXPLORE_OPTIONS.length;
+            return (prev + direction + total) % total;
+        });
     }, []);
 
     useEffect(() => {
-        const track = catalogueTrackRef.current;
-        if (!track) return;
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+        const media = window.matchMedia('(hover: hover) and (pointer: fine)');
+        const sync = () => setSupportsWheelLock(media.matches);
+        sync();
 
-        let rafId = 0;
-        let lastTime = performance.now();
-        let offset = 0;
-        const speed = 0.007; // px per ms (~7px/s)
-        const gap = 16;
+        if (typeof media.addEventListener === 'function') {
+            media.addEventListener('change', sync);
+            return () => media.removeEventListener('change', sync);
+        }
 
-        const step = (time: number) => {
-            const delta = time - lastTime;
-            lastTime = time;
+        media.addListener(sync);
+        return () => media.removeListener(sync);
+    }, []);
 
-            if (!document.hidden) {
-                offset += delta * speed;
-                track.style.transform = `translateX(-${offset}px)`;
+    useEffect(() => {
+        if (!(isDeckHovered && supportsWheelLock)) return;
 
-                const firstCard = track.firstElementChild as HTMLElement | null;
-                if (firstCard) {
-                    const firstWidth = firstCard.getBoundingClientRect().width + gap;
-                    if (offset >= firstWidth) {
-                        offset -= firstWidth;
-                        track.style.transform = `translateX(-${offset}px)`;
-                        setCatalogueCards((prev) => {
-                            if (prev.length <= 1) return prev;
-                            return [...prev.slice(1), prev[0]];
-                        });
-                    }
-                }
-            }
-
-            rafId = requestAnimationFrame(step);
-        };
-
-        const handleVisibility = () => {
-            lastTime = performance.now();
-        };
-
-        rafId = requestAnimationFrame(step);
-        document.addEventListener('visibilitychange', handleVisibility);
+        const previousOverflow = document.body.style.overflow;
+        const previousOverscroll = document.body.style.overscrollBehavior;
+        document.body.style.overflow = 'hidden';
+        document.body.style.overscrollBehavior = 'contain';
 
         return () => {
-            cancelAnimationFrame(rafId);
-            document.removeEventListener('visibilitychange', handleVisibility);
+            document.body.style.overflow = previousOverflow;
+            document.body.style.overscrollBehavior = previousOverscroll;
         };
-    }, []);
+    }, [isDeckHovered, supportsWheelLock]);
+
+    useEffect(() => {
+        if (!(isDeckHovered && supportsWheelLock)) return;
+        const interval = window.setInterval(() => rotateDeck(1), 2100);
+        return () => window.clearInterval(interval);
+    }, [isDeckHovered, supportsWheelLock, rotateDeck]);
+
+    const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+        if (!supportsWheelLock) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const now = Date.now();
+        if (Math.abs(event.deltaY) < 10 || now - wheelGateRef.current < 460) return;
+        wheelGateRef.current = now;
+        rotateDeck(event.deltaY > 0 ? 1 : -1);
+    }, [rotateDeck, supportsWheelLock]);
+
+    const handleDeckMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const relativeX = (event.clientX - rect.left) / Math.max(rect.width, 1);
+        const relativeY = (event.clientY - rect.top) / Math.max(rect.height, 1);
+        const xFromCenter = (relativeX - 0.5) * 2;
+        const yFromCenter = (relativeY - 0.5) * 2;
+
+        tiltX.set(-(yFromCenter * 6.5));
+        tiltY.set(xFromCenter * 8);
+        shineShift.set((relativeX - 0.5) * 28);
+    }, [shineShift, tiltX, tiltY]);
+
+    const resetDeckMotion = useCallback(() => {
+        tiltX.set(0);
+        tiltY.set(0);
+        shineShift.set(0);
+    }, [shineShift, tiltX, tiltY]);
+
+    const orderedCards = HOME_EXPLORE_OPTIONS.map((_, offset) => {
+        const index = (activeCardIndex + offset) % HOME_EXPLORE_OPTIONS.length;
+        return HOME_EXPLORE_OPTIONS[index];
+    });
+
+    const stackTransforms = [
+        { x: 0, y: 0, rotate: -2.8, scale: 1, opacity: 1, blur: 0 },
+        { x: 30, y: 52, rotate: 2.2, scale: 0.945, opacity: 0.94, blur: 0 },
+        { x: 54, y: 106, rotate: -1.8, scale: 0.9, opacity: 0.85, blur: 0.5 },
+        { x: 74, y: 154, rotate: 1.2, scale: 0.86, opacity: 0.72, blur: 1.1 }
+    ] as const;
+
+    let sectionSurface = 'from-white/70 via-white/40 to-white/15 border-white/55 text-slate-900';
+    let textSecondary = 'text-slate-600';
+    let activeDot = 'bg-slate-900';
+    let inactiveDot = 'bg-slate-400/45';
+    let hintTone = 'text-slate-600';
+    let glowOne = 'from-slate-300/45 to-transparent';
+    let glowTwo = 'from-cyan-100/45 to-transparent';
+    let imageOverlay = 'from-white/5 via-transparent to-white/10';
+
+    if (theme === 'sandstone') {
+        sectionSurface = 'from-[#f4eee4]/80 via-[#e8dcc6]/42 to-[#f6eee2]/20 border-[#d2bfa0]/55 text-[#3b2d20]';
+        textSecondary = 'text-[#6b5440]';
+        activeDot = 'bg-[#3b2d20]';
+        inactiveDot = 'bg-[#8a7156]/40';
+        hintTone = 'text-[#5f4a38]';
+        glowOne = 'from-[#f0d8b5]/45 to-transparent';
+        glowTwo = 'from-[#cda978]/35 to-transparent';
+        imageOverlay = 'from-[#fff7ef]/6 via-transparent to-[#f4e7d2]/12';
+    } else if (theme === 'icy') {
+        sectionSurface = 'from-[#ecf8ff]/80 via-[#d9efff]/45 to-[#eef9ff]/20 border-[#9dcbe4]/55 text-[#0d3550]';
+        textSecondary = 'text-[#1f5878]';
+        activeDot = 'bg-[#0d3550]';
+        inactiveDot = 'bg-[#2d76a0]/35';
+        hintTone = 'text-[#145073]';
+        glowOne = 'from-[#bfe7ff]/45 to-transparent';
+        glowTwo = 'from-[#7fc9ef]/35 to-transparent';
+        imageOverlay = 'from-[#effbff]/8 via-transparent to-[#c9ecff]/12';
+    } else if (theme === 'hydra') {
+        sectionSurface = 'from-[#052238]/78 via-[#0a314f]/38 to-[#031624]/24 border-[#1d607f]/55 text-[#e0f8ff]';
+        textSecondary = 'text-[#89c8df]';
+        activeDot = 'bg-[#d2f7ff]';
+        inactiveDot = 'bg-[#4f89a3]/42';
+        hintTone = 'text-[#92cfe6]';
+        glowOne = 'from-[#00bcd4]/28 to-transparent';
+        glowTwo = 'from-[#46e5ff]/22 to-transparent';
+        imageOverlay = 'from-[#9be8ff]/10 via-transparent to-[#6dd5ef]/14';
+    }
 
     return (
-        <section className="py-16 sm:py-20 md:py-28 bg-background text-text-primary relative overflow-hidden skeuo-showcase-zone">
-            <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute -top-40 -right-32 h-80 w-80 rounded-full bg-purple-700/20 blur-3xl"></div>
-                <div className="absolute -bottom-40 -left-32 h-80 w-80 rounded-full bg-cyan-600/20 blur-3xl"></div>
-            </div>
+        <section className="py-14 sm:py-16 md:py-20 bg-transparent text-text-primary relative overflow-hidden">
+            <div className={`absolute -top-24 left-[-6%] h-[320px] w-[320px] rounded-full bg-gradient-to-br blur-3xl pointer-events-none ${glowOne}`} />
+            <div className={`absolute -bottom-24 right-[-6%] h-[340px] w-[340px] rounded-full bg-gradient-to-tl blur-3xl pointer-events-none ${glowTwo}`} />
             <div className="container mx-auto px-4 md:px-8 relative z-10">
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 md:mb-14">
-                    <div>
-                        <span className="text-primary text-[10px] font-bold uppercase tracking-[0.32em] block mb-3">Collection Discovery</span>
-                        <h2 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold leading-[1] tracking-tight">
-                            The <span className="italic font-normal text-text-secondary opacity-70">New</span>
-                            <br />
-                            Standard
-                        </h2>
-                    </div>
-                    <p className="max-w-xs text-text-secondary text-xs md:text-sm font-serif italic leading-relaxed">
-                        "In the world of Urban Prime, ownership is a legacy, but access is the ultimate freedom."
-                    </p>
-                </div>
-
-                <div className="skeuo-feature-row">
-                    {COLLECTION_FEATURES.map((card, index) => (
-                        <Link
-                            key={card.id}
-                            to={card.link}
-                            className="group skeuo-card-link skeuo-card-link-top skeuo-feature-item flex flex-col"
-                            aria-label={card.title}
+                <div className={`relative overflow-hidden rounded-[2rem] border bg-gradient-to-br backdrop-blur-2xl px-5 py-8 md:px-10 md:py-12 ${sectionSurface}`}>
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(255,255,255,0.35),transparent_55%)]" />
+                    <div className="relative grid items-center gap-10 lg:grid-cols-[1fr_520px]">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true, margin: '-80px' }}
+                            transition={{ duration: 0.5 }}
+                            className="space-y-5 md:space-y-7"
                         >
-                            <div className="skeuo-panel-shell">
-                                <div className="skeuo-panel-head">
-                                    <span className="skeuo-head-dots">
-                                        <span></span>
-                                        <span></span>
-                                    </span>
-                                    <span className="skeuo-mod">MOD-0{index + 1}</span>
-                                </div>
-                                <div className="skeuo-card-media skeuo-feature-media relative overflow-hidden rounded-2xl">
-                                    {card.video ? (
-                                        <video
-                                            ref={(el) => {
-                                                featureVideoRefs.current[index] = el;
-                                            }}
-                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
-                                            src={card.video}
-                                            poster={card.image}
-                                            muted
-                                            loop
-                                            playsInline
-                                            preload="metadata"
-                                        />
-                                    ) : (
-                                        <img
-                                            src={card.image}
-                                            alt={card.title}
-                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-110"
-                                        />
-                                    )}
-                                </div>
-                                <div className="skeuo-text-under skeuo-text-under-top space-y-1">
-                                    <span className="skeuo-kicker text-primary text-[8px] sm:text-[10px] uppercase tracking-[0.25em] font-semibold">{card.label}</span>
-                                    <h3 className="skeuo-title text-sm sm:text-lg md:text-xl font-serif leading-tight text-text-primary">{card.title}</h3>
-                                </div>
-                                <span className="skeuo-panel-cta">{card.cta ?? 'Engage'}</span>
+                            <span className="inline-flex rounded-full border border-current/20 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                                Smart Explore Deck
+                            </span>
+                            <h2 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold leading-[0.95] tracking-tight">
+                                Urban Prime
+                            </h2>
+                            <p className={`max-w-md text-base md:text-xl ${textSecondary}`}>
+                                Everything you need. One platform. Hover the deck and scroll to fluidly rotate Buyables, Rentables, Pixe, and Stores.
+                            </p>
+                            <div className={`inline-flex rounded-xl border border-current/15 bg-white/30 px-4 py-2 text-xs uppercase tracking-[0.14em] backdrop-blur-xl dark:bg-black/25 ${hintTone}`}>
+                                {supportsWheelLock ? 'Hover Deck: Page Scroll Locks For Immersive Card Control' : 'Touch Device: Tap Dots Or Cards To Navigate'}
                             </div>
-                        </Link>
-                    ))}
-                </div>
+                        </motion.div>
 
-                <div className="flex items-center gap-4 mt-12 md:mt-16 mb-6">
-                    <h3 className="text-2xl md:text-3xl font-serif text-text-primary">Explore the Vast Catalogue</h3>
-                    <div className="h-px flex-1 bg-border"></div>
-                </div>
-
-                <div className="catalogue-marquee">
-                    <div className="catalogue-marquee-track will-change-transform" ref={catalogueTrackRef}>
-                        {catalogueCards.map((card, index) => (
-                            <Link
-                                key={card.id}
-                                to={card.link}
-                                className="catalogue-card-lane skeuo-card-link skeuo-card-link-sm group flex flex-col gap-1.5 min-w-[118px] sm:min-w-[142px] md:min-w-[160px] lg:min-w-[175px]"
-                                aria-label={card.title}
+                        <div className="relative">
+                            <div
+                                className="relative mx-auto h-[450px] w-full max-w-[500px]"
+                                onMouseEnter={() => setIsDeckHovered(true)}
+                                onMouseLeave={() => {
+                                    setIsDeckHovered(false);
+                                    resetDeckMotion();
+                                }}
+                                onMouseMove={handleDeckMouseMove}
+                                onWheel={handleWheel}
                             >
-                                <div className="skeuo-card-media skeuo-card-media-sm relative min-h-[120px] sm:min-h-[145px] md:min-h-[160px] lg:min-h-[180px] overflow-hidden rounded-2xl">
-                                    {card.video ? (
-                                        <video
-                                            ref={(el) => {
-                                                catalogueVideoRefs.current[index] = el;
-                                            }}
-                                            className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
-                                            src={card.video}
-                                            poster={card.image}
-                                            muted
-                                            loop
-                                            playsInline
-                                            preload="metadata"
-                                        />
-                                    ) : (
-                                        <img
-                                            src={card.image}
-                                            alt={card.title}
-                                            className="absolute inset-0 h-full w-full object-cover opacity-85 transition-transform duration-700 group-hover:scale-110"
-                                        />
-                                    )}
-                                </div>
-                                <div className="skeuo-text-under skeuo-text-under-sm space-y-1">
-                                    <span className="skeuo-kicker text-primary text-[8px] sm:text-[9px] uppercase tracking-[0.22em] font-semibold">{card.label}</span>
-                                    <h4 className="skeuo-title skeuo-title-sm text-[11px] sm:text-[13px] md:text-base font-serif leading-tight text-text-primary">{card.title}</h4>
-                                </div>
-                            </Link>
-                        ))}
+                                {orderedCards
+                                    .map((card, rank) => ({ card, rank }))
+                                    .reverse()
+                                    .map(({ card, rank }) => {
+                                        const transform = stackTransforms[Math.min(rank, stackTransforms.length - 1)];
+                                        const isFront = rank === 0;
+                                        return (
+                                            <motion.div
+                                                key={card.id}
+                                                className="absolute inset-0 origin-bottom-right"
+                                                style={{
+                                                    zIndex: 40 - rank,
+                                                    pointerEvents: isFront ? 'auto' : 'none',
+                                                    transformStyle: 'preserve-3d',
+                                                    perspective: 1800,
+                                                    ...(isFront ? { rotateX: smoothTiltX, rotateY: smoothTiltY } : {})
+                                                }}
+                                                animate={{
+                                                    x: transform.x,
+                                                    y: transform.y,
+                                                    rotate: transform.rotate,
+                                                    scale: transform.scale,
+                                                    opacity: transform.opacity,
+                                                    filter: `blur(${transform.blur}px)`
+                                                }}
+                                                transition={{ type: 'spring', stiffness: 120, damping: 20, mass: 0.95 }}
+                                            >
+                                                <Link
+                                                    to={card.to}
+                                                    className="group relative block h-[360px] overflow-hidden rounded-[2rem] border border-white/55 bg-white/25 p-3 shadow-[0_30px_78px_rgba(0,0,0,0.24)] backdrop-blur-3xl"
+                                                    aria-label={card.label}
+                                                >
+                                                    <div className="relative h-full overflow-hidden rounded-[1.5rem]">
+                                                        {card.video ? (
+                                                            <video
+                                                                src={card.video}
+                                                                poster={card.image}
+                                                                className="h-full w-full object-cover grayscale-[0.05] contrast-[1.07] transition-transform duration-1000 group-hover:scale-[1.045]"
+                                                                autoPlay
+                                                                muted
+                                                                loop
+                                                                playsInline
+                                                                preload="metadata"
+                                                            />
+                                                        ) : (
+                                                            <img
+                                                                src={card.image}
+                                                                alt={card.label}
+                                                                className="h-full w-full object-cover grayscale-[0.05] contrast-[1.07] transition-transform duration-1000 group-hover:scale-[1.045]"
+                                                                loading={isFront ? 'eager' : 'lazy'}
+                                                            />
+                                                        )}
+                                                        <div className={`absolute inset-0 bg-gradient-to-b ${imageOverlay}`} />
+                                                        {isFront && (
+                                                            <motion.div
+                                                                className="pointer-events-none absolute inset-y-0 left-[-25%] w-[38%] rotate-[14deg] bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.35)_55%,rgba(255,255,255,0)_100%)] mix-blend-screen"
+                                                                style={{ x: smoothShineShift }}
+                                                            />
+                                                        )}
+                                                        <div className="absolute left-4 top-4 right-4 flex items-center justify-between">
+                                                            <span className="rounded-full bg-white/72 px-3 py-1 text-[1.35rem] font-serif italic tracking-tight text-slate-900 backdrop-blur-md">
+                                                                {card.label.replace('Explore ', '')}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/65 px-2.5 py-1 text-slate-700 backdrop-blur-md">
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                                            </span>
+                                                        </div>
+                                                        <div className="absolute right-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 text-white/85">
+                                                            <span className="rounded-full border border-white/55 bg-white/20 p-2 backdrop-blur-md"><HomeExploreIcon type={card.icon} className="h-4 w-4" /></span>
+                                                            <span className="h-2 w-2 rounded-full bg-white/90" />
+                                                            <span className="h-2 w-2 rounded-full bg-white/65" />
+                                                            <span className="h-2 w-2 rounded-full bg-white/50" />
+                                                        </div>
+                                                        <div className="absolute inset-x-0 bottom-0 p-5">
+                                                            <p className="max-w-[84%] rounded-xl bg-white/72 px-3 py-2 text-[12px] leading-relaxed text-slate-800 backdrop-blur-md">
+                                                                {card.detail}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </Link>
+                                            </motion.div>
+                                        );
+                                    })}
+                            </div>
+
+                            <div className="mt-4 flex items-center justify-center gap-2">
+                                {HOME_EXPLORE_OPTIONS.map((card, index) => (
+                                    <button
+                                        key={card.id}
+                                        type="button"
+                                        onClick={() => setActiveCardIndex(index)}
+                                        className={`h-2.5 rounded-full transition-all duration-300 ${index === activeCardIndex ? `w-8 ${activeDot}` : `w-2.5 ${inactiveDot}`}`}
+                                        aria-label={`Show ${card.label}`}
+                                    />
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -638,7 +728,7 @@ const GemstoneLounge: React.FC<{ items: Item[] }> = ({ items }) => {
 };
 
 // --- MAIN PAGE ---
-const HomePage: React.FC = () => {
+const HomePageDesktop: React.FC = () => {
     const { theme } = useTheme();
     const [products, setProducts] = useState<Item[]>([]);
     const [page, setPage] = useState(1);
@@ -734,6 +824,61 @@ const HomePage: React.FC = () => {
                 </div>
             )}
         </div>
+    );
+};
+
+const shouldUseMobileHome = (): boolean => {
+    if (typeof window === 'undefined') return false;
+
+    const width = window.innerWidth;
+    const height = Math.max(window.innerHeight, 1);
+    const aspectRatio = width / height;
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const prefersMobileWidth = width <= 900;
+    const shortAspectRatio = aspectRatio <= 0.82;
+
+    return width <= 640 || (prefersMobileWidth && (hasCoarsePointer || shortAspectRatio));
+};
+
+const HomePage: React.FC = () => {
+    const [isMobileHome, setIsMobileHome] = useState<boolean>(() => shouldUseMobileHome());
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobileHome(shouldUseMobileHome());
+        };
+
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    return (
+        <AnimatePresence mode="wait" initial={false}>
+            {isMobileHome ? (
+                <motion.div
+                    key="urbanprime-mobile-home"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.28, ease: 'easeInOut' }}
+                >
+                    <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><Spinner /></div>}>
+                        <HomePageMobile />
+                    </Suspense>
+                </motion.div>
+            ) : (
+                <motion.div
+                    key="urbanprime-desktop-home"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                >
+                    <HomePageDesktop />
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };
 

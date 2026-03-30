@@ -646,6 +646,12 @@ export interface Item {
   boostLevel?: string;
   productType?: 'physical' | 'digital' | 'dropship';
   itemType?: 'physical' | 'digital';
+  spotlightAttribution?: {
+    spotlightContentId: string;
+    spotlightProductLinkId?: string | null;
+    campaignKey?: string | null;
+    expiresAt?: string | null;
+  };
   digitalFileUrl?: string;
   licenseType?: string;
   licenseDescription?: string;

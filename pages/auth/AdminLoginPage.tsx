@@ -42,8 +42,8 @@ const AdminLoginPage: React.FC = () => {
       <div className="relative z-10 w-full max-w-sm glass-panel p-1 border-white/20 shadow-2xl">
         <div className="p-8">
           <div className="flex justify-center mb-6">
-            <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-primary to-secondary p-3 shadow-lg">
-              <img src="/icons/urbanprime.svg" alt="Urban Prime" className="h-full w-full invert" />
+            <div className="h-16 w-24 rounded-2xl bg-black/25 p-2 shadow-lg ring-1 ring-white/15 backdrop-blur-sm">
+              <img src="/icons/urbanprime-logo.png" alt="Urban Prime logo" className="h-full w-full object-contain" />
             </div>
           </div>
           <h2 className="text-3xl font-black text-text-primary mb-2 font-display text-center tracking-tighter">Admin Access</h2>

@@ -203,6 +203,13 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
     return groups;
   }, [filteredSuggestions]);
 
+  const summary = React.useMemo(() => ({
+    total: filteredSuggestions.length,
+    page: groupedSuggestions.page.length,
+    action: groupedSuggestions.action.length,
+    feature: groupedSuggestions.feature.length
+  }), [filteredSuggestions.length, groupedSuggestions]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -225,21 +232,47 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
         initial={{ opacity: 0, y: -8, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.98 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="dashboard-search-dropdown absolute left-0 right-0 top-full z-[100] mt-3 max-h-[70vh] overflow-y-auto rounded-2xl glass-panel shadow-2xl p-2 border border-white/20 backdrop-blur-2xl"
+        transition={{ type: "spring", stiffness: 260, damping: 22 }}
+        className="dashboard-search-dropdown absolute left-0 right-0 top-full z-[160] mt-3 max-h-[70vh] overflow-hidden rounded-3xl glass-float-panel dropdown-float dropdown-glow p-2 backdrop-blur-2xl custom-scrollbar shadow-[0_24px_60px_rgba(15,23,42,0.32)]"
       >
+        <div className="relative z-10 px-4 pt-3 pb-2 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary font-black">Command Search</p>
+              <p className="text-sm font-bold text-text-primary">Jump anywhere in Urban Prime</p>
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-text-secondary">{summary.total} results</div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {summary.page > 0 && (
+              <span className="pill-chip">
+                Pages <span className="text-white/80">{summary.page}</span>
+              </span>
+            )}
+            {summary.action > 0 && (
+              <span className="pill-chip">
+                Actions <span className="text-white/80">{summary.action}</span>
+              </span>
+            )}
+            {summary.feature > 0 && (
+              <span className="pill-chip">
+                Features <span className="text-white/80">{summary.feature}</span>
+              </span>
+            )}
+          </div>
+        </div>
         {filteredSuggestions.length === 0 ? (
-          <div className="px-4 py-8 text-center text-text-secondary">
+          <div className="px-4 py-10 text-center text-text-secondary">
             <LottieAnimation src={uiLottieAnimations.noResults} className="h-24 w-24 mx-auto opacity-50" loop autoplay />
             <p className="text-sm font-bold mt-2">No results found for "{query}"</p>
             <p className="text-xs mt-1 opacity-60">Try searching for pages, products, or features</p>
           </div>
         ) : (
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-3">
             {/* Pages Group */}
             {groupedSuggestions.page.length > 0 && (
-              <div className="space-y-1">
-                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-50">Pages</div>
+              <div className="space-y-2">
+                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-60">Pages</div>
                 {groupedSuggestions.page.map((suggestion) => {
                   const Icon = suggestion.icon;
                   return (
@@ -249,10 +282,12 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                         onNavigate(suggestion.path);
                         onClose();
                       }}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left rounded-xl hover:bg-white/10 transition-all group"
-                      whileHover={{ x: 4 }}
+                      className="group relative flex w-full items-center gap-3 rounded-2xl border border-transparent bg-white/5 px-3 py-2.5 text-left transition-all overflow-hidden hover:border-white/30 hover:bg-white/14"
+                      whileHover={{ x: 6, scale: 1.015 }}
+                      whileTap={{ scale: 0.99 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 22 }}
                     >
-                      <div className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <div className="h-9 w-9 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center group-hover:bg-primary/20 group-hover:border-primary/30 transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
                         <Icon className="h-4 w-4 text-text-secondary group-hover:text-primary transition-colors flex-shrink-0" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -261,6 +296,7 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                           <div className="text-[10px] text-text-secondary truncate opacity-60">{suggestion.description}</div>
                         )}
                       </div>
+                      <span className="pill-chip opacity-70 group-hover:opacity-100 transition-opacity">Page</span>
                     </motion.button>
                   );
                 })}
@@ -269,8 +305,8 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
 
             {/* Actions Group */}
             {groupedSuggestions.action.length > 0 && (
-              <div className="space-y-1">
-                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-50">Actions</div>
+              <div className="space-y-2">
+                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-60">Actions</div>
                 {groupedSuggestions.action.map((suggestion) => {
                   const Icon = suggestion.icon;
                   return (
@@ -280,11 +316,13 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                         onNavigate(suggestion.path);
                         onClose();
                       }}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left rounded-xl hover:bg-white/10 transition-all group"
-                      whileHover={{ x: 4 }}
+                      className="group relative flex w-full items-center gap-3 rounded-2xl border border-transparent bg-white/5 px-3 py-2.5 text-left transition-all overflow-hidden hover:border-white/30 hover:bg-white/14"
+                      whileHover={{ x: 6, scale: 1.015 }}
+                      whileTap={{ scale: 0.99 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 22 }}
                     >
-                      <div className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
-                        <Icon className="h-4 w-4 text-text-secondary group-hover:text-green-500 transition-colors flex-shrink-0" />
+                      <div className="h-9 w-9 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center group-hover:bg-green-500/20 group-hover:border-green-500/30 transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+                        <Icon className="h-4 w-4 text-text-secondary group-hover:text-green-400 transition-colors flex-shrink-0" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-text-primary font-bold truncate">{suggestion.label}</div>
@@ -292,6 +330,7 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                           <div className="text-[10px] text-text-secondary truncate opacity-60">{suggestion.description}</div>
                         )}
                       </div>
+                      <span className="pill-chip opacity-70 group-hover:opacity-100 transition-opacity">Action</span>
                     </motion.button>
                   );
                 })}
@@ -300,8 +339,8 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
 
             {/* Features Group */}
             {groupedSuggestions.feature.length > 0 && (
-              <div className="space-y-1">
-                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-50">Features</div>
+              <div className="space-y-2">
+                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-60">Features</div>
                 {groupedSuggestions.feature.map((suggestion) => {
                   const Icon = suggestion.icon;
                   return (
@@ -311,11 +350,13 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                         onNavigate(suggestion.path);
                         onClose();
                       }}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left rounded-xl hover:bg-white/10 transition-all group"
-                      whileHover={{ x: 4 }}
+                      className="group relative flex w-full items-center gap-3 rounded-2xl border border-transparent bg-white/5 px-3 py-2.5 text-left transition-all overflow-hidden hover:border-white/30 hover:bg-white/14"
+                      whileHover={{ x: 6, scale: 1.015 }}
+                      whileTap={{ scale: 0.99 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 22 }}
                     >
-                      <div className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                        <Icon className="h-4 w-4 text-text-secondary group-hover:text-purple-500 transition-colors flex-shrink-0" />
+                      <div className="h-9 w-9 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center group-hover:bg-purple-500/20 group-hover:border-purple-500/30 transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+                        <Icon className="h-4 w-4 text-text-secondary group-hover:text-purple-400 transition-colors flex-shrink-0" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-text-primary font-bold truncate">{suggestion.label}</div>
@@ -323,6 +364,7 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
                           <div className="text-[10px] text-text-secondary truncate opacity-60">{suggestion.description}</div>
                         )}
                       </div>
+                      <span className="pill-chip opacity-70 group-hover:opacity-100 transition-opacity">Feature</span>
                     </motion.button>
                   );
                 })}

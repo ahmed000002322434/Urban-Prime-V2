@@ -444,6 +444,8 @@ const createAnalyticsEngine = ({
   let queueWorkerRunning = false;
   let queueWorkerTimer = null;
   let queueProcessingLocked = false;
+  let queueWorkerPausedUntil = 0;
+  let queueWorkerSuppressedUntil = 0;
   let retentionSweepAt = 0;
 
   const userFirebaseUidCache = new Map();
@@ -1795,6 +1797,7 @@ const createAnalyticsEngine = ({
 
   const processQueueBatch = async () => {
     if (queueProcessingLocked) return;
+    if (queueWorkerPausedUntil && Date.now() < queueWorkerPausedUntil) return;
     queueProcessingLocked = true;
     try {
       const { data, error } = await supabase
@@ -1860,13 +1863,33 @@ const createAnalyticsEngine = ({
     }
   };
 
+  const isSupabaseNetworkError = (error) => {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('fetch failed') || message.includes('enotfound') || message.includes('networkerror');
+  };
+
   const startQueueWorker = () => {
     if (queueWorkerRunning) return;
     queueWorkerRunning = true;
+    const runBatchSafely = () => {
+      processQueueBatch().catch((error) => {
+        if (isSupabaseNetworkError(error)) {
+          queueWorkerPausedUntil = Date.now() + 5 * 60 * 1000;
+          if (Date.now() > queueWorkerSuppressedUntil) {
+            queueWorkerSuppressedUntil = Date.now() + 60 * 60 * 1000;
+            console.warn('Analytics queue worker paused because Supabase is unreachable.');
+          }
+          return;
+        }
+        console.error('Analytics queue worker batch failed:', error);
+      });
+    };
     queueWorkerTimer = setInterval(() => {
-      void processQueueBatch();
+      if (queueWorkerPausedUntil && Date.now() < queueWorkerPausedUntil) return;
+      runBatchSafely();
     }, 2500);
     queueWorkerTimer.unref?.();
+    runBatchSafely();
   };
 
   const stopQueueWorker = () => {

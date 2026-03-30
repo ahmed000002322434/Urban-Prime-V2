@@ -86,6 +86,10 @@ const Layout: React.FC = () => {
   const isReelsPage = location.pathname === '/reels';
   const isInspirationPage = location.pathname.startsWith('/inspiration');
   const isDashboardRoute = location.pathname.startsWith('/profile');
+  const isSpotlightSurface =
+    location.pathname === '/spotlight' ||
+    location.pathname.startsWith('/spotlight/post/') ||
+    location.pathname.startsWith('/spotlight/create');
   const isAuthRoute =
     location.pathname.startsWith('/auth') ||
     location.pathname.startsWith('/register') ||
@@ -93,16 +97,24 @@ const Layout: React.FC = () => {
     location.pathname.startsWith('/reset-password') ||
     location.pathname.startsWith('/admin-login');
   const isAdminRoute = location.pathname.startsWith('/admin');
-  
+
   const isHomePage = location.pathname === '/';
-  const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute;
-  const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isItemDetailRoute;
-  const showMobileChrome =
-    !isReelsPage &&
-    !isInspirationPage &&
-    !isStoreCreationFlow &&
-    !isAuthRoute &&
-    !isAdminRoute;
+  useEffect(() => {
+    if (!isSpotlightSurface) return;
+    const { body, documentElement } = document;
+    const previousBodyOverflow = body.style.overflow;
+    const previousHtmlOverflow = documentElement.style.overflow;
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isSpotlightSurface]);
+
+  const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isSpotlightSurface;
+  const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface;
+  const showMobileChrome = !isAuthRoute && !isAdminRoute && !isSpotlightSurface;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
   
   const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';
@@ -110,7 +122,7 @@ const Layout: React.FC = () => {
   const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
   const headerSpacing = showHeader && !isHomePage ? 'md:pt-24' : '';
   const mobileChromeSpacing = showMobileChrome ? 'pb-[6.25rem]' : '';
-  const mainOverflowClass = '';
+  const mainOverflowClass = 'overflow-x-hidden';
 
   return (
     <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative overflow-x-hidden`}>
@@ -129,18 +141,18 @@ const Layout: React.FC = () => {
       {/* Omni Interface */}
       <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
 
-      {!isDashboardRoute && !isItemDetailRoute ? (
+      {!isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
         <div className="hidden md:block">
           <ComparisonBar />
         </div>
       ) : null}
-      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && !isItemDetailRoute ? (
+      {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
         <div className="hidden md:block">
           <FloatingWidget />
         </div>
       ) : null}
       {showFooter ? (
-        showMobileChrome ? (
+        showMobileChrome || isHomePage ? (
           <div className="hidden md:block">
             <Footer />
           </div>
@@ -148,12 +160,12 @@ const Layout: React.FC = () => {
           <Footer />
         )
       ) : null}
-      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && !isItemDetailRoute ? (
+      {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
         <div className="hidden md:block">
           <AIChatBot />
         </div>
       ) : null}
-      {!isReelsPage && !isDashboardRoute && !isItemDetailRoute ? (
+      {!isReelsPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
         <div className="hidden md:block">
           <PixeFloatingButton />
         </div>

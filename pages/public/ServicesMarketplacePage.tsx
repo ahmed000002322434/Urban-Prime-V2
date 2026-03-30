@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { serviceService } from '../../services/itemService';
@@ -23,6 +23,7 @@ const ServicesMarketplacePage: React.FC = () => {
   const [mode, setMode] = useState<ModeFilter>('all');
   const [category, setCategory] = useState('all');
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +75,7 @@ const ServicesMarketplacePage: React.FC = () => {
   }, [services]);
 
   const filteredServices = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const normalized = deferredQuery.trim().toLowerCase();
     const rows = services.filter((service) => {
       if (mode !== 'all' && (service.mode || 'hybrid') !== mode) return false;
       if (category !== 'all' && String(service.category || '') !== category) return false;
@@ -96,7 +97,7 @@ const ServicesMarketplacePage: React.FC = () => {
     if (sortBy === 'rating') rows.sort((left, right) => Number(right.avgRating || 0) - Number(left.avgRating || 0));
 
     return rows;
-  }, [category, mode, query, services, sortBy]);
+  }, [category, deferredQuery, mode, services, sortBy]);
 
   const stats = useMemo(() => {
     const instant = services.filter((entry) => (entry.mode || 'hybrid') !== 'proposal').length;
@@ -108,7 +109,7 @@ const ServicesMarketplacePage: React.FC = () => {
   }, [services, topProviders.length]);
 
   return (
-    <div className="min-h-screen bg-background pb-24 text-text-primary">
+    <div className="min-h-screen bg-background pb-[7.2rem] text-text-primary md:pb-24">
       <div className="mx-auto w-full max-w-7xl px-4 pt-20 sm:px-6 lg:px-8">
         <motion.section
           initial={{ opacity: 0, y: 14 }}
@@ -197,6 +198,34 @@ const ServicesMarketplacePage: React.FC = () => {
               <option value="rating">Sort: Highest rated</option>
             </select>
           </div>
+          <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
+            {(['all', 'instant', 'proposal', 'hybrid'] as const).map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                onClick={() => setMode(entry)}
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition ${
+                  mode === entry
+                    ? 'border-primary bg-primary/15 text-primary'
+                    : 'border-border bg-surface-soft text-text-secondary'
+                }`}
+              >
+                {entry}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setMode('all');
+                setCategory('all');
+                setSortBy('relevance');
+              }}
+              className="whitespace-nowrap rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-primary"
+            >
+              Reset
+            </button>
+          </div>
         </section>
 
         <section className="mt-5 rounded-2xl border border-border bg-surface p-4 shadow-soft">
@@ -212,7 +241,7 @@ const ServicesMarketplacePage: React.FC = () => {
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {topProviders.map((provider) => (
                 <Link key={provider.id} to={`/user/${provider.id}`} className="rounded-xl border border-border bg-surface-soft p-3 transition hover:border-primary/35">
-                  <img src={provider.avatar || '/icons/urbanprime.svg'} alt={provider.name} className="h-12 w-12 rounded-full object-cover" />
+                  <img src={provider.avatar || '/icons/urbanprime.svg'} alt={provider.name} loading="lazy" decoding="async" className="h-12 w-12 rounded-full object-cover" />
                   <p className="mt-2 truncate text-sm font-semibold text-text-primary">{provider.name}</p>
                   <p className="text-xs text-text-secondary">{provider.count} services</p>
                 </Link>
@@ -222,6 +251,12 @@ const ServicesMarketplacePage: React.FC = () => {
         </section>
 
         <section className="mt-5">
+          {!isLoading ? (
+            <div className="mb-3 flex items-center justify-between rounded-xl border border-border bg-surface-soft px-3 py-2 text-xs text-text-secondary">
+              <span>{filteredServices.length} services shown</span>
+              <span className="font-semibold uppercase tracking-[0.12em]">{sortBy.replace('_', ' ')}</span>
+            </div>
+          ) : null}
           {isLoading ? (
             <div className="flex justify-center py-20">
               <Spinner size="lg" />
@@ -248,7 +283,7 @@ const ServicesMarketplacePage: React.FC = () => {
                   >
                     <Link to={`/service/${service.id}`} className="block">
                       <div className="aspect-[16/10] w-full overflow-hidden bg-surface-soft">
-                        <img src={cover} alt={service.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+                        <img src={cover} alt={service.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
                       </div>
                     </Link>
                     <div className="p-4">

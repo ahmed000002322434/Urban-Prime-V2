@@ -124,7 +124,7 @@ const Footer: React.FC = () => {
                   <FooterLink to="/digital-products">Digital Assets</FooterLink>
                   <FooterLink to="/browse?category=games">Games</FooterLink>
                   <FooterLink to="/pixe">Pixe Studio</FooterLink>
-                  <FooterLink to="/reels">Pixe Feed</FooterLink>
+                    <FooterLink to="/spotlight">Prime Spotlight</FooterLink>
                 </ul>
               </div>
               <div>

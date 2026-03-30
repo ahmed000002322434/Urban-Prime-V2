@@ -9,6 +9,7 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import createAnalyticsEngine from './analyticsEngine.js';
+import registerSpotlightRoutes from './spotlightEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,7 +111,11 @@ const {
   WEB_PUSH_NOTIFICATION_ICON,
   WEB_PUSH_NOTIFICATION_BADGE,
   CHAT_RELIABILITY_V2,
-  BRAND_HUB_V3
+  BRAND_HUB_V3,
+  CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_UPLOAD_PRESET,
+  CLOUDINARY_FOLDER,
+  CLOUDINARY_DELIVERY_BASE_URL
 } = process.env;
 
 const parsePort = (value, fallback = 5050) => {
@@ -133,8 +138,13 @@ const TRUST_PROXY_VALUE = parseTrustProxy(TRUST_PROXY, IS_PRODUCTION ? 1 : false
 const ALLOWED_CORS_ORIGINS = parseCommaList(CORS_ORIGIN).map((origin) => normalizeOrigin(origin));
 const PUSH_NOTIFICATIONS_ACTIVE = toBool(PUSH_NOTIFICATIONS_ENABLED, true);
 const APP_PUBLIC_URL_NORMALIZED = String(APP_PUBLIC_URL || '').trim().replace(/\/$/, '');
-const PUSH_NOTIFICATION_ICON = String(WEB_PUSH_NOTIFICATION_ICON || '/icons/urbanprime.svg');
-const PUSH_NOTIFICATION_BADGE = String(WEB_PUSH_NOTIFICATION_BADGE || PUSH_NOTIFICATION_ICON);
+const PUSH_NOTIFICATION_ICON = String(WEB_PUSH_NOTIFICATION_ICON || '/icons/favicon-192.png');
+const PUSH_NOTIFICATION_BADGE = String(WEB_PUSH_NOTIFICATION_BADGE || '/icons/favicon-64.png');
+const CLOUDINARY_CLOUD = String(CLOUDINARY_CLOUD_NAME || '').trim();
+const CLOUDINARY_PRESET = String(CLOUDINARY_UPLOAD_PRESET || '').trim();
+const CLOUDINARY_FOLDER_PREFIX = String(CLOUDINARY_FOLDER || 'urbanprime').trim().replace(/^\/+|\/+$/g, '');
+const CLOUDINARY_PUBLIC_BASE = String(CLOUDINARY_DELIVERY_BASE_URL || '').trim().replace(/\/$/, '');
+const CLOUDINARY_ENABLED = Boolean(CLOUDINARY_CLOUD && CLOUDINARY_PRESET);
 
 const PROFILE_ONBOARDING_V2_ENABLED = toBool(PROFILE_ONBOARDING_V2, true);
 const CHAT_RELIABILITY_V2_ENABLED = toBool(CHAT_RELIABILITY_V2, true);
@@ -200,7 +210,13 @@ const ALLOWED_TABLES = new Set([
   'brand_price_snapshots', 'brand_catalog_price_snapshots',
   'brand_trust_signals', 'brand_catalog_trust_signals',
   'work_listings', 'work_requests', 'work_proposals', 'work_contracts', 'work_milestones',
-  'work_engagements', 'work_escrow_ledger', 'work_disputes', 'work_reputation', 'work_autopilot_runs'
+  'work_engagements', 'work_escrow_ledger', 'work_disputes', 'work_reputation', 'work_autopilot_runs',
+  'spotlight_content', 'spotlight_metrics', 'spotlight_views', 'spotlight_likes',
+  'spotlight_dislikes', 'spotlight_reposts', 'spotlight_comments', 'spotlight_comment_likes',
+  'spotlight_reports', 'saved_items', 'user_blocks', 'user_restrictions',
+  'spotlight_feed_impressions', 'spotlight_product_links', 'spotlight_product_events',
+  'spotlight_commission_ledger', 'spotlight_product_performance_v',
+  'spotlight_creator_conversion_v', 'spotlight_tag_conversion_v'
 ]);
 
 const uploadsRoot = path.resolve(UPLOADS_DIR || path.resolve(__dirname, '../uploads'), NODE_ENV === 'production' ? 'prod' : 'dev');
@@ -1519,6 +1535,55 @@ const bootstrapPersonasFromIntents = async ({ user, firebaseUid, selectedIntents
 };
 
 const normalizeRelativePath = (fullPath) => fullPath.replace(uploadsRoot, '').replace(/^[\\/]+/, '').replace(/\\/g, '/');
+const resolveUploadPublicUrl = (row) => {
+  if (!row) return '';
+  if (row.storage_driver === 'cloudinary') {
+    return String(row.storage_path || '').trim();
+  }
+  return `/uploads/${row.storage_path}`;
+};
+
+const uploadToCloudinary = async ({
+  base64Data,
+  mimeType,
+  fileName,
+  assetType,
+  userId,
+  uploadId
+}) => {
+  if (!CLOUDINARY_ENABLED) return null;
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`;
+  const folder = [CLOUDINARY_FOLDER_PREFIX, sanitizeBaseName(assetType || 'generic'), userId].filter(Boolean).join('/');
+  const publicId = `${sanitizeBaseName(fileName || 'asset')}-${uploadId}`;
+  const form = new FormData();
+  form.append('file', `data:${mimeType};base64,${base64Data}`);
+  form.append('upload_preset', CLOUDINARY_PRESET);
+  form.append('folder', folder);
+  form.append('public_id', publicId);
+  form.append('resource_type', 'auto');
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    body: form
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.secure_url) {
+    const message = payload?.error?.message || `Cloudinary upload failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  let deliveryUrl = String(payload.secure_url || '').trim();
+  if (CLOUDINARY_PUBLIC_BASE && payload.public_id && payload.format && payload.resource_type) {
+    deliveryUrl = `${CLOUDINARY_PUBLIC_BASE}/${payload.resource_type}/upload/v${payload.version}/${payload.public_id}.${payload.format}`;
+  }
+
+  return {
+    storageDriver: 'cloudinary',
+    storagePath: deliveryUrl,
+    publicUrl: deliveryUrl
+  };
+};
 
 const hashPushToken = (token) => createHash('sha256').update(String(token || '')).digest('hex');
 
@@ -1865,6 +1930,13 @@ const analyticsEngine = createAnalyticsEngine({
 analyticsEngine.registerRoutes();
 analyticsEngine.startQueueWorker();
 
+registerSpotlightRoutes({
+  app,
+  supabase,
+  requireAuth,
+  resolveUserIdFromFirebaseUid
+});
+
 app.get('/health', async (_req, res) => {
   const analyticsHealth = await analyticsEngine.getHealthSnapshot();
   res.json({ ok: true, firebaseAdmin: Boolean(firebaseApp), featureFlags: FEATURE_FLAGS, analytics: analyticsHealth });
@@ -1885,59 +1957,76 @@ app.post('/auth/sync-user', strictAuthRateLimiter, requireAuth, async (req, res)
   let user = null;
   let syncError = null;
 
-  const upsertResult = await supabase
-    .from('users')
-    .upsert(payload, { onConflict: 'firebase_uid', ignoreDuplicates: false })
-    .select('*')
-    .maybeSingle();
-
-  user = upsertResult.data;
-  syncError = upsertResult.error;
-
-  if (!user) {
-    const selectResult = await supabase
+  try {
+    const upsertResult = await supabase
       .from('users')
+      .upsert(payload, { onConflict: 'firebase_uid', ignoreDuplicates: false })
       .select('*')
-      .eq('firebase_uid', firebase_uid)
       .maybeSingle();
 
-    if (selectResult.error) {
-      syncError = selectResult.error;
-    } else {
-      user = selectResult.data;
-      if (user) {
-        const updateResult = await supabase
-          .from('users')
-          .update({ email, name, avatar_url, phone })
-          .eq('id', user.id)
-          .select('*')
-          .maybeSingle();
+    user = upsertResult.data;
+    syncError = upsertResult.error;
 
-        if (updateResult.error) {
-          syncError = updateResult.error;
-        } else if (updateResult.data) {
-          user = updateResult.data;
-          syncError = null;
+    if (!user) {
+      const selectResult = await supabase
+        .from('users')
+        .select('*')
+        .eq('firebase_uid', firebase_uid)
+        .maybeSingle();
+
+      if (selectResult.error) {
+        syncError = selectResult.error;
+      } else {
+        user = selectResult.data;
+        if (user) {
+          const updateResult = await supabase
+            .from('users')
+            .update({ email, name, avatar_url, phone })
+            .eq('id', user.id)
+            .select('*')
+            .maybeSingle();
+
+          if (updateResult.error) {
+            syncError = updateResult.error;
+          } else if (updateResult.data) {
+            user = updateResult.data;
+            syncError = null;
+          }
         }
       }
     }
+
+    if (!user) {
+      throw syncError || new Error('Unable to sync user');
+    }
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!profile) {
+      await supabase.from('user_profiles').insert({ user_id: user.id });
+    }
+
+    return res.json({ user });
+  } catch (error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    if (message.includes('fetch failed') || message.includes('enotfound') || message.includes('network')) {
+      return res.json({
+        user: {
+          firebase_uid,
+          email: email || null,
+          name: name || 'Urban Prime user',
+          avatar_url: avatar_url || '/icons/urbanprime.svg',
+          phone: phone || null
+        },
+        offline: true
+      });
+    }
+    return res.status(400).json({ error: error?.message || 'Unable to sync user' });
   }
-
-  if (!user) {
-    return res.status(400).json({ error: syncError?.message || 'Unable to sync user' });
-  }
-
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (!profile) {
-    await supabase.from('user_profiles').insert({ user_id: user.id });
-  }
-
-  return res.json({ user });
 });
 
 app.get('/profile/me', requireAuth, async (req, res) => {
@@ -6478,15 +6567,45 @@ app.post('/uploads', requireAuth, async (req, res) => {
   const safeType = sanitizeBaseName(asset_type || 'generic');
   const safeBase = sanitizeBaseName(fileName || 'asset');
   const id = randomUUID();
-  const relativeDir = `${safeType}/${userId}`;
-  const fullDir = ensureDirectory(path.join(uploadsRoot, relativeDir));
-  const relativePath = `${relativeDir}/${safeBase}-${id}.${extension}`;
-  const fullPath = path.join(uploadsRoot, relativePath);
+  let storageDriver = 'local_disk';
+  let storagePath = '';
+  let publicUrl = '';
+  let localWrittenPath = '';
 
   try {
-    fs.writeFileSync(fullPath, binary);
+    if (CLOUDINARY_ENABLED) {
+      const cloudResult = await uploadToCloudinary({
+        base64Data,
+        mimeType: normalizedMimeType,
+        fileName: safeBase,
+        assetType: safeType,
+        userId,
+        uploadId: id
+      });
+      if (cloudResult?.storagePath) {
+        storageDriver = cloudResult.storageDriver;
+        storagePath = cloudResult.storagePath;
+        publicUrl = cloudResult.publicUrl;
+      }
+    }
   } catch (error) {
-    return res.status(500).json({ error: `Failed to write upload: ${error.message}` });
+    console.warn('Cloudinary upload failed, falling back to local disk:', error?.message || error);
+  }
+
+  if (!storagePath) {
+    const relativeDir = `${safeType}/${userId}`;
+    ensureDirectory(path.join(uploadsRoot, relativeDir));
+    const relativePath = `${relativeDir}/${safeBase}-${id}.${extension}`;
+    const fullPath = path.join(uploadsRoot, relativePath);
+    try {
+      fs.writeFileSync(fullPath, binary);
+    } catch (error) {
+      return res.status(500).json({ error: `Failed to write upload: ${error.message}` });
+    }
+    localWrittenPath = fullPath;
+    storageDriver = 'local_disk';
+    storagePath = normalizeRelativePath(fullPath);
+    publicUrl = `/uploads/${storagePath}`;
   }
 
   const payload = {
@@ -6497,8 +6616,8 @@ app.post('/uploads', requireAuth, async (req, res) => {
     file_name: fileName || `${safeBase}.${extension}`,
     mime_type: normalizedMimeType,
     size_bytes: sizeBytes,
-    storage_driver: 'local_disk',
-    storage_path: normalizeRelativePath(fullPath),
+    storage_driver: storageDriver,
+    storage_path: storagePath,
     resource_id: resource_id || null,
     is_public: Boolean(is_public),
     status: 'active'
@@ -6506,16 +6625,17 @@ app.post('/uploads', requireAuth, async (req, res) => {
 
   const { data, error } = await supabase.from('uploaded_assets').insert(payload).select('*').maybeSingle();
   if (error) {
-    try {
-      fs.unlinkSync(fullPath);
-    } catch {
-      // ignore cleanup error
+    if (localWrittenPath && fs.existsSync(localWrittenPath)) {
+      try {
+        fs.unlinkSync(localWrittenPath);
+      } catch {
+        // ignore cleanup error
+      }
     }
     return res.status(400).json({ error: error.message });
   }
 
-  const publicPath = `/uploads/${payload.storage_path}`;
-  return res.status(201).json({ data: { ...data, public_url: publicPath } });
+  return res.status(201).json({ data: { ...data, public_url: publicUrl || resolveUploadPublicUrl(data || payload) } });
 });
 
 app.get('/uploads', requireAuth, async (req, res) => {
@@ -6545,7 +6665,7 @@ app.get('/uploads', requireAuth, async (req, res) => {
   return res.json({
     data: (data || []).map((row) => ({
       ...row,
-      public_url: `/uploads/${row.storage_path}`
+      public_url: resolveUploadPublicUrl(row)
     }))
   });
 });
@@ -6559,7 +6679,7 @@ app.get('/uploads/:id', requireAuth, async (req, res) => {
   if (!data) {
     return res.status(404).json({ error: 'Upload not found' });
   }
-  return res.json({ data: { ...data, public_url: `/uploads/${data.storage_path}` } });
+  return res.json({ data: { ...data, public_url: resolveUploadPublicUrl(data) } });
 });
 
 app.delete('/uploads/:id', requireAuth, async (req, res) => {
@@ -6572,8 +6692,10 @@ app.delete('/uploads/:id', requireAuth, async (req, res) => {
     return res.status(404).json({ error: 'Upload not found' });
   }
 
-  const fullPath = path.join(uploadsRoot, data.storage_path || '');
-  if (fs.existsSync(fullPath)) {
+  const fullPath = data.storage_driver === 'local_disk'
+    ? path.join(uploadsRoot, data.storage_path || '')
+    : '';
+  if (fullPath && fs.existsSync(fullPath)) {
     try {
       fs.unlinkSync(fullPath);
     } catch {

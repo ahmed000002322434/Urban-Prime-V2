@@ -35,8 +35,8 @@ messaging.onBackgroundMessage((payload) => {
 
   self.registration.showNotification(title, {
     body,
-    icon: '/icons/urbanprime.svg',
-    badge: '/icons/urbanprime.svg',
+    icon: '/icons/favicon-192.png',
+    badge: '/icons/favicon-64.png',
     tag: threadId ? `chat-thread-${threadId}` : 'chat-message',
     renotify: true,
     data: {
@@ -79,4 +79,3 @@ self.addEventListener('notificationclick', (event) => {
     await clients.openWindow(targetLink);
   })());
 });
-

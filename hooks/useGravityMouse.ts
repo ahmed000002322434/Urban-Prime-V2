@@ -65,8 +65,8 @@ export function useGravityMouse(options: UseGravityMouseOptions = {}) {
 
       springX.set(nx);
       springY.set(ny);
-      rotateX.set(-ny * 8); // tilt up to ±8 degrees
-      rotateY.set(nx * 8);
+      rotateX.set(-ny * 7); // tilt up to ±7 degrees
+      rotateY.set(nx * 7);
     },
     [isMobile, disableOnMobile, springX, springY, rotateX, rotateY]
   );

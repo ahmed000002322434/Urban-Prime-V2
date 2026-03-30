@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
@@ -20,6 +20,16 @@ const DashboardLayout: React.FC = () => {
   }, [location.pathname]);
 
   useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMobileNavOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (personaDropdownRef.current && !personaDropdownRef.current.contains(e.target as Node)) {
         setIsPersonaDropdownOpen(false);
@@ -31,12 +41,13 @@ const DashboardLayout: React.FC = () => {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    setIsSearchSuggestionsOpen(e.target.value.length > 0);
+    setIsSearchSuggestionsOpen(true);
+    setIsPersonaDropdownOpen(false);
   };
 
   const handleSwitchPersona = async (personaId: string) => {
     try {
-      await setActivePersona(personaId);
+      await setActivePersona(personaId, { requireConfirmation: false });
       setIsPersonaDropdownOpen(false);
       navigate('/profile');
     } catch (error) {
@@ -45,17 +56,21 @@ const DashboardLayout: React.FC = () => {
   };
 
   return (
-    <div className="dashboard-shell min-h-screen flex bg-transparent font-sans overflow-hidden h-screen">
+    <div className="dashboard-shell min-h-screen flex bg-transparent font-sans overflow-x-hidden">
       {/* Sidebar */}
       <UserSidebar />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Topbar */}
-        <header className="h-20 flex items-center justify-between px-6 md:px-10 sticky top-0 z-50 shrink-0 glass-panel border-b border-white/10 bg-background/95 backdrop-blur-xl">
+        <header className="h-20 flex items-center justify-between px-6 md:px-10 sticky top-0 z-[120] shrink-0 glass-panel glass-panel-overflow-visible !overflow-visible border-b border-white/10 bg-background/95 backdrop-blur-xl">
           <div className="flex items-center gap-6 flex-1 max-w-2xl">
             <button 
-              onClick={() => setIsMobileNavOpen(true)}
+              onClick={() => {
+                setIsMobileNavOpen(true);
+                setIsPersonaDropdownOpen(false);
+                setIsSearchSuggestionsOpen(false);
+              }}
               className="md:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-text-secondary hover:bg-white/10 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
@@ -70,22 +85,26 @@ const DashboardLayout: React.FC = () => {
                 type="text" 
                 value={searchQuery}
                 onChange={handleSearchChange}
+                onFocus={() => {
+                  setIsSearchSuggestionsOpen(true);
+                  setIsPersonaDropdownOpen(false);
+                }}
                 placeholder="Search anything... (Ctrl + K)"
-                className="w-full h-11 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-text-secondary placeholder:opacity-40"
+                className="w-full h-11 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 hover:border-white/30 transition-all placeholder:text-text-secondary placeholder:opacity-40"
+              />
+              <SearchSuggestionsDropdown 
+                query={searchQuery}
+                isOpen={isSearchSuggestionsOpen}
+                onClose={() => setIsSearchSuggestionsOpen(false)}
+                onNavigate={(path) => {
+                  navigate(path);
+                  setSearchQuery('');
+                  setIsSearchSuggestionsOpen(false);
+                  setIsPersonaDropdownOpen(false);
+                }}
               />
             </div>
           </div>
-
-          <SearchSuggestionsDropdown 
-            query={searchQuery}
-            isOpen={isSearchSuggestionsOpen}
-            onClose={() => setIsSearchSuggestionsOpen(false)}
-            onNavigate={(path) => {
-              navigate(path);
-              setSearchQuery('');
-              setIsSearchSuggestionsOpen(false);
-            }}
-          />
 
           <div className="flex items-center gap-3 md:gap-4">
             {/* Quick Access Actions */}
@@ -107,7 +126,10 @@ const DashboardLayout: React.FC = () => {
             {/* Persona Switcher & User Avatar */}
             <div className="relative h-full flex items-center" ref={personaDropdownRef}>
               <button 
-                onClick={() => setIsPersonaDropdownOpen(!isPersonaDropdownOpen)}
+                onClick={() => {
+                  setIsPersonaDropdownOpen((prev) => !prev);
+                  setIsSearchSuggestionsOpen(false);
+                }}
                 className="flex items-center gap-2 p-1 rounded-full hover:bg-white/5 transition-colors border border-transparent hover:border-white/10"
               >
                 <div className="h-10 w-10 rounded-full bg-black border border-white/10 overflow-hidden ring-2 ring-white/5 ring-offset-2 ring-offset-background shrink-0">
@@ -126,15 +148,29 @@ const DashboardLayout: React.FC = () => {
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 top-full mt-2 w-64 glass-panel glass-panel-opaque z-50 p-2 shadow-2xl border border-white/20 backdrop-blur-2xl rounded-2xl"
+                    transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                    className="absolute right-0 top-[calc(100%+0.75rem)] w-72 glass-float-panel dropdown-float dropdown-glow z-[140] p-2 rounded-3xl"
                   >
-                    <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-50">Switch Account</div>
-                    <div className="space-y-1 mt-1">
+                    <div className="px-3 pt-3 pb-2 border-b border-white/10">
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-70">Switch Account</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="pill-chip">
+                          Active <span className="text-white/80">{activePersona?.type || 'member'}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-1 mt-2">
                       {personas.map((p) => (
-                        <button
+                        <motion.button
                           key={p.id}
                           onClick={() => handleSwitchPersona(p.id)}
-                          className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${p.id === activePersona?.id ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-white/10 text-text-secondary hover:text-text-primary border border-transparent'}`}
+                          whileHover={{ x: 4, scale: 1.01 }}
+                          transition={{ type: "spring", stiffness: 320, damping: 22 }}
+                          className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl transition-all border ${
+                            p.id === activePersona?.id
+                              ? 'bg-primary/15 text-primary border-primary/30 shadow-[0_8px_20px_rgba(99,102,241,0.2)]'
+                              : 'bg-white/5 text-text-secondary border-transparent hover:border-white/20 hover:text-text-primary hover:bg-white/10'
+                          }`}
                         >
                           <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-black text-xs ${p.id === activePersona?.id ? 'bg-primary text-white' : 'bg-white/5'}`}>
                             {p.type.charAt(0).toUpperCase()}
@@ -146,7 +182,7 @@ const DashboardLayout: React.FC = () => {
                           {p.id === activePersona?.id && (
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M20 6 9 17l-5-5"/></svg>
                           )}
-                        </button>
+                        </motion.button>
                       ))}
                     </div>
                     <div className="my-2 border-t border-white/10" />
@@ -165,7 +201,7 @@ const DashboardLayout: React.FC = () => {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar bg-background/30">
+        <main className="flex-1 bg-background/30">
           <div className="p-6 md:p-10 mx-auto w-full max-w-7xl">
             <AnimatePresence mode="wait">
               <motion.div
@@ -191,14 +227,14 @@ const DashboardLayout: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileNavOpen(false)}
-              className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 z-[220] bg-black/60 backdrop-blur-sm md:hidden"
             />
             <motion.div 
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 20, stiffness: 150 }}
-              className="fixed inset-y-0 left-0 z-[70] w-80 sidebar-mobile-solid flex flex-col border-r border-white/10 shadow-2xl rounded-r-[32px] overflow-hidden"
+              className="fixed inset-y-0 left-0 z-[230] w-80 sidebar-mobile-solid flex flex-col border-r border-white/10 shadow-2xl rounded-r-[32px] overflow-hidden"
             >
                <div className="p-6 border-b border-white/10 h-20 flex items-center justify-between">
                   <div className="flex items-center gap-3">

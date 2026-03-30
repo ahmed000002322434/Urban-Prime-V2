@@ -1,6 +1,6 @@
 
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { HashRouter, Navigate, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -68,6 +68,7 @@ const ServiceDetailPage = lazy(() => import('./pages/public/ServiceDetailPage'))
 const ReelsPage = lazy(() => import('./pages/public/ReelsPage'));
 const LiveShoppingPage = lazy(() => import('./pages/public/LiveShoppingPage'));
 const PixePage = lazy(() => import('./pages/public/PixePage'));
+const SpotlightPage = lazy(() => import('./pages/public/PrimeSpotlightPage'));
 const ProductBattlePage = lazy(() => import('./pages/public/ProductBattlePage'));
 const MysteryBoxPage = lazy(() => import('./pages/public/MysteryBoxPage'));
 const FeaturesHubPage = lazy(() => import('./pages/public/FeaturesHubPage'));
@@ -85,6 +86,9 @@ const BlogsPage = lazy(() => import('./pages/public/BlogsPage'));
 const UserCollectionsPage = lazy(() => import('./pages/public/UserCollectionsPage'));
 const PublicWishlistPage = lazy(() => import('./pages/public/PublicWishlistPage'));
 const PublicProfilePage = lazy(() => import('./pages/public/PublicProfilePage'));
+const SpotlightProfilePage = lazy(() => import('./pages/public/SpotlightProfilePage'));
+const NotificationsPage = lazy(() => import('./pages/public/NotificationsPage'));
+const MorePage = lazy(() => import('./pages/public/MorePage'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage'));
 
 // Category Pages
@@ -211,6 +215,7 @@ const BecomeProviderPage = lazy(() => import('./pages/protected/BecomeProviderPa
 const PixeStudio = lazy(() => import('./pages/protected/PixeStudio'));
 const CreateLiveStreamPage = lazy(() => import('./pages/protected/CreateLiveStreamPage'));
 const CreatePostPage = lazy(() => import('./pages/protected/CreatePostPage'));
+const CreateSpotlightPage = lazy(() => import('./pages/protected/CreateSpotlightPage'));
 const WalletPage = lazy(() => import('./pages/protected/WalletPage'));
 const EarningsPage = lazy(() => import('./pages/protected/EarningsPage'));
 const PackagesPage = lazy(() => import('./pages/protected/PackagesPage'));
@@ -259,6 +264,36 @@ const AppContent: React.FC = () => {
       return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+      const warmupRoutes = () => {
+          void import('./pages/public/BrowsePage');
+          void import('./pages/public/RenterDirectoryPage');
+          void import('./pages/public/PixePage');
+          void import('./pages/public/PrimeSpotlightPage');
+          void import('./pages/public/SpotlightProfilePage');
+          void import('./pages/public/NotificationsPage');
+          void import('./pages/public/MorePage');
+          void import('./pages/public/StoresDirectoryPage');
+      };
+
+      const win = window as Window & {
+          requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+          cancelIdleCallback?: (handle: number) => void;
+      };
+
+      if (typeof win.requestIdleCallback === 'function') {
+          const idleHandle = win.requestIdleCallback(() => warmupRoutes(), { timeout: 2500 });
+          return () => {
+              if (typeof win.cancelIdleCallback === 'function') {
+                  win.cancelIdleCallback(idleHandle);
+              }
+          };
+      }
+
+      const timer = window.setTimeout(warmupRoutes, 1200);
+      return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <ContextualThemeWrapper>
       <StarryBackground />
@@ -297,6 +332,10 @@ const AppContent: React.FC = () => {
             <Route path="item/:id" element={<ItemDetailPage />} />
             <Route path="service/:id" element={<ServiceDetailPage />} />
             <Route path="user/:id" element={<PublicProfilePage />} />
+            <Route path="profile/:username" element={<SpotlightProfilePage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="more" element={<MorePage />} />
+            <Route path="messages" element={<MessagesPage />} />
             <Route path="wishlist/:id" element={<PublicWishlistPage />} />
             <Route path="collections/:userId" element={<UserCollectionsPage />} />
             <Route index element={<HomePage />} />
@@ -334,10 +373,12 @@ const AppContent: React.FC = () => {
             <Route path="explore" element={<ExploreHubPage />} />
             <Route path="browse" element={<BrowsePage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
-            <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
-            <Route path="reels" element={<ReelsPage />} />
-            <Route path="live" element={<LiveShoppingPage />} />
-            <Route path="pixe" element={<PixePage />} />
+                <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
+                <Route path="reels" element={<ReelsPage />} />
+                <Route path="spotlight" element={<SpotlightPage />} />
+                <Route path="spotlight/post/:id" element={<SpotlightPage />} />
+                <Route path="live" element={<LiveShoppingPage />} />
+                <Route path="pixe" element={<PixePage />} />
             <Route path="battles" element={<ProductBattlePage />} />
             <Route path="mystery-box" element={<MysteryBoxPage />} />
             <Route path="features" element={<FeaturesHubPage />} />
@@ -514,8 +555,9 @@ const AppContent: React.FC = () => {
 
                     <Route path="collections" element={<MyCollectionsPage />} />
                     <Route path="go-live" element={<CreateLiveStreamPage />} />
-                    <Route path="add-post" element={<CreatePostPage />} />
-                    <Route path="track-delivery/:bookingId" element={<TrackDeliveryPage />} />
+                <Route path="add-post" element={<CreatePostPage />} />
+                <Route path="spotlight/create" element={<CreateSpotlightPage />} />
+                <Route path="track-delivery/:bookingId" element={<TrackDeliveryPage />} />
                     <Route path="disputes" element={<DisputeCenterPage />} />
                     <Route path="analytics/advanced" element={<AdvancedAnalyticsPage />} />
                 </Route>
@@ -545,6 +587,10 @@ const AppContent: React.FC = () => {
 
             <Route path="pixe-studio" element={<ProtectedRoute />}>
                 <Route index element={<PixeStudio />} />
+            </Route>
+
+            <Route path="spotlight/create" element={<ProtectedRoute />}>
+                <Route index element={<CreateSpotlightPage />} />
             </Route>
 
             <Route path="create-store" element={<ProtectedRoute />}>
@@ -596,7 +642,7 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <NotificationProvider>
         <LanguageProvider>
           <AuthProvider>
@@ -622,7 +668,7 @@ const App: React.FC = () => {
           </AuthProvider>
         </LanguageProvider>
       </NotificationProvider>
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 

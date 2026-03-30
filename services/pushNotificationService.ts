@@ -112,7 +112,6 @@ export const initializePushMessaging = async (
 
   const vapidKey = readVapidKey();
   if (!vapidKey) {
-    console.warn('VITE_FIREBASE_VAPID_KEY is missing. Web push token registration skipped.');
     return { supported: true, permission, token: null };
   }
 
@@ -159,4 +158,3 @@ export const subscribeToForegroundPush = async (
     return () => {};
   }
 };
-

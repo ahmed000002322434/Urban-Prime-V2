@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { itemService, serviceService, userService, reelService } from '../../services/itemService';
 import type { Item, Category, Service, ChatThread, Reel, User } from '../../types';
 import ItemCard from '../../components/ItemCard';
@@ -19,6 +20,8 @@ const ShuffleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" vi
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
 
 const DEFAULT_PRICE_RANGE: [number, number] = [0, 10000];
+const BRANDS_CACHE_KEY = 'urbanprime:browse:brands:v1';
+const BRANDS_CACHE_TTL_MS = 1000 * 60 * 20;
 type GlobalSearchSectionKey = 'pages' | 'features' | 'users' | 'items' | 'services' | 'messages' | 'pixes';
 
 interface GlobalSearchEntry {
@@ -210,13 +213,13 @@ const RecentlyViewedBar: React.FC = () => {
     if (isLoading || historyItems.length === 0) return null;
 
     return (
-        <div className="mb-8 p-4 bg-surface/50 rounded-xl border border-border">
+        <div className="mb-6 rounded-2xl border border-border bg-surface/70 p-4 shadow-soft md:mb-8">
             <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">Recently Viewed</h3>
-            <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar md:gap-4">
                 {historyItems.map(item => (
                     <div key={item.id} onClick={() => navigate(`/item/${item.id}`)} className="flex-shrink-0 w-32 cursor-pointer group">
                         <div className="aspect-square rounded-lg overflow-hidden border border-border mb-2">
-                             <img src={item.imageUrls[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                             <img src={item.imageUrls[0]} alt={item.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                         </div>
                         <p className="text-xs font-semibold text-text-primary truncate">{item.title}</p>
                         <p className="text-xs text-text-secondary font-bold">${item.salePrice || item.rentalPrice}</p>
@@ -241,10 +244,12 @@ const BrowsePage: React.FC = () => {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [quickViewItem, setQuickViewItem] = useState<Item | null>(null);
     const loaderRef = useRef<HTMLDivElement>(null);
+    const fetchRequestIdRef = useRef(0);
     const servicesCacheRef = useRef<Service[] | null>(null);
     const threadsCacheRef = useRef<ChatThread[] | null>(null);
     const reelsCacheRef = useRef<Reel[] | null>(null);
     const threadPartnerCacheRef = useRef<Record<string, User | null>>({});
+    const globalSearchCacheRef = useRef<Record<string, GlobalSearchResults>>({});
     const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile state
     const [showFilters, setShowFilters] = useState(false); // Desktop state
     const [globalSearchResults, setGlobalSearchResults] = useState<GlobalSearchResults>(EMPTY_GLOBAL_RESULTS);
@@ -262,7 +267,8 @@ const BrowsePage: React.FC = () => {
         page: 1
     });
 
-    const hasGlobalQuery = filters.query.trim().length >= 2;
+    const deferredGlobalQuery = useDeferredValue(filters.query);
+    const hasGlobalQuery = deferredGlobalQuery.trim().length >= 2;
 
     const categoryLabel = useMemo(() => {
         if (!filters.category) return '';
@@ -307,6 +313,7 @@ const BrowsePage: React.FC = () => {
     useEffect(() => {
         threadsCacheRef.current = null;
         threadPartnerCacheRef.current = {};
+        globalSearchCacheRef.current = {};
     }, [user?.id]);
 
     useEffect(() => {
@@ -318,9 +325,18 @@ const BrowsePage: React.FC = () => {
 
         let cancelled = false;
         const timer = setTimeout(async () => {
-            const queryText = filters.query.trim();
+            const queryText = deferredGlobalQuery.trim();
             const normalizedQuery = normalizeSearchText(queryText);
             if (!normalizedQuery) return;
+
+            const cachedResult = globalSearchCacheRef.current[normalizedQuery];
+            if (cachedResult) {
+                if (!cancelled) {
+                    setGlobalSearchResults(cachedResult);
+                    setIsGlobalSearchLoading(false);
+                }
+                return;
+            }
 
             setIsGlobalSearchLoading(true);
             try {
@@ -434,7 +450,7 @@ const BrowsePage: React.FC = () => {
                     .slice(0, 4);
 
                 if (!cancelled) {
-                    setGlobalSearchResults({
+                    const nextResults: GlobalSearchResults = {
                         pages: pageMatches,
                         features: featureMatches,
                         users: userMatches,
@@ -442,7 +458,9 @@ const BrowsePage: React.FC = () => {
                         services: serviceMatches,
                         messages: messageMatches,
                         pixes: reelMatches.length > 0 ? reelMatches : fallbackPixeMatches
-                    });
+                    };
+                    globalSearchCacheRef.current[normalizedQuery] = nextResults;
+                    setGlobalSearchResults(nextResults);
                 }
             } catch (error) {
                 console.warn('Global browse search failed:', error);
@@ -450,34 +468,57 @@ const BrowsePage: React.FC = () => {
                     setGlobalSearchResults({
                         ...EMPTY_GLOBAL_RESULTS,
                         pages: PAGE_SEARCH_INDEX
-                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
                             .slice(0, 6),
                         features: FEATURE_SEARCH_INDEX
-                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
                             .slice(0, 6),
                         pixes: PIXE_SEARCH_INDEX
-                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizeSearchText(filters.query)))
+                            .filter((entry) => includesQuery(`${entry.title} ${entry.subtitle}`, normalizedQuery))
                             .slice(0, 4)
                     });
                 }
             } finally {
                 if (!cancelled) setIsGlobalSearchLoading(false);
             }
-        }, 320);
+        }, 280);
 
         return () => {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [filters.query, hasGlobalQuery, user?.id]);
+    }, [deferredGlobalQuery, hasGlobalQuery, user?.id]);
 
     const fetchAllBrands = async () => {
-        const { items: allItems } = await itemService.getItems({}, { page: 1, limit: 1000 });
-        const uniqueBrands = [...new Set(allItems.map(item => item.brand).filter(Boolean) as string[])];
+        try {
+            const cachedRaw = sessionStorage.getItem(BRANDS_CACHE_KEY);
+            if (cachedRaw) {
+                const parsed = JSON.parse(cachedRaw) as { timestamp: number; brands: string[] };
+                if (
+                    parsed &&
+                    Array.isArray(parsed.brands) &&
+                    Date.now() - Number(parsed.timestamp || 0) < BRANDS_CACHE_TTL_MS
+                ) {
+                    setAllBrands(parsed.brands);
+                    return;
+                }
+            }
+        } catch (error) {
+            console.warn('Unable to read brands cache:', error);
+        }
+
+        const { items: allItems } = await itemService.getItems({}, { page: 1, limit: 600 });
+        const uniqueBrands = [...new Set(allItems.map(item => item.brand).filter(Boolean) as string[])].slice(0, 120);
         setAllBrands(uniqueBrands);
+        try {
+            sessionStorage.setItem(BRANDS_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), brands: uniqueBrands }));
+        } catch (error) {
+            console.warn('Unable to store brands cache:', error);
+        }
     };
 
     const fetchData = useCallback(async (isNewSearch = false) => {
+        const requestId = ++fetchRequestIdRef.current;
         if (isNewSearch) {
             setIsLoading(true);
             // Reset items on new search
@@ -496,18 +537,29 @@ const BrowsePage: React.FC = () => {
                 listingType: apiFilters.listingType ? apiFilters.listingType : undefined,
             };
             const { items: newItems, total } = await itemService.getItems(serviceFilters, { page: filters.page, limit: 12 });
-            setItems(prev => isNewSearch ? newItems : [...prev, ...newItems]);
+            if (requestId !== fetchRequestIdRef.current) return;
+            setItems(prev => {
+                const nextItems = isNewSearch ? newItems : [...prev, ...newItems];
+                const seen = new Set<string>();
+                return nextItems.filter((item) => {
+                    if (!item.id || seen.has(item.id)) return false;
+                    seen.add(item.id);
+                    return true;
+                });
+            });
             setTotalItems(total);
         } catch (error) {
+            if (requestId !== fetchRequestIdRef.current) return;
             console.error("Failed to fetch items:", error);
         } finally {
+            if (requestId !== fetchRequestIdRef.current) return;
             setIsLoading(false);
             setIsLoadingMore(false);
         }
     }, [filters]);
 
     useEffect(() => {
-        fetchAllBrands();
+        void fetchAllBrands();
     }, []);
 
     useEffect(() => {
@@ -603,10 +655,15 @@ const BrowsePage: React.FC = () => {
     return (
         <>
             {quickViewItem && <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />}
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 animate-fade-in-up">
+            <div className="container mx-auto animate-fade-in-up px-4 pb-[7.2rem] pt-5 sm:px-6 md:py-8 md:pb-8 lg:px-8">
                 
                 <RecentlyViewedBar />
-                <div className="mb-8 rounded-2xl border border-border bg-surface p-5 shadow-soft">
+                <motion.section
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="mb-8 rounded-2xl border border-border bg-surface p-5 shadow-soft"
+                >
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-text-secondary">Product Discovery</p>
@@ -624,8 +681,8 @@ const BrowsePage: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        {[
+                    <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-3 sm:overflow-visible sm:px-0 lg:grid-cols-4">
+                        {[ 
                             {
                                 title: 'Explore services',
                                 desc: 'Open the dedicated hiring marketplace for service providers.',
@@ -650,21 +707,29 @@ const BrowsePage: React.FC = () => {
                                 tag: 'Content',
                                 to: '/pixe'
                             }
-                        ].map((card) => (
-                            <button
+                        ].map((card, index) => (
+                            <motion.button
                                 key={card.title}
+                                initial={{ opacity: 0, y: 12 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.25, delay: 0.06 + index * 0.04 }}
                                 onClick={() => navigate(card.to)}
-                                className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface-soft p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-soft"
+                                className="min-w-[240px] snap-start rounded-2xl border border-border bg-gradient-to-br from-surface to-surface-soft p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-soft sm:min-w-0"
                             >
                                 <p className="text-[10px] uppercase tracking-[0.3em] text-text-secondary">{card.tag}</p>
                                 <h3 className="mt-2 font-bold text-text-primary">{card.title}</h3>
                                 <p className="mt-2 text-sm text-text-secondary">{card.desc}</p>
-                            </button>
+                            </motion.button>
                         ))}
                     </div>
-                </div>
+                </motion.section>
 
-                <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface shadow-soft">
+                <motion.section
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, delay: 0.08 }}
+                    className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface shadow-soft"
+                >
                     <div className="relative p-5">
                         <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/15 blur-3xl" />
                         <div className="pointer-events-none absolute -bottom-16 left-10 h-32 w-32 rounded-full bg-sky-500/10 blur-3xl" />
@@ -715,7 +780,7 @@ const BrowsePage: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        <div className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 text-xs sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
                             {allBrands.slice(0, 6).map(brand => (
                                 <Link
                                     key={brand}
@@ -737,7 +802,7 @@ const BrowsePage: React.FC = () => {
                         </div>
 
                         {activeFilterChips.length > 0 && (
-                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                            <div className="-mx-1 mt-3 flex items-center gap-2 overflow-x-auto px-1 pb-1 text-xs sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
                                 {activeFilterChips.map((chip, idx) => (
                                     <button
                                         key={`${chip.label}-${idx}`}
@@ -754,8 +819,16 @@ const BrowsePage: React.FC = () => {
                             </div>
                         )}
 
+                        <AnimatePresence mode="wait">
                         {hasGlobalQuery ? (
-                            <div className="mt-5 rounded-2xl border border-border bg-surface-soft/80 p-3 sm:p-4">
+                            <motion.div
+                                key="global-search-panel"
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                transition={{ duration: 0.22 }}
+                                className="mt-5 rounded-2xl border border-border bg-surface-soft/80 p-3 sm:p-4"
+                            >
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
                                         Universal search
@@ -803,15 +876,17 @@ const BrowsePage: React.FC = () => {
                                         ))}
                                     </div>
                                 )}
-                            </div>
+                            </motion.div>
                         ) : null}
+                        </AnimatePresence>
                     </div>
-                </div>
+                </motion.section>
 
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
                     {/* Mobile Filter Toggle */}
-                    <div className="lg:hidden w-full flex flex-col sm:flex-row gap-2">
-                         <button onClick={() => setIsSidebarOpen(true)} className="flex-1 flex items-center justify-center gap-2 p-3 font-semibold text-text-primary bg-surface border border-border rounded-lg shadow-sm">
+                    <div className="lg:hidden w-full flex flex-col gap-2">
+                        <div className="flex gap-2">
+                         <button onClick={() => setIsSidebarOpen(true)} className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-border bg-surface p-3 font-semibold text-text-primary shadow-sm">
                             <FilterIcon/> Filters
                             {activeFilterCount > 0 && (
                                 <span className="text-[10px] font-bold bg-text-primary/10 text-text-primary px-2 py-0.5 rounded-full">
@@ -822,13 +897,25 @@ const BrowsePage: React.FC = () => {
                         <select 
                             value={filters.sortBy}
                             onChange={e => setFilters(p => ({...p, sortBy: e.target.value as any}))}
-                            className="flex-1 p-3 bg-surface text-text-primary border border-border rounded-lg font-semibold outline-none"
+                            className="flex-1 rounded-xl border border-border bg-surface p-3 font-semibold text-text-primary outline-none"
                         >
                             <option value="newest">Newest</option>
                             <option value="price_asc">Price: Low to High</option>
                             <option value="price_desc">Price: High to Low</option>
                             <option value="popularity">Popularity</option>
                         </select>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl border border-border bg-surface-soft p-2">
+                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">View</span>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setViewMode('grid')} className={`rounded-lg p-2 transition-colors ${viewMode === 'grid' ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-text-secondary hover:bg-surface'}`}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                </button>
+                                <button onClick={() => setViewMode('list')} className={`rounded-lg p-2 transition-colors ${viewMode === 'list' ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-text-secondary hover:bg-surface'}`}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div className="lg:hidden text-xs text-text-secondary px-1 -mt-1">
                         {isLoading && items.length === 0 ? 'Loading results...' : `${totalItems} results`}
@@ -899,7 +986,16 @@ const BrowsePage: React.FC = () => {
                             </div>
                         ) : items.length > 0 ? (
                             <div className={`grid gap-4 sm:gap-6 animate-fade-in-up ${viewMode === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>
-                                {items.map(item => <ItemCard key={item.id} item={item} onQuickView={setQuickViewItem} viewMode={viewMode} />)}
+                                {items.map((item, index) => (
+                                    <motion.div
+                                        key={item.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.22) }}
+                                    >
+                                        <ItemCard item={item} onQuickView={setQuickViewItem} viewMode={viewMode} />
+                                    </motion.div>
+                                ))}
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center py-20 bg-surface/50 border border-dashed border-border rounded-xl">

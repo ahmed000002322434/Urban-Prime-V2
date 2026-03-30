@@ -28,6 +28,7 @@ const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" heig
 const CartIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>;
 const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
 const ReelsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 5.564v12.872a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2V5.564a2 2 0 0 0-2-2h-15a2 2 0 0 0-2 2z"></path><path d="m10 10.436 5 3.076-5 3.076v-6.152z"></path><path d="M7 3.564v-2"></path><path d="M12 3.564v-2"></path><path d="M17 3.564v-2"></path></svg>;
+const SpotlightIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.2l2.1 5.2L19 10.5l-4.9 2.1L12 18l-2.1-5.4L5 10.5l4.9-2.1z"></path><circle cx="12" cy="12" r="2"></circle></svg>;
 const BattleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m14.5 17.5 7.5-7.5-2.5-2.5-7.5 7.5-2.5-2.5L2 22"/><path d="m18 14 4-4"/><path d="m6 8 4 4"/><path d="M3 21l7-7"/></svg>;
 const LiveIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>;
 const MicIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>;
@@ -325,6 +326,7 @@ const ExploreMenu: React.FC<{ onClose: () => void; onOpenOmni?: () => void }> = 
     const { t } = useTranslation();
     const features = [
         { title: 'Live', desc: 'Shop live streams and creator drops in real time.', link: '/live', icon: <LiveIcon /> },
+        { title: 'Spotlight', desc: 'Premium discovery feed for photos, clips, and creators.', link: '/spotlight', icon: <SpotlightIcon /> },
         { titleKey: 'exploreMenu.pixe.title', descKey: 'exploreMenu.pixe.desc', link: '/reels', icon: <ReelsIcon /> },
         { titleKey: 'exploreMenu.battles.title', descKey: 'exploreMenu.battles.desc', link: '/battles', icon: <BattleIcon /> },
         { titleKey: 'exploreMenu.games.title', descKey: 'exploreMenu.games.desc', link: '/games', icon: <DiamondIcon /> },
@@ -569,6 +571,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         { name: 'Product Battles', path: '/battles' },
         { name: 'Affiliate Program', path: '/affiliate-program' },
         { name: 'Discover Pixe', path: '/reels' },
+        { name: 'Prime Spotlight', path: '/spotlight' },
         { name: 'Create Your AI Store', path: '/create-store' },
         { name: 'Browse All Items', path: '/browse' },
     ];
@@ -773,7 +776,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     <div className={`flex-shrink-0 px-4 py-2 rounded-full ${pillClasses}`}>
                         <Link to="/" className="text-xl font-extrabold font-display flex items-center gap-2">
                            
-                           <img src="/icons/urbanprime.svg" alt="Urban Prime" className="w-10 h-10" />
+                           <img src="/icons/urbanprime-logo.png" alt="Urban Prime logo" className="h-9 w-auto max-w-[3.25rem] object-contain" />
                            <span className="urban-prime-wordmark text-[0.82rem]">Urban Prime</span>
                         </Link>
                     </div>
@@ -791,6 +794,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         
                         <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
                              <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
+                        </NavLink>
+                        <NavLink to="/spotlight" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-sky-500' : 'hover:text-sky-500'}`}>
+                             <span className="text-sky-500"><SpotlightIcon /></span> Spotlight
                         </NavLink>
                         <div onMouseEnter={() => handleMenuEnter('explore')} onMouseLeave={handleMenuLeave}>
                             <button className={`px-3 py-2 text-sm font-semibold rounded-md ${getNavLinkClass({isActive: false})}`}>{t('header.explore')}</button>
@@ -871,7 +877,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                             )}
                             <Link to="/" className="text-[13px] font-extrabold font-display tracking-tight flex items-center gap-1.5">
                                 
-                                <img src="/icons/urbanprime.svg" alt="Urban Prime" className="w-8 h-8" />
+                                <img src="/icons/urbanprime-logo.png" alt="Urban Prime logo" className="h-7 w-auto max-w-[2.5rem] object-contain" />
                                 <span className="urban-prime-wordmark text-[0.72rem]">Urban Prime</span>
                             </Link>
                         </div>
@@ -923,6 +929,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                             </NavLink>
                             <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
                                 <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
+                            </NavLink>
+                            <NavLink to="/spotlight" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-sky-500' : 'hover:text-sky-500'}`}>
+                                <span className="text-sky-500"><SpotlightIcon /></span> Spotlight
                             </NavLink>
                             <motion.button
                                 whileHover={{ scale: 1.05 }}

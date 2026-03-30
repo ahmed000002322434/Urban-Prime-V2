@@ -3,6 +3,7 @@ import type { Item, SubscriptionDetails, CartGroup, CartItem } from '../types';
 import { useNotification } from './NotificationContext';
 import { useAuth } from '../hooks/useAuth';
 import { itemService } from '../services/itemService';
+import { spotlightService } from '../services/spotlightService';
 
 interface CartContextType {
   cartGroups: CartGroup[];
@@ -165,14 +166,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       rentalPeriod?: { startDate: string; endDate: string },
       transactionMode?: 'sale' | 'rent'
     ) => {
+      const resolvedMode: 'sale' | 'rent' =
+        item.listingType === 'rent'
+          ? 'rent'
+          : item.listingType === 'both'
+            ? (transactionMode === 'rent' ? 'rent' : 'sale')
+            : 'sale';
       const alreadyInCart = cartItems.some((i) => i.id === item.id);
       setCartItems((prev) => {
-        const resolvedMode: 'sale' | 'rent' =
-          item.listingType === 'rent'
-            ? 'rent'
-            : item.listingType === 'both'
-              ? (transactionMode === 'rent' ? 'rent' : 'sale')
-              : 'sale';
         const incomingItem: CartItem = {
           ...item,
           quantity,
@@ -222,9 +223,34 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             actorId: user?.id || null,
             actorPersonaId: activePersona?.id || null,
             actorName: user?.name || user?.email || 'Visitor',
-            quantity
+            quantity,
+            metadata: item.spotlightAttribution
+              ? {
+                  spotlightContentId: item.spotlightAttribution.spotlightContentId,
+                  spotlightProductLinkId: item.spotlightAttribution.spotlightProductLinkId || null,
+                  spotlightCampaignKey: item.spotlightAttribution.campaignKey || null,
+                  spotlightAttributionExpiresAt: item.spotlightAttribution.expiresAt || null
+                }
+              : {}
           })
           .catch(() => {});
+        if (item.spotlightAttribution?.spotlightContentId) {
+          void spotlightService.trackProductEvent({
+            content_id: item.spotlightAttribution.spotlightContentId,
+            product_link_id: item.spotlightAttribution.spotlightProductLinkId || null,
+            item_id: item.id,
+            event_name: 'add_to_cart',
+            campaign_key: item.spotlightAttribution.campaignKey || null,
+            viewer_firebase_uid: user?.id || undefined,
+            metadata: {
+              transactionMode: resolveTransactionMode({
+                listingType: item.listingType,
+                transactionMode: resolvedMode
+              }),
+              quantity
+            }
+          }).catch(() => undefined);
+        }
       }
     },
     [showNotification, cartItems, user, activePersona]

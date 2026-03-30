@@ -17,9 +17,15 @@ const EarningsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" he
 const ReviewsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
 const CustomersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
 
+const BriefcaseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 12h20"/></svg>;
+const SparkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 2 1.9 5.7 5.6 1.9-5.6 1.9L12 17l-1.9-5.6-5.6-1.9 5.6-1.9L12 2Z"/><path d="M5 20l1-3 3-1-3-1-1-3-1 3-3 1 3 1 1 3Z"/></svg>;
+const MegaphoneIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M14 7l7-3v16l-7-3"/><path d="M9 16a3 3 0 0 1-3-3V11"/></svg>;
+
 const UserSidebar: React.FC = () => {
-    const { logout, user, activePersona } = useAuth();
-    const isSeller = activePersona?.type === 'seller';
+    const { logout, user, activePersona, hasCapability } = useAuth();
+    const canSell = hasCapability('sell');
+    const canProvide = hasCapability('provide_service');
+    const canAffiliate = hasCapability('affiliate');
 
     return (
         <motion.aside 
@@ -48,12 +54,27 @@ const UserSidebar: React.FC = () => {
                     <SidebarNavItem to="/profile/wishlist" label="Wishlist" icon={<WishlistIcon />} />
                 </SidebarSection>
 
-                {isSeller && (
+                {canSell && (
                     <SidebarSection title="Seller Tools">
                         <SidebarNavItem to="/profile/products" label="Products" icon={<ProductsIcon />} />
                         <SidebarNavItem to="/profile/store" label="Storefront" icon={<StoreIcon />} />
                         <SidebarNavItem to="/profile/earnings" label="Earnings" icon={<EarningsIcon />} />
                         <SidebarNavItem to="/profile/followed-stores" label="Customers" icon={<CustomersIcon />} />
+                    </SidebarSection>
+                )}
+
+                {canProvide && (
+                    <SidebarSection title="Provider Tools">
+                        <SidebarNavItem to="/profile/provider-dashboard" label="Provider Dashboard" icon={<BriefcaseIcon />} />
+                        <SidebarNavItem to="/profile/services/new" label="Create Service" icon={<SparkIcon />} />
+                        <SidebarNavItem to="/profile/workflows" label="Workflows" icon={<SparkIcon />} />
+                    </SidebarSection>
+                )}
+
+                {canAffiliate && (
+                    <SidebarSection title="Affiliate Tools">
+                        <SidebarNavItem to="/profile/affiliate" label="Affiliate Center" icon={<MegaphoneIcon />} />
+                        <SidebarNavItem to="/profile/promotions" label="Promotions" icon={<SparkIcon />} />
                     </SidebarSection>
                 )}
 

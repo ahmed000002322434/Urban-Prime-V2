@@ -24,6 +24,8 @@ const BASE_CAPABILITIES: Record<string, CapabilityState> = {
   admin: 'inactive'
 };
 
+const hasBackendApiKey = Boolean((import.meta.env.VITE_BACKEND_API_KEY as string | undefined)?.trim());
+
 const normalizeStep = (step: unknown): OnboardingStepId => {
   const normalized = String(step || '').toLowerCase();
   if (normalized === 'intent') return 'intent';
@@ -277,26 +279,37 @@ export type OnboardingTelemetryEvent =
 
 const profileOnboardingService = {
   getProfileMe: async (): Promise<UnifiedProfile> => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return getLocalUnifiedProfile();
     }
-    const payload = await request('/profile/me');
-    return mapUnifiedProfile(payload);
+    try {
+      const payload = await request('/profile/me');
+      return mapUnifiedProfile(payload);
+    } catch {
+      return getLocalUnifiedProfile();
+    }
   },
 
   patchProfileMe: async (payload: Record<string, unknown>): Promise<UnifiedProfile> => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return getLocalUnifiedProfile();
     }
-    const response = await request('/profile/me', {
-      method: 'PATCH',
-      body: JSON.stringify(payload)
-    });
-    return mapUnifiedProfile(response);
+    try {
+      const response = await request('/profile/me', {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+      return mapUnifiedProfile(response);
+    } catch {
+      return getLocalUnifiedProfile();
+    }
   },
 
   getOnboardingState: async (): Promise<{ state: UserOnboardingState | null; completion: ProfileCompletion }> => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return {
         state: null,
         completion: {
@@ -314,7 +327,8 @@ const profileOnboardingService = {
   },
 
   saveOnboardingState: async (payload: SaveOnboardingStatePayload): Promise<{ state: UserOnboardingState | null; completion: ProfileCompletion }> => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return {
         state: null,
         completion: {
@@ -335,7 +349,8 @@ const profileOnboardingService = {
   },
 
   completeOnboarding: async (payload: CompleteOnboardingPayload): Promise<UnifiedProfile> => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return getLocalUnifiedProfile();
     }
     const response = await request('/onboarding/complete', {
@@ -349,7 +364,8 @@ const profileOnboardingService = {
     event: OnboardingTelemetryEvent,
     payload: { step?: OnboardingStepId; details?: Record<string, unknown> } = {}
   ) => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return;
     }
     await request('/onboarding/events', {
@@ -363,7 +379,8 @@ const profileOnboardingService = {
   },
 
   bootstrapPersonas: async (payload: { selectedIntents?: OnboardingIntent[]; roleSetup?: Record<string, unknown> }) => {
-    if (!isBackendConfigured()) {
+    const authContext = await getAuthContext();
+    if (!auth.currentUser || (!authContext.token && !hasBackendApiKey)) {
       return [];
     }
     const response = await request('/onboarding/persona-bootstrap', {

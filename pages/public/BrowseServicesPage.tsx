@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { serviceService } from '../../services/itemService';
 import type { Service } from '../../types';
 import Spinner from '../../components/Spinner';
@@ -20,6 +21,7 @@ const BrowseServicesPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [modeFilter, setModeFilter] = useState<'all' | 'instant' | 'proposal' | 'hybrid'>('all');
   const [sortBy, setSortBy] = useState<'relevance' | 'price_asc' | 'price_desc' | 'rating_desc'>('relevance');
+  const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +49,7 @@ const BrowseServicesPage: React.FC = () => {
   }, [services]);
 
   const filteredServices = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
     const filtered = services.filter((service) => {
       if (categoryFilter !== 'all' && String(service.category || '') !== categoryFilter) return false;
       if (modeFilter !== 'all' && (service.mode || 'hybrid') !== modeFilter) return false;
@@ -75,7 +77,7 @@ const BrowseServicesPage: React.FC = () => {
     }
 
     return filtered;
-  }, [categoryFilter, modeFilter, query, services, sortBy]);
+  }, [categoryFilter, deferredQuery, modeFilter, services, sortBy]);
 
   const stats = useMemo(() => {
     const providerIds = new Set(services.map((service) => String(service.provider?.id || '')).filter(Boolean));
@@ -89,8 +91,13 @@ const BrowseServicesPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-20 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-surface via-surface to-surface-soft p-6 shadow-soft sm:p-8">
+      <div className="mx-auto w-full max-w-7xl px-4 pb-[7.2rem] pt-20 sm:px-6 md:pb-24 lg:px-8">
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-surface via-surface to-surface-soft p-6 shadow-soft sm:p-8"
+        >
           <div className="pointer-events-none absolute -left-16 -top-16 h-48 w-48 rounded-full bg-primary/15 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-16 right-0 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
           <div className="relative">
@@ -116,9 +123,14 @@ const BrowseServicesPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </section>
+        </motion.section>
 
-        <section className="mt-5 rounded-2xl border border-border bg-surface p-4 shadow-soft">
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.34, delay: 0.06 }}
+          className="mt-5 rounded-2xl border border-border bg-surface p-4 shadow-soft"
+        >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <input
               type="search"
@@ -160,9 +172,43 @@ const BrowseServicesPage: React.FC = () => {
               <option value="rating_desc">Sort: Highest rated</option>
             </select>
           </div>
-        </section>
+          <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
+            {(['all', 'instant', 'proposal', 'hybrid'] as const).map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                onClick={() => setModeFilter(entry)}
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition ${
+                  modeFilter === entry
+                    ? 'border-primary bg-primary/15 text-primary'
+                    : 'border-border bg-surface-soft text-text-secondary'
+                }`}
+              >
+                {entry}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setCategoryFilter('all');
+                setModeFilter('all');
+                setSortBy('relevance');
+              }}
+              className="whitespace-nowrap rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-primary"
+            >
+              Reset
+            </button>
+          </div>
+        </motion.section>
 
         <section className="mt-5">
+          {!isLoading ? (
+            <div className="mb-3 flex items-center justify-between rounded-xl border border-border bg-surface-soft px-3 py-2 text-xs text-text-secondary">
+              <span>{filteredServices.length} services shown</span>
+              <span className="font-semibold uppercase tracking-[0.12em]">{sortBy.replace('_', ' ')}</span>
+            </div>
+          ) : null}
           {isLoading ? (
             <div className="flex justify-center py-20">
               <Spinner size="lg" />
@@ -180,13 +226,16 @@ const BrowseServicesPage: React.FC = () => {
                 const providerName = service.provider?.name || 'Provider';
                 const previewImage = service.imageUrls?.[0] || '/icons/urbanprime.svg';
                 return (
-                  <article
+                  <motion.article
                     key={service.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22 }}
                     className="group overflow-hidden rounded-2xl border border-border bg-surface shadow-soft transition hover:-translate-y-0.5 hover:border-primary/35"
                   >
                     <Link to={`/service/${service.id}`} className="block">
                       <div className="aspect-[16/10] w-full overflow-hidden bg-surface-soft">
-                        <img src={previewImage} alt={service.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+                        <img src={previewImage} alt={service.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
                       </div>
                     </Link>
                     <div className="p-4">
@@ -227,7 +276,7 @@ const BrowseServicesPage: React.FC = () => {
                         </Link>
                       </div>
                     </div>
-                  </article>
+                  </motion.article>
                 );
               })}
             </div>

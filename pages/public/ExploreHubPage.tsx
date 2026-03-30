@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { itemService, serviceService } from '../../services/itemService';
 
@@ -56,6 +56,7 @@ const ExploreHubPage: React.FC = () => {
     { label: 'Service offers', value: '--' },
     { label: 'Active creators', value: '--' }
   ]);
+  const [collapsedRows, setCollapsedRows] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -155,37 +156,59 @@ const ExploreHubPage: React.FC = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.2 }}
                 transition={{ duration: 0.28, delay: rowIndex * 0.04 }}
-                className="mb-3"
+                className="mb-3 flex items-start justify-between gap-3"
               >
-                <h2 className="text-xl font-bold tracking-tight">{row.title}</h2>
-                <p className="text-sm text-text-secondary">{row.description}</p>
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight">{row.title}</h2>
+                  <p className="text-sm text-text-secondary">{row.description}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCollapsedRows((prev) => ({ ...prev, [row.title]: !prev[row.title] }))}
+                  className="rounded-full border border-border bg-surface-soft px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary hover:bg-surface"
+                >
+                  {collapsedRows[row.title] ? 'Expand' : 'Collapse'}
+                </button>
               </motion.div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {row.cards.map((card, idx) => (
+              <AnimatePresence initial={false}>
+                {!collapsedRows[row.title] ? (
                   <motion.div
-                    key={card.id}
-                    initial={{ opacity: 0, y: 14 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, amount: 0.2 }}
-                    transition={{ duration: 0.25, delay: idx * 0.03 }}
+                    key={`${row.title}-content`}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: 'easeInOut' }}
+                    className="overflow-hidden"
                   >
-                    <Link
-                      to={card.to}
-                      className="group relative block h-full overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/50"
-                    >
-                      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent} opacity-80`} />
-                      <div className="relative">
-                        <span className="inline-flex rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
-                          {card.badge}
-                        </span>
-                        <h3 className="mt-3 text-base font-bold text-text-primary">{card.title}</h3>
-                        <p className="mt-1 text-sm text-text-secondary">{card.subtitle}</p>
-                        <p className="mt-4 text-xs font-semibold text-primary transition group-hover:translate-x-1">Open section &gt;</p>
-                      </div>
-                    </Link>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {row.cards.map((card, idx) => (
+                        <motion.div
+                          key={card.id}
+                          initial={{ opacity: 0, y: 14 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true, amount: 0.2 }}
+                          transition={{ duration: 0.25, delay: idx * 0.03 }}
+                        >
+                          <Link
+                            to={card.to}
+                            className="group relative block h-full overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/50"
+                          >
+                            <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent} opacity-80`} />
+                            <div className="relative">
+                              <span className="inline-flex rounded-full border border-border bg-surface/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
+                                {card.badge}
+                              </span>
+                              <h3 className="mt-3 text-base font-bold text-text-primary">{card.title}</h3>
+                              <p className="mt-1 text-sm text-text-secondary">{card.subtitle}</p>
+                              <p className="mt-4 text-xs font-semibold text-primary transition group-hover:translate-x-1">Open section &gt;</p>
+                            </div>
+                          </Link>
+                        </motion.div>
+                      ))}
+                    </div>
                   </motion.div>
-                ))}
-              </div>
+                ) : null}
+              </AnimatePresence>
             </section>
           ))}
         </div>

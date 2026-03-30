@@ -141,7 +141,9 @@ const ensureSeeded = async () => {
       ...notification,
       id: notification.id || `notification-${Date.now()}`
     }))),
-    ...stores.map((store) => runStore('stores', 'readwrite', (store) => store.put(store))),
+    ...stores.map((storeRecord) =>
+      runStore('stores', 'readwrite', (objectStore) => objectStore.put(storeRecord))
+    ),
     ...threads.map((thread) => runStore('chatThreads', 'readwrite', (store) => store.put({ ...thread, id: thread.id || `thread-${Date.now()}` }))),
     ...messages.map((message) => runStore('chatMessages', 'readwrite', (store) => store.put({ ...message, id: message.id || `message-${Date.now()}` }))),
     ...reviews.map((review) => runStore('reviews', 'readwrite', (store) => store.put(review)))
