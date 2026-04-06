@@ -12,11 +12,12 @@ import { AnimationProvider } from './context/AnimationContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { UploadProvider } from './context/UploadContext';
 import { OmniProvider } from './context/OmniContext';
+import { SpotlightPreferencesProvider } from './components/spotlight/SpotlightPreferencesContext';
+import { useTheme } from './hooks/useTheme';
 
 import Layout from './components/Layout';
 import Spinner from './components/Spinner';
 import WelcomeScreen from './components/WelcomeScreen';
-import StarryBackground from './components/StarryBackground';
 import ContextualThemeWrapper from './components/ContextualThemeWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
 import PersonaRoute from './components/PersonaRoute';
@@ -255,9 +256,15 @@ const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
 const AdminLoginPage = lazy(() => import('./pages/auth/AdminLoginPage'));
 const ProfileHubPage = lazy(() => import('./pages/protected/ProfileHubPage'));
+const StarryBackground = lazy(() => import('./components/StarryBackground'));
+
+const SpotlightRouteFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return <SpotlightPreferencesProvider>{children}</SpotlightPreferencesProvider>;
+};
 
 const AppContent: React.FC = () => {
   const [showWelcomeScreen, setShowWelcomeScreen] = useState(true);
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
       const timer = setTimeout(() => setShowWelcomeScreen(false), 5000);
@@ -296,7 +303,11 @@ const AppContent: React.FC = () => {
 
   return (
     <ContextualThemeWrapper>
-      <StarryBackground />
+      {resolvedTheme === 'obsidian' ? (
+        <Suspense fallback={null}>
+          <StarryBackground />
+        </Suspense>
+      ) : null}
       {showWelcomeScreen && <WelcomeScreen />}
       <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-white dark:bg-dark-background"><Spinner size="lg" /></div>}>
         <Routes>
@@ -332,7 +343,7 @@ const AppContent: React.FC = () => {
             <Route path="item/:id" element={<ItemDetailPage />} />
             <Route path="service/:id" element={<ServiceDetailPage />} />
             <Route path="user/:id" element={<PublicProfilePage />} />
-            <Route path="profile/:username" element={<SpotlightProfilePage />} />
+            <Route path="profile/:username" element={<SpotlightRouteFrame><SpotlightProfilePage /></SpotlightRouteFrame>} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="more" element={<MorePage />} />
             <Route path="messages" element={<MessagesPage />} />
@@ -375,8 +386,8 @@ const AppContent: React.FC = () => {
             <Route path="browse/services" element={<BrowseServicesPage />} />
                 <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
                 <Route path="reels" element={<ReelsPage />} />
-                <Route path="spotlight" element={<SpotlightPage />} />
-                <Route path="spotlight/post/:id" element={<SpotlightPage />} />
+                <Route path="spotlight" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/post/:id" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
                 <Route path="live" element={<LiveShoppingPage />} />
                 <Route path="pixe" element={<PixePage />} />
             <Route path="battles" element={<ProductBattlePage />} />
@@ -556,7 +567,7 @@ const AppContent: React.FC = () => {
                     <Route path="collections" element={<MyCollectionsPage />} />
                     <Route path="go-live" element={<CreateLiveStreamPage />} />
                 <Route path="add-post" element={<CreatePostPage />} />
-                <Route path="spotlight/create" element={<CreateSpotlightPage />} />
+                <Route path="spotlight/create" element={<SpotlightRouteFrame><CreateSpotlightPage /></SpotlightRouteFrame>} />
                 <Route path="track-delivery/:bookingId" element={<TrackDeliveryPage />} />
                     <Route path="disputes" element={<DisputeCenterPage />} />
                     <Route path="analytics/advanced" element={<AdvancedAnalyticsPage />} />
@@ -590,7 +601,7 @@ const AppContent: React.FC = () => {
             </Route>
 
             <Route path="spotlight/create" element={<ProtectedRoute />}>
-                <Route index element={<CreateSpotlightPage />} />
+                <Route index element={<SpotlightRouteFrame><CreateSpotlightPage /></SpotlightRouteFrame>} />
             </Route>
 
             <Route path="create-store" element={<ProtectedRoute />}>

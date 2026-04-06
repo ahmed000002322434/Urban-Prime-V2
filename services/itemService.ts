@@ -285,11 +285,6 @@ const BACKEND_ITEM_SELECT = [
     'status',
     'condition',
     'brand',
-    'brand_id',
-    'brand_catalog_node_id',
-    'brand_match_confidence',
-    'brand_catalog_match_confidence',
-    'brand_match_source',
     'currency',
     'sale_price',
     'rental_price',
@@ -2853,11 +2848,6 @@ export const itemService = {
                         : 'published',
                 condition: itemData.condition || null,
                 brand: itemData.brand || null,
-                brand_id: (itemData as any).brandId || null,
-                brand_catalog_node_id: (itemData as any).brandCatalogNodeId || null,
-                brand_match_confidence: (itemData as any).brandMatchConfidence ?? null,
-                brand_catalog_match_confidence: (itemData as any).brandCatalogMatchConfidence ?? null,
-                brand_match_source: (itemData as any).brandMatchSource || null,
                 currency: 'USD',
                 sale_price: itemData.salePrice ?? (itemData.listingType !== 'rent' ? itemData.price ?? null : null),
                 rental_price: itemData.rentalPrice ?? (itemData.listingType !== 'sale' ? itemData.price ?? null : null),
@@ -2960,11 +2950,6 @@ export const itemService = {
             }
             if (updates.condition !== undefined) payload.condition = updates.condition;
             if (updates.brand !== undefined) payload.brand = updates.brand;
-            if ((updates as any).brandId !== undefined) payload.brand_id = (updates as any).brandId;
-            if ((updates as any).brandCatalogNodeId !== undefined) payload.brand_catalog_node_id = (updates as any).brandCatalogNodeId;
-            if ((updates as any).brandMatchConfidence !== undefined) payload.brand_match_confidence = (updates as any).brandMatchConfidence;
-            if ((updates as any).brandCatalogMatchConfidence !== undefined) payload.brand_catalog_match_confidence = (updates as any).brandCatalogMatchConfidence;
-            if ((updates as any).brandMatchSource !== undefined) payload.brand_match_source = (updates as any).brandMatchSource;
             if (updates.salePrice !== undefined) payload.sale_price = updates.salePrice;
             if (updates.rentalPrice !== undefined) payload.rental_price = updates.rentalPrice;
             if (updates.reservePrice !== undefined) payload.auction_reserve_price = updates.reservePrice;

@@ -315,10 +315,158 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       .eq('user_id', creatorUserId);
   };
 
-  const triggerRecomputeMetrics = async (contentId) => {
+  const normalizeMetricNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const snapshotSpotlightMetrics = (contentId, existingMetrics = {}, delta = {}) => {
+    const nextInt = (field) => Math.max(0, Math.round(normalizeMetricNumber(existingMetrics?.[field]) + normalizeMetricNumber(delta?.[field])));
+    return {
+      content_id: contentId,
+      impressions: nextInt('impressions'),
+      views: nextInt('views'),
+      watch_time_ms: nextInt('watch_time_ms'),
+      likes: nextInt('likes'),
+      comments: nextInt('comments'),
+      saves: nextInt('saves'),
+      shares: nextInt('shares'),
+      dislikes: nextInt('dislikes'),
+      reposts: nextInt('reposts'),
+      reports: nextInt('reports'),
+      product_clicks: nextInt('product_clicks'),
+      product_item_views: nextInt('product_item_views'),
+      product_cart_adds: nextInt('product_cart_adds'),
+      product_purchases: nextInt('product_purchases'),
+      product_revenue_amount: Number(Math.max(0, normalizeMetricNumber(existingMetrics?.product_revenue_amount) + normalizeMetricNumber(delta?.product_revenue_amount)).toFixed(2)),
+      product_ctr: normalizeMetricNumber(existingMetrics?.product_ctr),
+      product_conversion_rate: normalizeMetricNumber(existingMetrics?.product_conversion_rate),
+      engagement_rate: normalizeMetricNumber(existingMetrics?.engagement_rate)
+    };
+  };
+
+  const bumpSpotlightMetrics = async (contentId, delta = {}, existingMetrics = null) => {
+    if (!contentId) return null;
+    try {
+      let currentMetrics = existingMetrics;
+      if (!currentMetrics) {
+        const { data, error } = await supabase
+          .from('spotlight_metrics')
+          .select('content_id,impressions,views,watch_time_ms,likes,comments,saves,shares,dislikes,reposts,reports,product_clicks,product_item_views,product_cart_adds,product_purchases,product_revenue_amount,product_ctr,product_conversion_rate,engagement_rate')
+          .eq('content_id', contentId)
+          .maybeSingle();
+        if (error) throw error;
+        currentMetrics = data || {};
+      }
+
+      const nextMetrics = snapshotSpotlightMetrics(contentId, currentMetrics || {}, delta);
+      const { error } = await supabase
+        .from('spotlight_metrics')
+        .upsert(nextMetrics, { onConflict: 'content_id' });
+      if (error) throw error;
+      return nextMetrics;
+    } catch (error) {
+      console.warn('Spotlight metric update skipped:', safeString(error?.message || error));
+      return existingMetrics || null;
+    }
+  };
+
+  const getSpotlightDecayMultiplier = (publishedAt) => {
+    const ageMs = Math.max(0, Date.now() - new Date(publishedAt || 0).getTime());
+    const ageHours = ageMs / (60 * 60 * 1000);
+    if (ageHours <= 24) return 1.35;
+    if (ageHours <= 72) return 1.0;
+    if (ageHours <= 168) return 0.6;
+    return 0.25;
+  };
+
+  const buildSpotlightScoreSnapshot = (contentRow, metricsRow = {}) => {
+    const likes = normalizeMetricNumber(metricsRow.likes);
+    const comments = normalizeMetricNumber(metricsRow.comments);
+    const saves = normalizeMetricNumber(metricsRow.saves);
+    const shares = normalizeMetricNumber(metricsRow.shares);
+    const views = normalizeMetricNumber(metricsRow.views);
+    const watchTimeMs = normalizeMetricNumber(metricsRow.watch_time_ms);
+    const impressions = normalizeMetricNumber(metricsRow.impressions);
+    const productClicks = normalizeMetricNumber(metricsRow.product_clicks);
+    const productItemViews = normalizeMetricNumber(metricsRow.product_item_views);
+    const productCartAdds = normalizeMetricNumber(metricsRow.product_cart_adds);
+    const productPurchases = normalizeMetricNumber(metricsRow.product_purchases);
+    const productRevenueAmount = normalizeMetricNumber(metricsRow.product_revenue_amount);
+    const engagementPoints =
+      (likes * 4) +
+      (comments * 6) +
+      (saves * 5) +
+      (shares * 7) +
+      Math.log1p(Math.max(0, views)) +
+      Math.min(Math.max(0, watchTimeMs) / 30000, 3);
+    const isPublished = contentRow?.status === 'published' && Boolean(contentRow?.published_at);
+    const decayMultiplier = isPublished ? getSpotlightDecayMultiplier(contentRow.published_at) : 0;
+    const feedScore = Number((engagementPoints * decayMultiplier).toFixed(4));
+    const trendingScore = Number((
+      (engagementPoints * 1.15) +
+      (productClicks * 2) +
+      (productItemViews * 1.25) +
+      (productCartAdds * 3) +
+      (productPurchases * 8) +
+      (productRevenueAmount * 0.05) +
+      (impressions * 0.1)
+    ).toFixed(4));
+    const engagementRate = impressions > 0
+      ? Number(((likes + comments + saves + shares + productClicks + productItemViews + productCartAdds + productPurchases) / impressions).toFixed(4))
+      : Number((likes + comments + saves + shares).toFixed(4));
+    const productCtr = impressions > 0 ? Number((productClicks / impressions).toFixed(4)) : 0;
+    const productConversionRate = productClicks > 0 ? Number((productPurchases / productClicks).toFixed(4)) : 0;
+
+    return {
+      feedScore,
+      trendingScore,
+      engagementRate,
+      productCtr,
+      productConversionRate
+    };
+  };
+
+  const triggerRecomputeMetrics = async (contentId, metricsSnapshot = null, contentSnapshot = null) => {
     if (!contentId) return;
     try {
-      await supabase.rpc('spotlight_recompute_metrics', { p_content_id: contentId });
+      let contentRow = contentSnapshot || null;
+      if (!contentRow || !contentRow.published_at) {
+        const { data } = await supabase
+          .from('spotlight_content')
+          .select('id,published_at,status,creator_user_id')
+          .eq('id', contentId)
+          .maybeSingle();
+        contentRow = data || null;
+      }
+      if (!contentRow) return;
+
+      const metricsRow = metricsSnapshot || (await supabase
+        .from('spotlight_metrics')
+        .select('content_id,impressions,views,watch_time_ms,likes,comments,saves,shares,dislikes,reposts,reports,product_clicks,product_item_views,product_cart_adds,product_purchases,product_revenue_amount,product_ctr,product_conversion_rate,engagement_rate')
+        .eq('content_id', contentId)
+        .maybeSingle()).data || {};
+      const nextScores = buildSpotlightScoreSnapshot(contentRow, metricsRow);
+
+      const { error: metricsError } = await supabase
+        .from('spotlight_metrics')
+        .upsert({
+          content_id: contentId,
+          ...metricsRow,
+          engagement_rate: nextScores.engagementRate,
+          product_ctr: nextScores.productCtr,
+          product_conversion_rate: nextScores.productConversionRate
+        }, { onConflict: 'content_id' });
+      if (metricsError) throw metricsError;
+
+      const { error: contentError } = await supabase
+        .from('spotlight_content')
+        .update({
+          feed_score: nextScores.feedScore,
+          trending_score: nextScores.trendingScore
+        })
+        .eq('id', contentId);
+      if (contentError) throw contentError;
     } catch {
       // ignore recompute failures so user actions can still complete
     }
@@ -392,7 +540,12 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     let viewerFirebaseUid = getRequestFirebaseUid(req);
     if (!viewerFirebaseUid) viewerFirebaseUid = safeString(req.query.viewer_firebase_uid || req.body?.viewer_firebase_uid || '').trim();
     if (!viewerFirebaseUid) return { viewerFirebaseUid: '', viewerUserId: null };
-    const viewerUserId = await resolveUserIdFromFirebaseUid(viewerFirebaseUid).catch(() => null);
+    let viewerUserId = null;
+    try {
+      viewerUserId = await resolveUserIdFromFirebaseUid(viewerFirebaseUid);
+    } catch {
+      viewerUserId = null;
+    }
     return { viewerFirebaseUid, viewerUserId: viewerUserId || null };
   };
 
@@ -578,7 +731,10 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       console.warn('Spotlight feed impression tracking skipped:', error.message || error);
       return;
     }
-    await Promise.all(contentRows.map((row) => triggerRecomputeMetrics(row.id)));
+    await Promise.all(contentRows.map(async (row) => {
+      const nextMetrics = await bumpSpotlightMetrics(row.id, { impressions: 1 });
+      await triggerRecomputeMetrics(row.id, nextMetrics);
+    }));
   };
 
   const hydrateFeedItems = async ({ contentRows, followedCreatorIds }) => {
@@ -1634,12 +1790,16 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         }
       }
 
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase
-        .from('spotlight_metrics')
-        .select('product_clicks,product_item_views,product_cart_adds,product_purchases,product_revenue_amount,product_ctr,product_conversion_rate')
-        .eq('content_id', contentId)
-        .maybeSingle();
+      const productMetricDelta = {
+        impressions: eventName === 'impression' ? 1 : 0,
+        product_clicks: eventName === 'click' ? 1 : 0,
+        product_item_views: eventName === 'view_item' ? 1 : 0,
+        product_cart_adds: eventName === 'add_to_cart' ? 1 : 0,
+        product_purchases: eventName === 'purchase' ? 1 : 0,
+        product_revenue_amount: eventName === 'purchase' ? amount : 0
+      };
+      const nextMetrics = await bumpSpotlightMetrics(contentId, productMetricDelta);
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
       return res.status(201).json({
         data: {
           recorded: true,
@@ -1647,7 +1807,15 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
           event_name: eventName,
           content_id: contentId,
           item_id: itemId,
-          metrics: metrics || null
+          metrics: {
+            product_clicks: Number(nextMetrics?.product_clicks || 0),
+            product_item_views: Number(nextMetrics?.product_item_views || 0),
+            product_cart_adds: Number(nextMetrics?.product_cart_adds || 0),
+            product_purchases: Number(nextMetrics?.product_purchases || 0),
+            product_revenue_amount: Number(nextMetrics?.product_revenue_amount || 0),
+            product_ctr: Number(nextMetrics?.product_ctr || 0),
+            product_conversion_rate: Number(nextMetrics?.product_conversion_rate || 0)
+          }
         }
       });
     } catch (error) {
@@ -1708,9 +1876,9 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         });
       }
 
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('likes').eq('content_id', contentId).maybeSingle();
-      return res.json({ data: { content_id: contentId, liked, likes: Number(metrics?.likes || 0) } });
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { likes: existingLike?.id ? -1 : 1 });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
+      return res.json({ data: { content_id: contentId, liked, likes: Number(nextMetrics?.likes || 0) } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to update like.') });
     }
@@ -1761,9 +1929,9 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         disliked = true;
       }
 
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('dislikes').eq('content_id', contentId).maybeSingle();
-      return res.json({ data: { content_id: contentId, disliked, dislikes: Number(metrics?.dislikes || 0) } });
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { dislikes: existingDislike?.id ? -1 : 1 });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
+      return res.json({ data: { content_id: contentId, disliked, dislikes: Number(nextMetrics?.dislikes || 0) } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to update dislike state.') });
     }
@@ -1812,9 +1980,9 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         saved = true;
       }
 
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('saves').eq('content_id', contentId).maybeSingle();
-      return res.json({ data: { content_id: contentId, saved, saves: Number(metrics?.saves || 0) } });
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { saves: existing?.id ? -1 : 1 });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
+      return res.json({ data: { content_id: contentId, saved, saves: Number(nextMetrics?.saves || 0) } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to update save state.') });
     }
@@ -1844,21 +2012,9 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         return res.status(403).json({ error: 'You cannot access this content.' });
       }
 
-      const { data: existingMetrics } = await supabase.from('spotlight_metrics').select('content_id,shares').eq('content_id', contentId).maybeSingle();
-      if (existingMetrics?.content_id) {
-        const { error } = await supabase
-          .from('spotlight_metrics')
-          .update({ shares: Number(existingMetrics.shares || 0) + 1 })
-          .eq('content_id', contentId);
-        if (error) return res.status(400).json({ error: error.message });
-      } else {
-        const { error } = await supabase.from('spotlight_metrics').insert({ content_id: contentId, shares: 1 });
-        if (error) return res.status(400).json({ error: error.message });
-      }
-
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('shares').eq('content_id', contentId).maybeSingle();
-      return res.json({ data: { content_id: contentId, shares: Number(metrics?.shares || 0) } });
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { shares: 1 });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
+      return res.json({ data: { content_id: contentId, shares: Number(nextMetrics?.shares || 0) } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to track share.') });
     }
@@ -1904,9 +2060,10 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         }
         const { error } = await supabase.from('spotlight_reposts').delete().eq('id', existingRepost.id);
         if (error) return res.status(400).json({ error: error.message });
-        await triggerRecomputeMetrics(contentId);
-        const { data: metrics } = await supabase.from('spotlight_metrics').select('reposts').eq('content_id', contentId).maybeSingle();
-        return res.json({ data: { content_id: contentId, reposted: false, reposts: Number(metrics?.reposts || 0) } });
+        const nextMetrics = await bumpSpotlightMetrics(contentId, { reposts: -1 });
+        await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
+        await refreshCreatorCounters(authContext.userId);
+        return res.json({ data: { content_id: contentId, reposted: false, reposts: Number(nextMetrics?.reposts || 0) } });
       }
 
       const repostPayload = {
@@ -1938,13 +2095,16 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       });
       if (mappingError) return res.status(400).json({ error: mappingError.message });
 
-      await Promise.all([triggerRecomputeMetrics(contentId), refreshCreatorCounters(authContext.userId)]);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('reposts').eq('content_id', contentId).maybeSingle();
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { reposts: 1 });
+      await Promise.all([
+        triggerRecomputeMetrics(contentId, nextMetrics, contentRow),
+        refreshCreatorCounters(authContext.userId)
+      ]);
       return res.status(201).json({
         data: {
           content_id: contentId,
           reposted: true,
-          reposts: Number(metrics?.reposts || 0),
+          reposts: Number(nextMetrics?.reposts || 0),
           content: repostedContent || null
         }
       });
@@ -2016,7 +2176,8 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         .maybeSingle();
       if (error) return res.status(400).json({ error: error.message });
 
-      await triggerRecomputeMetrics(contentId);
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { comments: 1 });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
       await emitSocialNotification({
         type: 'social_comment',
         targetUserId: contentRow.creator_user_id,
@@ -2053,7 +2214,8 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         .update({ status: 'deleted', body: '[deleted]' })
         .eq('id', commentId);
       if (updateError) return res.status(400).json({ error: updateError.message });
-      await triggerRecomputeMetrics(commentRow.content_id);
+      const nextMetrics = await bumpSpotlightMetrics(commentRow.content_id, { comments: -1 });
+      await triggerRecomputeMetrics(commentRow.content_id, nextMetrics);
       return res.status(204).send();
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to delete comment.') });
@@ -2087,11 +2249,19 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         if (error) return res.status(400).json({ error: error.message });
         liked = true;
       }
-      await ignoreSupabaseMutationError(
-        supabase.rpc('spotlight_refresh_comment_like_count', { p_comment_id: commentId })
-      );
-      const { data: refreshed } = await supabase.from('spotlight_comments').select('like_count').eq('id', commentId).maybeSingle();
-      return res.json({ data: { comment_id: commentId, liked, like_count: Number(refreshed?.like_count || 0) } });
+      const { count: likeCount, error: countError } = await supabase
+        .from('spotlight_comment_likes')
+        .select('id', { count: 'exact', head: true })
+        .eq('comment_id', commentId);
+      if (countError) return res.status(400).json({ error: countError.message });
+
+      const nextLikeCount = Number(likeCount || 0);
+      const { error: updateError } = await supabase
+        .from('spotlight_comments')
+        .update({ like_count: nextLikeCount })
+        .eq('id', commentId);
+      if (updateError) return res.status(400).json({ error: updateError.message });
+      return res.json({ data: { comment_id: commentId, liked, like_count: nextLikeCount } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to update comment like.') });
     }
@@ -2152,15 +2322,15 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         return res.status(400).json({ error: insertError.message });
       }
 
-      await triggerRecomputeMetrics(contentId);
-      const { data: metrics } = await supabase.from('spotlight_metrics').select('views,watch_time_ms').eq('content_id', contentId).maybeSingle();
+      const nextMetrics = await bumpSpotlightMetrics(contentId, { views: 1, watch_time_ms: watchTimeMs });
+      await triggerRecomputeMetrics(contentId, nextMetrics, contentRow);
       return res.status(201).json({
         data: {
           counted: true,
           deduped: false,
           content_id: contentId,
-          views: Number(metrics?.views || 0),
-          watch_time_ms: Number(metrics?.watch_time_ms || 0)
+          views: Number(nextMetrics?.views || 0),
+          watch_time_ms: Number(nextMetrics?.watch_time_ms || 0)
         }
       });
     } catch (error) {

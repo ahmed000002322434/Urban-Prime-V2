@@ -2,21 +2,29 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
+import { useCart } from '../../hooks/useCart';
 import { useNotification } from '../../context/NotificationContext';
+import { useSpotlightPreferences } from '../../components/spotlight/SpotlightPreferencesContext';
 import {
   spotlightService,
   type SpotlightComment,
   type SpotlightContextResponse,
   type SpotlightCreator,
+  type SpotlightCreateResult,
   type SpotlightFeedMode,
   type SpotlightItem,
   type SpotlightProductLink
 } from '../../services/spotlightService';
+import { itemService } from '../../services/itemService';
 import { generateImageFromPrompt } from '../../services/geminiService';
 import BackgroundRemovalModal from '../../components/BackgroundRemovalModal';
 import BlueTickBadge from '../../components/spotlight/BlueTickBadge';
 import SpotlightMessageDrawer from '../../components/spotlight/SpotlightMessageDrawer';
+import SpotlightCommerceBridge from '../../components/spotlight/SpotlightCommerceBridge';
 import SpotlightProfileCardModal from '../../components/spotlight/SpotlightProfileCardModal';
+import SpotlightTextCard from '../../components/spotlight/SpotlightTextCard';
+import SpotlightUtilitySheet from '../../components/spotlight/SpotlightUtilitySheet';
+import type { Item } from '../../types';
 
 type SpotlightTab = 'for_you' | 'following';
 
@@ -93,6 +101,10 @@ const GIF_SEARCH_HINTS = [
   'mind blown'
 ];
 
+const RECENT_SEARCHES_STORAGE_KEY = 'urbanprime:spotlight:recent-searches';
+const TRACKED_VIEW_IDS_STORAGE_KEY = 'urbanprime:spotlight:tracked-view-ids';
+const MAX_RECENT_SEARCHES = 6;
+
 const GIF_LIBRARY = [
   { title: 'Celebrate', url: 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif' },
   { title: 'Hype', url: 'https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif' },
@@ -147,31 +159,30 @@ const buildTextPosterDataUrl = (caption: string) => {
     <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1800" viewBox="0 0 1400 1800">
       <defs>
         <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#08111f"/>
-          <stop offset="48%" stop-color="#1d4ed8"/>
-          <stop offset="100%" stop-color="#38bdf8"/>
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f1f5f9"/>
         </linearGradient>
         <radialGradient id="glow1" cx="30%" cy="20%" r="70%">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+          <stop offset="0%" stop-color="#0f172a" stop-opacity="0.05"/>
           <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
         </radialGradient>
         <radialGradient id="glow2" cx="80%" cy="75%" r="60%">
-          <stop offset="0%" stop-color="#0f172a" stop-opacity="0.28"/>
-          <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.08"/>
+          <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
         </radialGradient>
       </defs>
       <rect width="1400" height="1800" fill="url(#bg)" rx="72" />
       <circle cx="300" cy="320" r="220" fill="url(#glow1)" />
       <circle cx="1120" cy="1280" r="260" fill="url(#glow2)" />
-      <rect x="72" y="72" width="1256" height="1656" rx="56" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" />
-      <text x="92" y="170" font-family="Inter, Arial, sans-serif" font-size="30" letter-spacing="6" fill="rgba(255,255,255,0.78)">URBAN PRIME</text>
-      <text x="92" y="248" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800" fill="#ffffff">Prime Spotlight</text>
-      <text x="92" y="320" font-family="Inter, Arial, sans-serif" font-size="28" fill="rgba(255,255,255,0.82)">Created in-feed from a simple text prompt.</text>
-      <rect x="92" y="420" width="410" height="56" rx="28" fill="rgba(255,255,255,0.16)" />
-      <text x="122" y="458" font-family="Inter, Arial, sans-serif" font-size="24" fill="#ffffff">Text-first spotlight post</text>
-      <text x="92" y="640" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="700" fill="#ffffff">${lineSpans}</text>
-      <text x="92" y="1535" font-family="Inter, Arial, sans-serif" font-size="24" letter-spacing="3" fill="rgba(255,255,255,0.72)">Urban Prime • Spotlight</text>
-      <text x="92" y="1605" font-family="Inter, Arial, sans-serif" font-size="26" fill="rgba(255,255,255,0.84)">From input bar to post, without leaving the page.</text>
+      <rect x="72" y="72" width="1256" height="1656" rx="56" fill="rgba(255,255,255,0.78)" stroke="rgba(15,23,42,0.10)" />
+      <text x="92" y="170" font-family="Inter, Arial, sans-serif" font-size="30" letter-spacing="6" fill="#64748b">URBAN PRIME</text>
+      <text x="92" y="248" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800" fill="#0f172a">Prime Spotlight</text>
+      <text x="92" y="320" font-family="Inter, Arial, sans-serif" font-size="28" fill="#475569">Created in-feed from a simple text prompt.</text>
+      <rect x="92" y="420" width="410" height="56" rx="28" fill="rgba(15,23,42,0.05)" />
+      <text x="122" y="458" font-family="Inter, Arial, sans-serif" font-size="24" fill="#0f172a">Text-first spotlight post</text>
+      <text x="92" y="640" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="700" fill="#0f172a">${lineSpans}</text>
+      <text x="92" y="1535" font-family="Inter, Arial, sans-serif" font-size="24" letter-spacing="3" fill="#64748b">Urban Prime • Spotlight</text>
+      <text x="92" y="1605" font-family="Inter, Arial, sans-serif" font-size="26" fill="#334155">From input bar to post, without leaving the page.</text>
     </svg>
   `;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -220,11 +231,15 @@ function SaveIcon() { return <path d="M7 3h10a1 1 0 0 1 1 1v17l-6-3-6 3V4a1 1 0 
 function RepostIcon() { return <path d="M7 7h10a4 4 0 0 1 4 4v2m0 0-2-2m2 2 2-2M17 17H7a4 4 0 0 1-4-4v-2m0 0 2 2m-2-2-2 2" />; }
 function DislikeIcon() { return <path d="M6 15l6-6 6 6M12 9v12" />; }
 function EyeIcon() { return <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7m10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />; }
+function ContextIcon() { return <path d="M4 6h16v9H8l-4 4V6zm4 3h8" />; }
 function LogoMark() { return <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#38bdf8_100%)] text-sm font-black text-white shadow-lg">UP</div>; }
 function SectionLabel({ children }: { children: React.ReactNode }) { return <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">{children}</p>; }
 function ActionPill({ active, label, onClick, children }: { active?: boolean; label: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className={`flex items-center justify-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 ${active ? 'border-slate-950 bg-slate-950 text-white shadow-lg dark:border-white dark:bg-white dark:text-slate-950' : 'border-white/70 bg-white/70 text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200'}`}>
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-center gap-1.5 rounded-[0.9rem] px-3 py-2 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 hover:bg-black/5 hover:shadow-sm dark:hover:bg-white/6 ${active ? 'bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] dark:bg-white dark:text-slate-950' : 'text-slate-700 dark:text-slate-200'}`}
+    >
       <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">{children}</svg>
       <span>{label}</span>
     </button>
@@ -245,7 +260,7 @@ function TrendPill({ label, category, count }: { label: string; category: string
 }
 function FeedSkeleton() {
   return (
-    <div className="rounded-[1.5rem] border border-white/60 bg-white/70 p-4 shadow-xl dark:border-white/10 dark:bg-white/5">
+    <div className="rounded-[1.35rem] border border-white/60 bg-white/70 p-4 shadow-xl dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200/80 dark:bg-white/10" />
         <div className="flex-1 space-y-2">
@@ -253,7 +268,7 @@ function FeedSkeleton() {
           <div className="h-2 w-1/4 animate-pulse rounded-full bg-slate-200/80 dark:bg-white/10" />
         </div>
       </div>
-      <div className="mt-4 h-72 animate-pulse rounded-[1.35rem] bg-gradient-to-br from-slate-200/90 to-slate-300/70 dark:from-white/10 dark:to-white/5" />
+      <div className="mt-4 h-60 animate-pulse rounded-[1.2rem] bg-gradient-to-br from-slate-200/90 to-slate-300/70 sm:h-72 dark:from-white/10 dark:to-white/5" />
       <div className="mt-4 h-3 w-5/6 animate-pulse rounded-full bg-slate-200/80 dark:bg-white/10" />
       <div className="mt-2 h-3 w-2/3 animate-pulse rounded-full bg-slate-200/80 dark:bg-white/10" />
     </div>
@@ -287,16 +302,187 @@ function CommentNode({ comment, onLike, onReply, onDelete }: { comment: Spotligh
   );
 }
 
+type PostActionTone = 'neutral' | 'like' | 'save' | 'context' | 'subtle';
+
+function PostActionChip({
+  icon,
+  label,
+  count,
+  selected = false,
+  tone = 'neutral',
+  pulseKey,
+  onClick,
+  ariaLabel,
+  iconFilled = false
+}: {
+  icon: React.ReactNode;
+  label: string;
+  count?: number | null;
+  selected?: boolean;
+  tone?: PostActionTone;
+  pulseKey?: number;
+  onClick: () => void;
+  ariaLabel?: string;
+  iconFilled?: boolean;
+}) {
+  const toneClass = selected
+    ? tone === 'like'
+      ? 'bg-rose-500/10 text-rose-600 shadow-[0_0_0_1px_rgba(244,63,94,0.08)] dark:bg-rose-400/10 dark:text-rose-200'
+      : tone === 'save'
+        ? 'bg-sky-500/10 text-sky-600 shadow-[0_0_0_1px_rgba(14,165,233,0.08)] dark:bg-sky-400/10 dark:text-sky-200'
+        : tone === 'context'
+          ? 'bg-violet-500/10 text-violet-700 shadow-[0_0_0_1px_rgba(139,92,246,0.08)] dark:bg-violet-400/10 dark:text-violet-200'
+          : 'bg-black/5 text-slate-700 shadow-[0_0_0_1px_rgba(15,23,42,0.06)] dark:bg-white/6 dark:text-white'
+    : tone === 'subtle'
+      ? 'text-slate-500 hover:bg-black/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/6 dark:hover:text-white'
+      : tone === 'context'
+        ? 'text-violet-700 hover:bg-violet-500/8 hover:text-violet-800 dark:text-violet-200 dark:hover:bg-violet-400/10 dark:hover:text-violet-100'
+        : 'text-slate-600 hover:bg-black/5 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/6 dark:hover:text-white';
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel || label}
+      aria-pressed={selected}
+      whileHover={{ scale: 1.03, y: -1 }}
+      whileTap={{ scale: 0.95 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className={`spotlight-action-chip group inline-flex min-h-10 items-center gap-1.5 rounded-[0.95rem] px-2.5 py-2 text-[12px] font-semibold transition duration-200 sm:px-3 ${toneClass}`}
+    >
+      <span className="relative flex h-5 w-5 items-center justify-center transition sm:h-6 sm:w-6">
+        <motion.span
+          key={pulseKey}
+          animate={selected && tone === 'like' ? { scale: [1, 1.28, 1], rotate: [0, -9, 0] } : undefined}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+          className={selected ? 'text-current' : 'text-current'}
+        >
+          <svg viewBox="0 0 24 24" fill={selected && iconFilled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 sm:h-4 sm:w-4">
+            {icon}
+          </svg>
+        </motion.span>
+      </span>
+      <span className="hidden sm:inline">{label}</span>
+      {typeof count === 'number' ? (
+        <span className={`text-[11px] font-semibold tabular-nums ${selected ? 'text-current' : 'text-slate-400 dark:text-slate-500'}`}>
+          {compact(count)}
+        </span>
+      ) : null}
+    </motion.button>
+  );
+}
+
+function PostActionBar({
+  liked,
+  saved,
+  likeCount,
+  commentCount,
+  shareCount,
+  saveCount,
+  viewCount,
+  showViewCounts,
+  onLike,
+  onComment,
+  onShare,
+  onSave,
+  onOpenContext,
+  onOpenViews
+}: {
+  liked: boolean;
+  saved: boolean;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  saveCount: number;
+  viewCount: number;
+  showViewCounts: boolean;
+  onLike: () => void;
+  onComment: () => void;
+  onShare: () => void;
+  onSave: () => void;
+  onOpenContext: () => void;
+  onOpenViews: () => void;
+}) {
+  const [likePulseKey, setLikePulseKey] = useState(0);
+
+  const handleLike = () => {
+    setLikePulseKey((current) => current + 1);
+    onLike();
+  };
+
+  return (
+    <div className="spotlight-action-bar mt-3 flex flex-col gap-2 border-t border-white/10 pt-3 dark:border-white/5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-1.5 sm:justify-start sm:gap-2">
+        <PostActionChip
+          icon={<path d="M12 21s-8-5.1-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.9-8 11-8 11z" />}
+          label="Like"
+          count={likeCount}
+          selected={liked}
+          tone="like"
+          pulseKey={likePulseKey}
+          onClick={handleLike}
+          ariaLabel={liked ? 'Unlike post' : 'Like post'}
+          iconFilled
+        />
+        <PostActionChip
+          icon={<path d="M4 5h16v11H8l-4 3z" />}
+          label="Comment"
+          count={commentCount}
+          onClick={onComment}
+          ariaLabel="Open comments"
+        />
+        <PostActionChip
+          icon={<path d="M16 5a3 3 0 1 0-2.8-4m2.8 4L7 10m0 0 9 5m-9-5V5" />}
+          label="Share"
+          count={shareCount}
+          onClick={onShare}
+          ariaLabel="Share post"
+        />
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-1.5 sm:justify-end sm:gap-2">
+        <PostActionChip
+          icon={<path d="M7 3h10a1 1 0 0 1 1 1v17l-6-3-6 3V4a1 1 0 0 1 1-1z" />}
+          label="Save"
+          count={saveCount}
+          selected={saved}
+          tone="save"
+          onClick={onSave}
+          ariaLabel={saved ? 'Remove from saved' : 'Save post'}
+          iconFilled
+        />
+        {showViewCounts ? (
+          <PostActionChip
+            icon={<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7m10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />}
+            label="Views"
+            count={viewCount}
+            tone="subtle"
+            onClick={onOpenViews}
+            ariaLabel="Open post details"
+          />
+        ) : null}
+        <PostActionChip
+          icon={<path d="M4 6h16v9H8l-4 4V6zm4 3h8" />}
+          label="Context"
+          tone="context"
+          onClick={onOpenContext}
+          ariaLabel="Open post context"
+        />
+      </div>
+    </div>
+  );
+}
+
 function FeedCard({
   item,
   index,
   liked,
-  disliked,
-  reposted,
   saved,
+  compactDensity,
+  reducedMotion,
+  autoplayVideos,
+  showViewCounts,
   onLike,
-  onDislike,
-  onRepost,
   onSave,
   onShare,
   onOpenComment,
@@ -307,18 +493,19 @@ function FeedCard({
   onOpenVideo,
   onOpenProduct,
   onProductImpression,
+  onTrackView,
   onDoubleLike,
   viewerUserId
 }: {
   item: SpotlightItem;
   index: number;
   liked: boolean;
-  disliked: boolean;
-  reposted: boolean;
   saved: boolean;
+  compactDensity: boolean;
+  reducedMotion: boolean;
+  autoplayVideos: boolean;
+  showViewCounts: boolean;
   onLike: (item: SpotlightItem) => void;
-  onDislike: (item: SpotlightItem) => void;
-  onRepost: (item: SpotlightItem) => void;
   onSave: (item: SpotlightItem) => void;
   onShare: (item: SpotlightItem) => void;
   onOpenComment: (item: SpotlightItem) => void;
@@ -329,40 +516,77 @@ function FeedCard({
   onOpenVideo: (item: SpotlightItem) => void;
   onOpenProduct: (item: SpotlightItem, product: SpotlightProductLink) => void;
   onProductImpression: (item: SpotlightItem) => void;
+  onTrackView: (item: SpotlightItem, visibleRatio: number) => void;
   onDoubleLike: (item: SpotlightItem) => void;
   viewerUserId?: string | null;
 }) {
   const tapRef = useRef<number>(0);
   const mediaRef = useRef<HTMLButtonElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [visibleRatio, setVisibleRatio] = useState(0);
+  const viewTimerRef = useRef<number | null>(null);
+  const viewPendingRef = useRef(false);
+  const viewTrackedRef = useRef(false);
 
   useEffect(() => {
-    if (!isVideo(item)) return;
     const node = mediaRef.current;
     if (!node) return;
     const observer = new IntersectionObserver(([entry]) => {
-      setIsVisible(entry.isIntersecting && entry.intersectionRatio >= 0.6);
+      setVisibleRatio(entry.isIntersecting ? entry.intersectionRatio : 0);
     }, { threshold: [0, 0.6, 1], rootMargin: '120px 0px' });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [item]);
+  }, []);
+
+  useEffect(() => {
+    if (viewTimerRef.current !== null) {
+      window.clearTimeout(viewTimerRef.current);
+      viewTimerRef.current = null;
+    }
+
+    if (visibleRatio < 0.6) {
+      viewPendingRef.current = false;
+      return;
+    }
+    if (viewTrackedRef.current || viewPendingRef.current) return;
+
+    const watchTimeMs = isVideo(item) ? 2500 : 1500;
+    viewPendingRef.current = true;
+    viewTimerRef.current = window.setTimeout(() => {
+      viewPendingRef.current = false;
+      if (viewTrackedRef.current) return;
+      viewTrackedRef.current = true;
+      void Promise.resolve(onTrackView(item, visibleRatio)).catch(() => undefined);
+    }, watchTimeMs);
+
+    return () => {
+      if (viewTimerRef.current !== null) {
+        window.clearTimeout(viewTimerRef.current);
+        viewTimerRef.current = null;
+      }
+      viewPendingRef.current = false;
+    };
+  }, [item, onTrackView, visibleRatio]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !isVideo(item)) return;
     video.muted = true;
-    if (isVisible) {
+    if (!autoplayVideos) {
+      video.pause();
+      return;
+    }
+    if (visibleRatio >= 0.6) {
       void video.play().catch(() => undefined);
     } else {
       video.pause();
     }
-  }, [isVisible, item]);
+  }, [autoplayVideos, item, visibleRatio]);
 
   useEffect(() => {
-    if (!isVisible || !Array.isArray(item.products) || item.products.length === 0) return;
+    if (visibleRatio < 0.6 || !Array.isArray(item.products) || item.products.length === 0) return;
     onProductImpression(item);
-  }, [isVisible, item, onProductImpression]);
+  }, [item, onProductImpression, visibleRatio]);
 
   const handleMediaClick = () => {
     const now = Date.now();
@@ -375,49 +599,66 @@ function FeedCard({
     if (isVideo(item)) onOpenVideo(item); else onOpenImage(item);
   };
 
+  const shellClass = isTextSpotlight(item)
+    ? `spotlight-feed-card spotlight-feed-card--text ${compactDensity ? 'mx-1.5 my-2 sm:mx-3 sm:my-3.5' : 'mx-1.5 my-2 sm:mx-4 sm:my-4.5'} rounded-[1.35rem] border border-white/10 bg-slate-950/78 shadow-[0_8px_30px_rgba(0,0,0,0.22)] backdrop-blur-[16px] transition duration-200 ease-out hover:shadow-[0_18px_50px_rgba(0,0,0,0.28)]`
+    : `spotlight-feed-card spotlight-feed-card--media ${compactDensity ? 'mx-1.5 my-2 sm:mx-3 sm:my-3.5' : 'mx-1.5 my-2 sm:mx-4 sm:my-4.5'} rounded-[1.45rem] border border-white/10 bg-slate-950/78 shadow-[0_8px_30px_rgba(0,0,0,0.22)] backdrop-blur-[16px] transition duration-200 ease-out hover:shadow-[0_18px_50px_rgba(0,0,0,0.28)]`;
+
   return (
     <motion.article
       layout
       initial={{ opacity: 0, y: 24, scale: 0.985 }}
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, margin: '-140px' }}
-      transition={{ duration: 0.4, ease: 'easeOut', delay: Math.min(index * 0.04, 0.16) }}
-      whileHover={{ y: -3 }}
-      whileTap={{ scale: 0.995 }}
-      className="mx-2 my-2 rounded-[1.8rem] border border-white/80 bg-white/75 px-3 py-3 shadow-[0_18px_52px_rgba(15,23,42,0.08)] backdrop-blur-3xl transition duration-300 hover:bg-white hover:shadow-[0_26px_68px_rgba(15,23,42,0.13)] dark:border-white/10 dark:bg-white/6 dark:hover:bg-white/10 sm:mx-3 sm:my-3 sm:px-4 sm:py-4">
-      <header className="flex items-start gap-3">
+      transition={{ duration: reducedMotion ? 0.01 : 0.4, ease: 'easeOut', delay: reducedMotion ? 0 : Math.min(index * 0.04, 0.16) }}
+      whileHover={reducedMotion ? undefined : { y: -4 }}
+      whileTap={reducedMotion ? undefined : { scale: 0.995 }}
+      className={`${shellClass} relative isolate`}>
+      <header className="spotlight-feed-header flex flex-col gap-3 px-3 pt-3 sm:flex-row sm:items-start sm:gap-3">
         <button type="button" onClick={() => onOpenProfile(item.creator)} className="shrink-0">
           <img src={safeAvatar(item.creator?.avatar_url)} alt={item.creator?.name || 'Creator'} className="h-11 w-11 rounded-full object-cover shadow-sm transition duration-200 hover:scale-[1.03] sm:h-12 sm:w-12" />
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-[14px] sm:text-[15px]">
-            <button type="button" onClick={() => onOpenProfile(item.creator)} className="truncate font-bold text-slate-950 transition hover:underline dark:text-white">{item.creator?.name || 'Creator'}</button>
+            <button type="button" onClick={() => onOpenProfile(item.creator)} className="truncate font-bold text-white transition hover:underline">{item.creator?.name || 'Creator'}</button>
             {item.creator?.is_verified ? <BlueTickBadge className="h-5 w-5" /> : null}
-            <span className="truncate text-slate-500 dark:text-slate-400">@{(item.creator?.name || 'creator').toLowerCase().replace(/\s+/g, '')}</span>
-            <span className="text-slate-500 dark:text-slate-400">·</span>
-            <span className="text-slate-500 dark:text-slate-400">{formatTimeAgo(item.published_at || item.created_at)}</span>
+            <span className="truncate text-slate-400">@{(item.creator?.name || 'creator').toLowerCase().replace(/\s+/g, '')}</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-400">{formatTimeAgo(item.published_at || item.created_at)}</span>
           </div>
-          <p className="mt-1 text-[14px] leading-6 text-slate-900 dark:text-slate-100 sm:text-[15px]">{item.caption}</p>
+          {!isTextSpotlight(item) ? (
+            <p className="mt-1 text-[14px] leading-6 text-slate-100 sm:text-[15px]">{item.caption}</p>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
           {item.creator && item.creator.id !== viewerUserId ? (
             <button
               onClick={() => onFollow(item.creator)}
-              className={`rounded-full border px-3 py-2 text-[11px] font-bold transition duration-200 hover:-translate-y-0.5 ${item.creator.is_following ? 'border-slate-200 bg-slate-950 text-white shadow-md dark:border-white/10 dark:bg-white dark:text-slate-950' : 'border-slate-200 bg-white text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200'}`}
+              className={`rounded-full border px-3 py-2 text-[11px] font-bold transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(0,0,0,0.16)] ${item.creator.is_following ? 'border-white/10 bg-white/10 text-white shadow-md' : 'border-white/10 bg-slate-900/70 text-slate-200 backdrop-blur-xl'}`}
             >
               {item.creator.is_following ? 'Following' : 'Follow'}
             </button>
           ) : null}
-          <button onClick={() => onOpenComment(item)} className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/5 dark:hover:text-white" aria-label="Open details">
+          <button onClick={() => onOpenComment(item)} className="rounded-full border border-white/10 bg-slate-900/70 p-2 text-slate-300 shadow-sm backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white" aria-label="Open details">
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M6 12h.01M12 12h.01M18 12h.01" /></svg>
           </button>
         </div>
       </header>
 
-      <div className="relative mt-3 overflow-hidden rounded-[1.4rem] border border-slate-200/80 bg-slate-100/70 shadow-[0_12px_30px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5">
-        <button ref={mediaRef} onClick={handleMediaClick} className="group/media relative block w-full overflow-hidden text-left">
-          {isVideo(item) ? (
-            <div className="relative w-full overflow-hidden rounded-[1.15rem] bg-black" style={{ aspectRatio: '9 / 16', maxHeight: '500px' }}>
+        <button
+          ref={mediaRef}
+          onClick={handleMediaClick}
+          className={isTextSpotlight(item)
+            ? 'spotlight-feed-media relative mt-3 block w-full overflow-hidden rounded-[1.25rem] text-left'
+            : 'spotlight-feed-media group/media relative mt-3 block w-full overflow-hidden rounded-[1.25rem] text-left'}
+        >
+          {isTextSpotlight(item) ? (
+            <SpotlightTextCard
+              caption={item.caption}
+              variant="feed"
+              className="w-full"
+            />
+          ) : isVideo(item) ? (
+            <div className="relative w-full max-h-[460px] overflow-hidden rounded-[1.15rem] bg-black sm:max-h-[520px]" style={{ aspectRatio: '9 / 16' }}>
               <video
                 ref={videoRef}
                 src={item.media_url}
@@ -431,19 +672,30 @@ function FeedCard({
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 text-white shadow-2xl backdrop-blur-xl transition duration-200 group-hover/media:scale-105">
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7"><path d="M8 5v14l11-7z" /></svg>
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-white shadow-2xl backdrop-blur-xl transition duration-200 group-hover/media:scale-105 sm:h-16 sm:w-16">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 sm:h-7 sm:w-7"><path d="M8 5v14l11-7z" /></svg>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenVideo(item);
+                }}
+                className="absolute bottom-3 left-3 rounded-full border border-white/15 bg-white/15 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/20"
+              >
+                View video
+              </button>
             </div>
           ) : (
-            <div className="relative w-full overflow-hidden rounded-[1.15rem] bg-slate-100 dark:bg-white/5" style={{ aspectRatio: '4 / 5', maxHeight: '540px' }}>
+            <div className="relative w-full max-h-[440px] overflow-hidden rounded-[1.15rem] bg-transparent sm:max-h-[540px]" style={{ aspectRatio: '4 / 5' }}>
               <img src={item.media_url} alt={item.caption || 'Spotlight post'} loading={index < 3 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.01]" />
             </div>
           )}
+          {!isTextSpotlight(item) ? (
+            <div className="absolute left-3 top-3 rounded-full bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-xl">{getSpotlightMediaLabel(item)}</div>
+          ) : null}
         </button>
-        <div className="absolute left-4 top-4 rounded-full bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-xl">{getSpotlightMediaLabel(item)}</div>
-      </div>
 
       {Array.isArray(item.products) && item.products.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -452,7 +704,7 @@ function FeedCard({
               key={product.id}
               type="button"
               onClick={() => onOpenProduct(item, product)}
-              className={`group/product flex min-w-0 items-center gap-2 rounded-2xl border px-2.5 py-2 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${product.is_primary ? 'border-sky-200 bg-sky-50/90 text-sky-900 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-100' : 'border-white/70 bg-white/80 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200'}`}
+              className={`group/product flex min-w-0 items-center gap-2 rounded-2xl border px-2.5 py-2 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${product.is_primary ? 'border-cyan-300/20 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-slate-900/70 text-slate-200'}`}
             >
               <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-white/5">
                 {product.image_url ? (
@@ -472,40 +724,22 @@ function FeedCard({
         </div>
       ) : null}
 
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-slate-500 dark:text-slate-400 sm:flex sm:flex-wrap sm:items-center sm:gap-6 sm:text-[13px]">
-        <button onClick={() => onLike(item)} className={`flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 ${liked ? 'bg-rose-500/10 text-rose-500 sm:bg-transparent' : 'hover:text-slate-900 dark:hover:text-white'}`}>
-          <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M12 21s-8-5.1-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.9-8 11-8 11z" /></svg>
-          <span>{compact(item.metrics.likes)}</span>
-        </button>
-        <button onClick={() => onDislike(item)} className={`flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 ${disliked ? 'bg-orange-500/10 text-orange-500 sm:bg-transparent' : 'hover:text-slate-900 dark:hover:text-white'}`}>
-          <svg viewBox="0 0 24 24" fill={disliked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M6 15l6-6 6 6M12 9v12" /></svg>
-          <span>{compact(item.metrics.dislikes || 0)}</span>
-        </button>
-        <button onClick={() => onRepost(item)} className={`flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 ${reposted ? 'bg-emerald-500/10 text-emerald-500 sm:bg-transparent' : 'hover:text-slate-900 dark:hover:text-white'}`}>
-          <svg viewBox="0 0 24 24" fill={reposted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M7 7h10a4 4 0 0 1 4 4v2m0 0-2-2m2 2 2-2M17 17H7a4 4 0 0 1-4-4v-2m0 0 2 2m-2-2-2 2" /></svg>
-          <span>{compact(item.metrics.reposts || 0)}</span>
-        </button>
-        <button onClick={() => onOpenComment(item)} className="flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 hover:text-slate-900 dark:hover:text-white">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M4 5h16v11H8l-4 3z" /></svg>
-          <span>{compact(item.metrics.comments)}</span>
-        </button>
-        <button onClick={() => onShare(item)} className="flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 hover:text-slate-900 dark:hover:text-white">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M16 5a3 3 0 1 0-2.8-4m2.8 4L7 10m0 0 9 5m-9-5V5" /></svg>
-          <span>{compact(item.metrics.shares)}</span>
-        </button>
-        <button onClick={() => onSave(item)} className={`flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 ${saved ? 'bg-sky-500/10 text-sky-500 sm:bg-transparent' : 'hover:text-slate-900 dark:hover:text-white'}`}>
-          <svg viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M7 3h10a1 1 0 0 1 1 1v17l-6-3-6 3V4a1 1 0 0 1 1-1z" /></svg>
-          <span>{compact(item.metrics.saves)}</span>
-        </button>
-        <button onClick={() => onOpenContext(item)} className="flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 hover:text-slate-900 dark:hover:text-white">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M4 5h16v10H8l-4 4V5z" /></svg>
-          <span>Context</span>
-        </button>
-        <button onClick={() => onOpenImage(item)} className="flex items-center gap-2 rounded-2xl px-2 py-2 transition sm:rounded-none sm:px-0 sm:py-0 hover:text-slate-900 dark:hover:text-white">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7m10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /></svg>
-          <span>{compact(item.metrics.views)}</span>
-        </button>
-      </div>
+      <PostActionBar
+        liked={liked}
+        saved={saved}
+        likeCount={item.metrics.likes}
+        commentCount={item.metrics.comments}
+        shareCount={item.metrics.shares}
+      saveCount={item.metrics.saves}
+      viewCount={item.metrics.views}
+      showViewCounts={showViewCounts}
+      onLike={() => onLike(item)}
+        onComment={() => onOpenComment(item)}
+        onShare={() => onShare(item)}
+        onSave={() => onSave(item)}
+        onOpenContext={() => onOpenContext(item)}
+        onOpenViews={() => onOpenImage(item)}
+      />
     </motion.article>
   );
 }
@@ -605,8 +839,8 @@ function DetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-2xl md:items-center md:p-4">
-      <div className="flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-white shadow-[0_40px_100px_rgba(0,0,0,0.35)] dark:bg-[#08111f] md:rounded-[2rem]">
+    <div className="spotlight-modal spotlight-detail-modal fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-2xl md:items-center md:p-4">
+      <div className="spotlight-detail-panel flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[2rem] border border-white/10 bg-white shadow-[0_40px_100px_rgba(0,0,0,0.35)] dark:bg-[#08111f] md:rounded-[2rem]">
         <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-white/10">
           <button onClick={onOpenProfile} className="flex items-center gap-3 text-left">
             <img src={safeAvatar(item.creator?.avatar_url)} alt={item.creator?.name || 'Creator'} className="h-11 w-11 rounded-2xl object-cover" />
@@ -623,8 +857,16 @@ function DetailModal({
           </button>
         </div>
         <div className="grid flex-1 min-h-0 lg:grid-cols-[1.25fr_0.95fr]">
-          <div className="relative min-h-0 bg-black">
-            {isVideo(item) ? (
+          <div className={`relative min-h-0 ${isVideo(item) ? 'bg-black' : 'bg-slate-50 dark:bg-slate-950'}`}>
+              {isTextSpotlight(item) ? (
+                <div className="flex h-full min-h-[48vh] items-start justify-center p-4 sm:items-center lg:min-h-[75vh]">
+                  <SpotlightTextCard
+                    caption={item.caption}
+                    variant="detail"
+                    className="w-full max-w-3xl"
+                  />
+                </div>
+            ) : isVideo(item) ? (
               <div className="relative h-full w-full">
                 <video
                   ref={videoRef}
@@ -724,7 +966,8 @@ function ContextModeModal({
   loading,
   onClose,
   onOpenItem,
-  onOpenProduct
+  onOpenProduct,
+  onBuyProduct
 }: {
   item: SpotlightItem | null;
   related: SpotlightItem[];
@@ -736,6 +979,7 @@ function ContextModeModal({
   onClose: () => void;
   onOpenItem: (item: SpotlightItem) => void;
   onOpenProduct: (item: SpotlightItem, product: SpotlightProductLink) => void;
+  onBuyProduct?: (item: SpotlightItem, product: SpotlightProductLink) => void;
 }) {
   if (!item) return null;
 
@@ -747,10 +991,20 @@ function ContextModeModal({
       className="group flex w-full gap-3 rounded-[1.2rem] border border-slate-200/80 bg-white/80 p-2 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-lg dark:border-white/10 dark:bg-white/5"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[1rem] bg-slate-100 dark:bg-white/5">
-        <img src={entry.thumbnail_url || entry.media_url} alt={entry.caption || 'Related post'} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
-        <div className="absolute left-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-          {getSpotlightMediaLabel(entry)}
-        </div>
+        {isTextSpotlight(entry) ? (
+          <SpotlightTextCard
+            caption={entry.caption}
+            variant="tile"
+            className="h-full w-full rounded-[1rem] p-2"
+          />
+        ) : (
+          <>
+            <img src={entry.thumbnail_url || entry.media_url} alt={entry.caption || 'Related post'} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+            <div className="absolute left-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+              {getSpotlightMediaLabel(entry)}
+            </div>
+          </>
+        )}
       </div>
       <div className="min-w-0 flex-1 py-1">
         <div className="flex items-center gap-2">
@@ -763,30 +1017,51 @@ function ContextModeModal({
     </button>
   );
 
-  const renderProductCard = (product: SpotlightProductLink, tone: 'primary' | 'secondary' = 'secondary') => (
-    <button
-      key={product.id}
-      type="button"
-      onClick={() => onOpenProduct(item, product)}
-      className={`group flex w-full gap-3 rounded-[1.2rem] border p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${tone === 'primary' ? 'border-sky-200 bg-sky-50/85 dark:border-sky-400/20 dark:bg-sky-400/10' : 'border-slate-200/80 bg-white/80 dark:border-white/10 dark:bg-white/5'}`}
-    >
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[1rem] bg-slate-100 dark:bg-white/5">
-        {product.image_url ? <img src={product.image_url} alt={product.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
-        {product.is_primary ? (
-          <div className="absolute left-2 top-2 rounded-full bg-sky-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white shadow-sm">
-            Primary
+    const renderProductCard = (product: SpotlightProductLink, tone: 'primary' | 'secondary' = 'secondary') => (
+      <div
+        key={product.id}
+        className={`overflow-hidden rounded-[1.2rem] border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${tone === 'primary' ? 'border-sky-200 bg-sky-50/85 dark:border-sky-400/20 dark:bg-sky-400/10' : 'border-slate-200/80 bg-white/80 dark:border-white/10 dark:bg-white/5'}`}
+      >
+        <button
+          type="button"
+          onClick={() => onOpenProduct(item, product)}
+          className="group flex w-full gap-3 p-3 text-left"
+        >
+          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[1rem] bg-slate-100 dark:bg-white/5">
+            {product.image_url ? <img src={product.image_url} alt={product.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+            {product.is_primary ? (
+              <div className="absolute left-2 top-2 rounded-full bg-sky-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white shadow-sm">
+                Primary
+              </div>
+            ) : null}
           </div>
-        ) : null}
+          <div className="min-w-0 flex-1 py-1">
+            <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{product.title}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {product.sale_price ? `${product.currency || 'USD'} ${product.sale_price}` : product.cta_label}
+            </p>
+            <p className="mt-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500">{product.cta_label}</p>
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-200/60 p-2 dark:border-white/10">
+          <button
+            type="button"
+            onClick={() => onOpenProduct(item, product)}
+            className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+          >
+            View
+          </button>
+          <button
+            type="button"
+            onClick={() => onBuyProduct?.(item, product)}
+            className="rounded-full bg-slate-950 px-3 py-2 text-[11px] font-semibold text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950"
+          >
+            Buy now
+          </button>
+        </div>
       </div>
-      <div className="min-w-0 flex-1 py-1">
-        <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{product.title}</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          {product.sale_price ? `${product.currency || 'USD'} ${product.sale_price}` : product.cta_label}
-        </p>
-        <p className="mt-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500">{product.cta_label}</p>
-      </div>
-    </button>
-  );
+    );
 
   return (
     <AnimatePresence>
@@ -803,7 +1078,7 @@ function ContextModeModal({
           exit={{ x: 28, opacity: 0 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
           onClick={(event) => event.stopPropagation()}
-          className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-white/10 bg-white/92 shadow-[0_40px_100px_rgba(0,0,0,0.38)] backdrop-blur-2xl dark:bg-[#08111f]/96"
+          className="absolute inset-x-0 bottom-0 top-auto flex h-[88vh] w-full max-w-none flex-col rounded-t-[2rem] border-t border-white/15 bg-white/92 shadow-[0_40px_100px_rgba(0,0,0,0.38)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#08111f]/96 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:w-full sm:max-w-[460px] sm:rounded-none sm:border-t-0 sm:border-l"
         >
           <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 px-4 py-4 dark:border-white/10">
             <div>
@@ -864,7 +1139,15 @@ function ContextModeModal({
 
 const PrimeSpotlightPage: React.FC = () => {
   const { user, openAuthModal } = useAuth();
-  const { showNotification } = useNotification();
+  const { addItemToCart } = useCart();
+  const { showNotification, unreadNotificationCount } = useNotification();
+  const { preferences } = useSpotlightPreferences();
+  const spotlightSurfaceStyle = {
+    '--spotlight-surface-alpha': preferences.surfaceOpacity.toFixed(3),
+    '--spotlight-surface-soft-alpha': Math.max(0.04, Math.min(0.18, preferences.surfaceOpacity * 0.42)).toFixed(3),
+    '--spotlight-surface-mix': `${Math.round(Math.min(0.52, Math.max(0.24, preferences.surfaceOpacity + 0.18)) * 100)}%`,
+    '--spotlight-surface-soft-mix': `${Math.round(Math.min(0.36, Math.max(0.12, preferences.surfaceOpacity * 0.55 + 0.08)) * 100)}%`
+  } as React.CSSProperties & Record<string, string>;
   const navigate = useNavigate();
   const { id: routeId } = useParams();
   const { scrollYProgress } = useScroll();
@@ -872,6 +1155,8 @@ const PrimeSpotlightPage: React.FC = () => {
 
   const [tab, setTab] = useState<SpotlightTab>('for_you');
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [items, setItems] = useState<SpotlightItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -894,6 +1179,7 @@ const PrimeSpotlightPage: React.FC = () => {
   const [messageDrawerOpen, setMessageDrawerOpen] = useState(false);
   const [profileCardUsername, setProfileCardUsername] = useState<string | null>(null);
   const [profileCardOpen, setProfileCardOpen] = useState(false);
+  const [utilitySheet, setUtilitySheet] = useState<'notifications' | 'more' | null>(null);
   const [followPrompt, setFollowPrompt] = useState<SpotlightCreator | null>(null);
   const [composerText, setComposerText] = useState('');
   const [composerAttachment, setComposerAttachment] = useState<ComposerAttachment | null>(null);
@@ -916,6 +1202,12 @@ const PrimeSpotlightPage: React.FC = () => {
   const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const followPromptTimerRef = useRef<number | null>(null);
   const trackedProductImpressionsRef = useRef(new Set<string>());
+  const trackedViewIdsRef = useRef(new Set<string>());
+  const pendingLikeIdsRef = useRef(new Set<string>());
+  const pendingSaveIdsRef = useRef(new Set<string>());
+  const pendingCommerceIdsRef = useRef(new Set<string>());
+  const activeViewTimerRef = useRef<number | null>(null);
+  const activeViewPendingRef = useRef(false);
   const activePostId = routeId || null;
   const sessionId = useMemo(() => `spotlight-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, []);
 
@@ -1007,6 +1299,42 @@ const PrimeSpotlightPage: React.FC = () => {
     setActiveItem((current) => (current && current.id === contentId ? mutator(current) : current));
   }, []);
 
+  const recordContentView = useCallback(async (item: SpotlightItem, visibleRatio = 1) => {
+    if (!item?.id || trackedViewIdsRef.current.has(item.id)) return;
+    const watchTimeMs = isVideo(item) ? 2500 : 1500;
+    try {
+      const response = await spotlightService.trackView({
+        content_id: item.id,
+        media_type: isVideo(item) ? 'video' : 'image',
+        watch_time_ms: watchTimeMs,
+        visible_ratio: visibleRatio,
+        session_id: sessionId,
+        viewer_firebase_uid: user?.id
+      });
+      const payload = (response as any)?.data || response;
+      if (payload?.counted || payload?.deduped) {
+        trackedViewIdsRef.current.add(item.id);
+        try {
+          sessionStorage.setItem(TRACKED_VIEW_IDS_STORAGE_KEY, JSON.stringify(Array.from(trackedViewIdsRef.current).slice(-400)));
+        } catch {
+          // ignore storage failures
+        }
+      }
+      if (payload?.counted && typeof payload.views === 'number') {
+        setItemState(item.id, (current) => ({
+          ...current,
+          metrics: {
+            ...current.metrics,
+            views: Number(payload.views || current.metrics.views || 0),
+            watch_time_ms: Number(payload.watch_time_ms || current.metrics.watch_time_ms || 0)
+          }
+        }));
+      }
+    } catch {
+      // Best effort only.
+    }
+  }, [sessionId, setItemState, user?.id]);
+
   const openItem = useCallback(async (item: SpotlightItem) => {
     setActiveItem(item);
     setCommentSort('top');
@@ -1056,6 +1384,33 @@ const PrimeSpotlightPage: React.FC = () => {
     if (!activePostId) return;
     void openRouteItem(activePostId);
   }, [activePostId, openRouteItem]);
+
+  useEffect(() => {
+    if (activeViewTimerRef.current !== null) {
+      window.clearTimeout(activeViewTimerRef.current);
+      activeViewTimerRef.current = null;
+    }
+    if (!activeItem || trackedViewIdsRef.current.has(activeItem.id)) {
+      activeViewPendingRef.current = false;
+      return;
+    }
+    if (activeViewPendingRef.current) return;
+
+    const watchTimeMs = isVideo(activeItem) ? 2500 : 1500;
+    activeViewPendingRef.current = true;
+    activeViewTimerRef.current = window.setTimeout(() => {
+      activeViewPendingRef.current = false;
+      void recordContentView(activeItem, 1);
+    }, watchTimeMs);
+
+    return () => {
+      if (activeViewTimerRef.current !== null) {
+        window.clearTimeout(activeViewTimerRef.current);
+        activeViewTimerRef.current = null;
+      }
+      activeViewPendingRef.current = false;
+    };
+  }, [activeItem, recordContentView]);
 
   useEffect(() => {
     setItems([]);
@@ -1108,6 +1463,37 @@ const PrimeSpotlightPage: React.FC = () => {
       preload.src = src;
     });
   }, [items, search]);
+
+  useEffect(() => {
+    try {
+      const rawRecent = localStorage.getItem(RECENT_SEARCHES_STORAGE_KEY);
+      if (rawRecent) {
+        const parsedRecent = JSON.parse(rawRecent);
+        if (Array.isArray(parsedRecent)) {
+          setRecentSearches(
+            parsedRecent
+              .map((entry) => String(entry || '').trim())
+              .filter(Boolean)
+              .slice(0, MAX_RECENT_SEARCHES)
+          );
+        }
+      }
+    } catch {
+      // ignore invalid stored search history
+    }
+
+    try {
+      const rawViewed = sessionStorage.getItem(TRACKED_VIEW_IDS_STORAGE_KEY);
+      if (rawViewed) {
+        const parsedViewed = JSON.parse(rawViewed);
+        if (Array.isArray(parsedViewed)) {
+          parsedViewed.map((entry) => String(entry || '').trim()).filter(Boolean).forEach((entry) => trackedViewIdsRef.current.add(entry));
+        }
+      }
+    } catch {
+      // ignore invalid stored view history
+    }
+  }, []);
 
   useEffect(() => {
     const draftKey = `urbanprime:spotlight:composer:${user?.id || 'guest'}`;
@@ -1208,6 +1594,20 @@ const PrimeSpotlightPage: React.FC = () => {
     return Array.from(map.values()).slice(0, 6);
   }, [items]);
 
+  const commerceEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const entries: Array<{ item: SpotlightItem; product: SpotlightProductLink }> = [];
+    items.forEach((item) => {
+      (item.products || []).slice(0, 3).forEach((product) => {
+        const key = `${item.id}:${product.id}`;
+        if (!product.item_id || seen.has(key)) return;
+        seen.add(key);
+        entries.push({ item, product });
+      });
+    });
+    return entries.slice(0, 4);
+  }, [items]);
+
   const contextCollections = useMemo(() => {
     if (!contextItem) {
       return { related: [] as SpotlightItem[], sameCreator: [] as SpotlightItem[], similar: [] as SpotlightItem[] };
@@ -1257,6 +1657,8 @@ const PrimeSpotlightPage: React.FC = () => {
 
   const handleLike = async (item: SpotlightItem) => {
     if (!canInteract()) return;
+    if (pendingLikeIdsRef.current.has(item.id)) return;
+    pendingLikeIdsRef.current.add(item.id);
     const liked = likedIds.has(item.id);
     setLikedIds((prev) => {
       const next = new Set(prev);
@@ -1280,6 +1682,8 @@ const PrimeSpotlightPage: React.FC = () => {
       });
       setItemState(item.id, (current) => ({ ...current, metrics: { ...current.metrics, likes: Math.max(0, Number(current.metrics.likes || 0) + (liked ? 1 : -1)) } }));
         showNotification('Unable to update like.');
+    } finally {
+      pendingLikeIdsRef.current.delete(item.id);
     }
   };
 
@@ -1317,6 +1721,8 @@ const PrimeSpotlightPage: React.FC = () => {
 
   const handleSave = async (item: SpotlightItem) => {
     if (!canInteract()) return;
+    if (pendingSaveIdsRef.current.has(item.id)) return;
+    pendingSaveIdsRef.current.add(item.id);
     const saved = savedIds.has(item.id);
     setSavedIds((prev) => {
       const next = new Set(prev);
@@ -1335,6 +1741,8 @@ const PrimeSpotlightPage: React.FC = () => {
       });
       setItemState(item.id, (current) => ({ ...current, metrics: { ...current.metrics, saves: Math.max(0, Number(current.metrics.saves || 0) + (saved ? 1 : -1)) } }));
       showNotification('Unable to update save state.');
+    } finally {
+      pendingSaveIdsRef.current.delete(item.id);
     }
   };
 
@@ -1411,6 +1819,60 @@ const PrimeSpotlightPage: React.FC = () => {
     navigate(buildProductHref(item, product));
   }, [buildProductHref, contextItem?.id, navigate, persistProductAttribution, sessionId, user?.id]);
 
+  const handleBuyProduct = useCallback(async (item: SpotlightItem, product: SpotlightProductLink) => {
+    const actionKey = `${item.id}:${product.id}:buy`;
+    if (pendingCommerceIdsRef.current.has(actionKey)) return;
+    pendingCommerceIdsRef.current.add(actionKey);
+
+    try {
+      persistProductAttribution(product.item_id, item, product);
+      void spotlightService.trackProductEvent({
+        content_id: item.id,
+        product_link_id: product.id,
+        item_id: product.item_id,
+        event_name: 'add_to_cart',
+        campaign_key: product.campaign_key || null,
+        viewer_firebase_uid: user?.id,
+        session_id: sessionId,
+        metadata: {
+          surface: contextItem?.id === item.id ? 'context_mode' : 'spotlight_feed',
+          placement: product.placement,
+          funnel: 'buy_now'
+        }
+      }).catch(() => undefined);
+
+      const fullItem = await itemService.getItemById(product.item_id);
+      if (!fullItem) {
+        navigate(buildProductHref(item, product));
+        return;
+      }
+
+      const listingType = String(fullItem.listingType || product.listing_type || '').toLowerCase();
+      const quickCheckoutEligible =
+        listingType.includes('sale') ||
+        listingType.includes('both') ||
+        typeof fullItem.salePrice === 'number' ||
+        typeof product.sale_price === 'number';
+
+      if (!quickCheckoutEligible) {
+        navigate(buildProductHref(item, product));
+        return;
+      }
+
+      const cartItem = {
+        ...fullItem,
+        spotlightAttribution: buildSpotlightAttribution(item, product)
+      } as Item;
+
+      addItemToCart(cartItem, 1, undefined, undefined, 'sale');
+      navigate('/checkout');
+    } catch (error: any) {
+      showNotification(error?.message || 'Unable to start checkout.');
+    } finally {
+      pendingCommerceIdsRef.current.delete(actionKey);
+    }
+  }, [addItemToCart, buildProductHref, buildSpotlightAttribution, contextItem?.id, navigate, persistProductAttribution, sessionId, showNotification, user?.id]);
+
   const handleFollow = useCallback(async (creator: SpotlightCreator | null) => {
     if (!creator || !canInteract()) return;
     await spotlightService.followCreator(creator.firebase_uid).then((result) => {
@@ -1471,13 +1933,19 @@ const PrimeSpotlightPage: React.FC = () => {
       openAuthModal('login');
       return;
     }
+    setUtilitySheet(null);
+    setProfileCardOpen(false);
+    setProfileCardUsername(null);
     setMessageTarget(creator);
     setMessageDrawerOpen(true);
   };
 
   const openProfileCard = useCallback((creator: SpotlightCreator | null) => {
     if (!creator?.name && !creator?.firebase_uid) return;
-    setProfileCardUsername(creator?.name || creator?.firebase_uid || null);
+    setUtilitySheet(null);
+    setMessageDrawerOpen(false);
+    setMessageTarget(null);
+    setProfileCardUsername(creator?.firebase_uid || creator?.name || null);
     setProfileCardOpen(true);
   }, []);
 
@@ -1486,8 +1954,11 @@ const PrimeSpotlightPage: React.FC = () => {
       openAuthModal('login');
       return;
     }
-    const viewerName = String((user as any)?.name || '').trim() || String(user.id || '').trim();
+    const viewerName = String((user as any)?.firebase_uid || user.id || (user as any)?.name || '').trim();
     if (!viewerName) return;
+    setUtilitySheet(null);
+    setMessageDrawerOpen(false);
+    setMessageTarget(null);
     setProfileCardUsername(viewerName);
     setProfileCardOpen(true);
   }, [openAuthModal, user]);
@@ -1498,7 +1969,26 @@ const PrimeSpotlightPage: React.FC = () => {
       showNotification('Pick a creator to start a chat.');
       return;
     }
+    setUtilitySheet(null);
+    setProfileCardOpen(false);
+    setProfileCardUsername(null);
     openMessageDrawerFor(target);
+  };
+
+  const openNotificationsCard = () => {
+    setMessageDrawerOpen(false);
+    setMessageTarget(null);
+    setProfileCardOpen(false);
+    setProfileCardUsername(null);
+    setUtilitySheet((current) => (current === 'notifications' ? null : 'notifications'));
+  };
+
+  const openMoreCard = () => {
+    setMessageDrawerOpen(false);
+    setMessageTarget(null);
+    setProfileCardOpen(false);
+    setProfileCardUsername(null);
+    setUtilitySheet((current) => (current === 'more' ? null : 'more'));
   };
 
   const handleLikeComment = async (commentId: string) => {
@@ -1698,7 +2188,17 @@ const PrimeSpotlightPage: React.FC = () => {
         hashtags: caption ? caption.match(/#([a-z0-9_]+)/gi)?.map((tag) => tag.replace('#', '')) || [] : [],
         interest_tags: caption ? caption.match(/#([a-z0-9_]+)/gi)?.map((tag) => tag.replace('#', '')) || [] : [],
         status: 'published'
-      });
+      }) as SpotlightCreateResult;
+
+      const createdId = String(created?.id || '').trim();
+      if (!createdId) {
+        showNotification(
+          created?.offline || created?.queued
+            ? 'Saved locally and will sync when the backend is available.'
+            : 'The backend did not confirm this post yet.'
+        );
+        return;
+      }
 
       pushItemToFront(created);
       clearComposerAttachment();
@@ -1712,10 +2212,8 @@ const PrimeSpotlightPage: React.FC = () => {
       setTab('for_you');
       localStorage.removeItem(`urbanprime:spotlight:composer:${user.id}`);
       showNotification('Spotlight posted successfully.');
-      if (created?.id) {
-        await openItem(created);
-        navigate(`/spotlight/post/${created.id}`);
-      }
+      await openItem(created);
+      navigate(`/spotlight/post/${createdId}`);
     } catch (error: any) {
       showNotification(error?.message || 'Failed to create Spotlight post.');
     } finally {
@@ -1754,23 +2252,66 @@ const PrimeSpotlightPage: React.FC = () => {
     setComposerTool((current) => current === 'schedule' ? null : 'schedule');
   }, [canInteract]);
 
+  const commitSearch = useCallback((value: string) => {
+    const term = value.trim();
+    if (!term) return;
+    setSearch(term);
+    setSearchFocused(false);
+    setRecentSearches((current) => {
+      const next = [term, ...current.filter((entry) => entry.toLowerCase() !== term.toLowerCase())].slice(0, MAX_RECENT_SEARCHES);
+      try {
+        localStorage.setItem(RECENT_SEARCHES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
+  }, []);
+
+  const removeRecentSearch = useCallback((value: string) => {
+    setRecentSearches((current) => {
+      const next = current.filter((entry) => entry.toLowerCase() !== value.toLowerCase());
+      try {
+        localStorage.setItem(RECENT_SEARCHES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
+  }, []);
+
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    try {
+      localStorage.removeItem(RECENT_SEARCHES_STORAGE_KEY);
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
+
   const clearSpotlightFilters = useCallback(() => {
     setSearch('');
     setTab('for_you');
+    setSearchFocused(false);
     showNotification('Spotlight filters cleared.');
   }, [showNotification]);
 
   const composerCanEditImage = Boolean(composerAttachment?.mediaType === 'image' && composerAttachment?.previewUrl);
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-[#f5f7fb] text-slate-950 dark:bg-[#08111f] dark:text-white">
+    <div className="h-[100dvh] overflow-hidden bg-background text-primary">
       <motion.div
         className="fixed left-0 top-0 z-[60] h-[2px] w-full origin-left bg-[linear-gradient(90deg,rgba(15,23,42,0.95),rgba(29,78,216,0.95),rgba(56,189,248,0.95))] dark:bg-[linear-gradient(90deg,rgba(255,255,255,0.85),rgba(56,189,248,0.95),rgba(99,102,241,0.95))]"
         style={{ scaleX: scrollYProgress, opacity: heroGlow }}
       />
 
-      <div className="mx-auto grid h-full min-h-0 max-w-[1440px] lg:grid-cols-[240px_minmax(0,1fr)_360px]">
-        <aside className="sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col border-r border-slate-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
+      <div
+        className="spotlight-theme-root mx-auto grid h-full min-h-0 max-w-[1440px] lg:grid-cols-[240px_minmax(0,1fr)_360px]"
+        style={spotlightSurfaceStyle}
+        data-spotlight-density={preferences.compactDensity ? 'compact' : 'regular'}
+        data-spotlight-reduced-motion={preferences.reducedMotion ? 'true' : 'false'}
+      >
+          <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col border-r border-slate-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
           <div className="flex items-center gap-3 px-1 py-2">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#38bdf8_100%)] text-sm font-black text-white shadow-lg">UP</div>
             <div>
@@ -1781,9 +2322,17 @@ const PrimeSpotlightPage: React.FC = () => {
 
           <nav className="mt-4 space-y-1">
             {NAV_ITEMS.map((item) => {
-              const active = item.to === '/spotlight' || (item.to === '/profile/me' && Boolean(user)) || (item.to === '/messages' && messageDrawerOpen);
+              const active = item.to === '/spotlight'
+                || (item.to === '/profile/me' && profileCardOpen)
+                || (item.to === '/messages' && messageDrawerOpen)
+                || (item.to === '/notifications' && utilitySheet === 'notifications')
+                || (item.to === '/more' && utilitySheet === 'more');
+              const isMessages = item.to === '/messages';
+              const isProfile = item.to === '/profile/me';
+              const isNotifications = item.to === '/notifications';
+              const isMore = item.to === '/more';
               return (
-                item.to === '/messages' ? (
+                isMessages ? (
                   <button
                     key={item.to}
                     type="button"
@@ -1797,7 +2346,42 @@ const PrimeSpotlightPage: React.FC = () => {
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
                     <span>{item.label}</span>
                   </button>
-                ) : item.to === '/profile/me' ? (
+                ) : isNotifications ? (
+                  <button
+                    key={item.to}
+                    type="button"
+                    onClick={openNotificationsCard}
+                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                      active
+                        ? 'font-semibold text-slate-950 dark:text-white'
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7">{item.icon()}</svg>
+                      {unreadNotificationCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black leading-none text-white shadow-sm">
+                          {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                ) : isMore ? (
+                  <button
+                    key={item.to}
+                    type="button"
+                    onClick={openMoreCard}
+                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                      active
+                        ? 'font-semibold text-slate-950 dark:text-white'
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
+                    <span>{item.label}</span>
+                  </button>
+                ) : isProfile ? (
                   <button
                     key={item.to}
                     type="button"
@@ -1850,7 +2434,7 @@ const PrimeSpotlightPage: React.FC = () => {
           </div>
         </aside>
 
-        <main ref={mainScrollRef} className="h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain border-x border-slate-200 bg-white scroll-smooth dark:border-white/10 dark:bg-[#0a1018]">
+          <main ref={mainScrollRef} className="spotlight-feed-main h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain border-x border-slate-200 bg-white scroll-smooth pb-[calc(8rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#0a1018] lg:pb-0">
           <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0a1018]/95">
             <div className="grid grid-cols-2">
               {TABS.map((item) => {
@@ -1936,7 +2520,7 @@ const PrimeSpotlightPage: React.FC = () => {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><rect x="4" y="5" width="16" height="15" rx="3" /><path d="M8 3v4M16 3v4M4 10h16" /></svg>
                     Schedule
                   </button>
-                  <button type="button" onClick={() => saveComposerDraft('Draft saved.')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-200" aria-label="Save draft">
+                  <button type="button" onClick={() => saveComposerDraft('Draft saved.')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10" aria-label="Save draft">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M7 3h10a1 1 0 0 1 1 1v17l-6-3-6 3V4a1 1 0 0 1 1-1z" /></svg>
                     Draft
                   </button>
@@ -1979,7 +2563,7 @@ const PrimeSpotlightPage: React.FC = () => {
                   <button
                     onClick={publishComposer}
                     disabled={isPublishingComposer}
-                    className="h-11 rounded-full bg-[#0f1419] px-5 text-sm font-bold text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-slate-950"
+                    className="h-11 rounded-full bg-[linear-gradient(135deg,rgba(15,23,42,1),rgba(37,99,235,0.96),rgba(56,189,248,0.96))] px-5 text-sm font-bold text-white shadow-[0_14px_32px_rgba(37,99,235,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(37,99,235,0.34)] disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {isPublishingComposer ? 'Working...' : composerScheduledFor ? 'Schedule' : 'Post'}
                   </button>
@@ -2003,19 +2587,19 @@ const PrimeSpotlightPage: React.FC = () => {
             ) : null}
             {filteredItems.map((item, index) => (
               <FeedCard
-                key={item.id}
-                item={item}
-                index={index}
-                liked={likedIds.has(item.id)}
-                disliked={dislikedIds.has(item.id)}
-                reposted={repostedIds.has(item.id)}
-                saved={savedIds.has(item.id)}
-                onLike={handleLike}
-                onDislike={handleDislike}
-                onRepost={handleRepost}
-                onSave={handleSave}
-                onShare={handleShare}
-                onOpenComment={handleOpenComments}
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  liked={likedIds.has(item.id)}
+                  saved={savedIds.has(item.id)}
+                  compactDensity={preferences.compactDensity}
+                  reducedMotion={preferences.reducedMotion}
+                  autoplayVideos={preferences.autoplayVideos}
+                  showViewCounts={preferences.showViewCounts}
+                  onLike={handleLike}
+                  onSave={handleSave}
+                  onShare={handleShare}
+                  onOpenComment={handleOpenComments}
                 onFollow={handleFollow}
                 onOpenProfile={openProfileCard}
                 onOpenContext={openContextMode}
@@ -2023,6 +2607,7 @@ const PrimeSpotlightPage: React.FC = () => {
                 onOpenVideo={handleOpenVideo}
                 onOpenProduct={handleOpenProduct}
                 onProductImpression={handleProductImpression}
+                onTrackView={recordContentView}
                 onDoubleLike={handleDoubleLike}
                 viewerUserId={user?.id}
               />
@@ -2032,26 +2617,122 @@ const PrimeSpotlightPage: React.FC = () => {
           </div>
         </main>
 
-        <aside className="sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col gap-4 border-l border-slate-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
+        <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col gap-4 border-l border-slate-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
           <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
-            <div className="mb-4 rounded-[1.4rem] border border-slate-200/80 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-slate-400"><SearchIcon /></svg>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search Spotlight"
-                  className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
-                />
+            <div className="relative mb-4">
+              <div className="rounded-[1.4rem] border border-slate-200/80 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center gap-3">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-slate-400"><SearchIcon /></svg>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setSearchFocused(false), 120);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        commitSearch(search);
+                      }
+                    }}
+                    placeholder="Search Spotlight"
+                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
+                  />
+                </div>
               </div>
+
+              {(searchFocused || Boolean(search.trim())) ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/96 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#09111d]/96"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Recent searches</p>
+                    {recentSearches.length > 0 ? (
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={clearRecentSearches}
+                        className="text-[11px] font-semibold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {recentSearches.length > 0 ? recentSearches.map((term) => (
+                      <div
+                        key={term}
+                        className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                      >
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => commitSearch(term)}
+                          className="px-3 py-1.5 text-left"
+                        >
+                          {term}
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => removeRecentSearch(term)}
+                          className="px-2 py-1.5 text-slate-400 transition hover:text-slate-950 dark:hover:text-white"
+                          aria-label={`Remove ${term} from recent searches`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Your recent searches will appear here.</p>
+                    )}
+                  </div>
+
+                  {trendItems.length > 0 ? (
+                    <div className="mt-4 border-t border-slate-200 pt-3 dark:border-white/10">
+                      <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Try trending</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {trendItems.slice(0, 4).map((trend) => (
+                          <button
+                            key={trend.label}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => commitSearch(`#${trend.label}`)}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                          >
+                            #{trend.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </motion.div>
+              ) : null}
             </div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-[22px] font-black tracking-tight text-slate-950 dark:text-white">Today&apos;s Trending</h2>
               <button onClick={clearSpotlightFilters} className="text-2xl leading-none text-slate-400 transition hover:text-slate-900 dark:hover:text-white" aria-label="Clear filters">×</button>
             </div>
             <div className="space-y-4">
+              <SpotlightCommerceBridge
+                entries={commerceEntries}
+                onOpenProduct={handleOpenProduct}
+                onBuyProduct={handleBuyProduct}
+                quickLinks={[
+                  { label: 'Products', hint: 'Manage your catalog', to: '/profile/products' },
+                  { label: 'Storefront', hint: 'Open your shop', to: '/profile/store' },
+                  { label: 'Cart', hint: 'Review selected items', to: '/cart' },
+                  { label: 'Sales', hint: 'See order flow', to: '/profile/sales' },
+                  { label: 'Checkout', hint: 'Open buyer flow', to: '/checkout' }
+                ]}
+                className="shadow-[0_18px_55px_rgba(15,23,42,0.08)]"
+              />
+
               {trendItems.length > 0 ? trendItems.slice(0, 4).map((trend, index) => (
-                <button key={trend.label} onClick={() => setSearch(`#${trend.label}`)} className="block w-full text-left transition hover:translate-x-0.5">
+                <button key={trend.label} onClick={() => commitSearch(`#${trend.label}`)} className="block w-full text-left transition hover:translate-x-0.5">
                   <p className="text-[15px] font-bold leading-snug text-slate-900 dark:text-white">#{trend.label}</p>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{trend.category} · {compact(trend.count)} posts</p>
                   {index < 3 ? <div className="mt-4 h-px bg-slate-200 dark:bg-white/10" /> : null}
@@ -2097,15 +2778,88 @@ const PrimeSpotlightPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/90 px-3 py-2 backdrop-blur-xl dark:border-white/10 dark:bg-[#09111d]/95 lg:hidden">
-        <div className="mx-auto grid max-w-3xl grid-cols-5 gap-2">
-          <Link to="/" className="rounded-2xl px-2 py-2 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-300">Back to home page</Link>
-          <Link to="/spotlight" className="rounded-2xl bg-slate-950 px-2 py-2 text-center text-[11px] font-semibold text-white dark:bg-white dark:text-slate-950">Spotlight</Link>
-          <Link to="/notifications" className="rounded-2xl px-2 py-2 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-300">Alerts</Link>
-          <button onClick={openViewerProfileCard} className="rounded-2xl px-2 py-2 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-300">Profile</button>
-          <button onClick={openMessagesPanel} className="rounded-2xl px-2 py-2 text-center text-[11px] font-semibold text-slate-500 dark:text-slate-300">Messages</button>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.26, ease: 'easeOut' }}
+        className="fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 px-2.5 lg:hidden"
+      >
+        <div className="spotlight-mobile-dock mx-auto max-w-[34rem] rounded-full border border-white/72 bg-white/88 p-1.5 shadow-[0_20px_60px_rgba(15,23,42,0.24)] backdrop-blur-3xl dark:border-white/10 dark:bg-[#09111d]/96">
+          <div className="grid grid-cols-6 gap-1">
+            {NAV_ITEMS.map((item) => {
+              const shortLabel =
+                item.to === '/'
+                  ? 'Home'
+                  : item.to === '/spotlight'
+                  ? 'Spot'
+                  : item.to === '/notifications'
+                    ? 'Alerts'
+                    : item.to === '/messages'
+                      ? 'Msgs'
+                      : item.to === '/profile/me'
+                        ? 'Profile'
+                        : 'More';
+            const active =
+              item.to === '/spotlight'
+                || (item.to === '/profile/me' && profileCardOpen)
+                || (item.to === '/messages' && messageDrawerOpen)
+                || (item.to === '/notifications' && utilitySheet === 'notifications')
+                || (item.to === '/more' && utilitySheet === 'more');
+              const mobileClass = `flex h-full min-h-[54px] flex-col items-center justify-center gap-0.5 rounded-full px-1.5 py-2 text-center text-[9px] font-semibold transition duration-200 hover:-translate-y-0.5 active:scale-95 ${
+                active
+                  ? 'bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(14,165,233,0.98))] text-white shadow-[0_16px_38px_rgba(15,23,42,0.24)] ring-1 ring-white/30 dark:bg-white dark:text-slate-950 dark:ring-slate-950/10'
+                  : 'bg-white/62 text-slate-500 shadow-[0_8px_20px_rgba(15,23,42,0.06)] dark:bg-white/5 dark:text-slate-300'
+              }`;
+
+            if (item.to === '/messages') {
+              return (
+                <button key={item.to} onClick={openMessagesPanel} className={mobileClass} aria-pressed={active}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
+                  <span className="leading-none">{shortLabel}</span>
+                </button>
+              );
+            }
+            if (item.to === '/notifications') {
+              return (
+                <button key={item.to} onClick={openNotificationsCard} className={mobileClass} aria-pressed={active}>
+                  <span className="relative flex h-5 w-5 items-center justify-center">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
+                    {unreadNotificationCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black leading-none text-white shadow-sm">
+                        {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="leading-none">{shortLabel}</span>
+                </button>
+              );
+            }
+            if (item.to === '/profile/me') {
+              return (
+                <button key={item.to} onClick={openViewerProfileCard} className={mobileClass} aria-pressed={active}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
+                  <span className="leading-none">{shortLabel}</span>
+                </button>
+              );
+            }
+            if (item.to === '/more') {
+              return (
+                <button key={item.to} onClick={openMoreCard} className={mobileClass} aria-pressed={active}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
+                  <span className="leading-none">{shortLabel}</span>
+                </button>
+              );
+            }
+            return (
+              <Link key={item.to} to={item.to} className={mobileClass}>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
+                <span className="leading-none">{shortLabel}</span>
+              </Link>
+            );
+            })}
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {composerTool === 'edit' && composerAttachment?.mediaType === 'image' ? (
         <BackgroundRemovalModal
@@ -2181,9 +2935,9 @@ const PrimeSpotlightPage: React.FC = () => {
                   </div>
                 </button>
               ))}
-            </div>
           </div>
         </div>
+      </div>
       ) : null}
 
       {composerTool === 'emoji' ? (
@@ -2327,6 +3081,18 @@ const PrimeSpotlightPage: React.FC = () => {
         }}
       />
 
+      <SpotlightUtilitySheet
+        open={utilitySheet === 'notifications'}
+        variant="notifications"
+        onClose={() => setUtilitySheet(null)}
+      />
+
+      <SpotlightUtilitySheet
+        open={utilitySheet === 'more'}
+        variant="more"
+        onClose={() => setUtilitySheet(null)}
+      />
+
       <ContextModeModal
         item={contextItem}
         related={contextRelated}
@@ -2341,6 +3107,7 @@ const PrimeSpotlightPage: React.FC = () => {
           void openItem(item);
         }}
         onOpenProduct={handleOpenProduct}
+        onBuyProduct={handleBuyProduct}
       />
 
       <SpotlightProfileCardModal

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import BlueTickBadge from './BlueTickBadge';
+import SpotlightTextCard from './SpotlightTextCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -65,7 +66,7 @@ function PeopleSheet({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 z-20 flex items-end bg-slate-950/35 p-0 sm:items-center sm:justify-center sm:p-6"
+          className="spotlight-modal spotlight-profile-sheet absolute inset-0 z-20 flex items-end bg-black/70 p-0 sm:items-center sm:justify-center sm:p-6"
           onClick={onClose}
         >
           <motion.div
@@ -74,14 +75,14 @@ function PeopleSheet({
             exit={{ y: 24, opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
             onClick={(event) => event.stopPropagation()}
-            className="w-full overflow-hidden rounded-t-[2rem] border border-white/40 bg-white/78 shadow-[0_28px_90px_rgba(15,23,42,0.24)] backdrop-blur-3xl dark:border-white/10 dark:bg-slate-950/88 sm:max-w-2xl sm:rounded-[2rem]"
+            className="spotlight-profile-panel w-full overflow-hidden rounded-t-[2rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_28px_90px_rgba(0,0,0,0.52)] backdrop-blur-3xl sm:max-w-2xl sm:rounded-[2rem]"
           >
-            <div className="flex items-center justify-between border-b border-white/30 px-4 py-4 dark:border-white/10">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">Spotlight social</p>
-                <h3 className="text-lg font-black text-slate-950 dark:text-white">{title}</h3>
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Spotlight social</p>
+                <h3 className="text-lg font-black text-white">{title}</h3>
               </div>
-              <button onClick={onClose} className="rounded-full border border-white/60 bg-white/70 p-2 text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">
+              <button onClick={onClose} className="rounded-full border border-white/10 bg-white/10 p-2 text-white transition hover:-translate-y-0.5 hover:bg-white/15">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-5 w-5"><path d="M6 6l12 12M18 6 6 18" /></svg>
               </button>
             </div>
@@ -275,7 +276,7 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
   const handleShare = useCallback(async () => {
     if (!profile) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/profile/${encodeURIComponent(profile.username || username || profile.name)}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/profile/${encodeURIComponent(profile.firebase_uid || profile.username || username || profile.name)}`);
       showNotification('Profile link copied.');
     } catch {
       showNotification('Unable to copy profile link.');
@@ -330,7 +331,7 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
             exit={{ opacity: 0, y: 26, scale: 0.97 }}
             transition={{ duration: 0.24, ease: 'easeOut' }}
             onClick={(event) => event.stopPropagation()}
-            className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[2rem] border border-white/35 bg-white/70 shadow-[0_40px_120px_rgba(15,23,42,0.28)] backdrop-blur-[28px] dark:border-white/10 dark:bg-slate-950/86 sm:rounded-[2.4rem]"
+            className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[1.55rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_28px_80px_rgba(0,0,0,0.52)] backdrop-blur-[28px] sm:rounded-[2.4rem]"
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
               <div className="absolute -left-16 top-10 h-44 w-44 rounded-full bg-sky-400/18 blur-3xl" />
@@ -338,13 +339,13 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
               <div className="absolute bottom-10 left-1/3 h-44 w-44 rounded-full bg-cyan-300/14 blur-3xl" />
             </div>
 
-            <div className="relative border-b border-white/30 px-4 py-4 dark:border-white/10 sm:px-6">
+            <div className="relative border-b border-white/10 px-3 py-3 sm:px-6 sm:py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500">Prime identity</p>
-                  <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950 dark:text-white">Spotlight profile card</h2>
+                  <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-300">Prime identity</p>
+                  <h2 className="mt-1 text-xl font-black tracking-tight text-white">Spotlight profile card</h2>
                 </div>
-                <button onClick={onClose} className="rounded-full border border-white/60 bg-white/75 p-2 text-slate-700 transition hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">
+                <button onClick={onClose} className="rounded-full border border-white/10 bg-white/10 p-2 text-white transition hover:-translate-y-0.5 hover:bg-white/15">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-5 w-5"><path d="M6 6l12 12M18 6 6 18" /></svg>
                 </button>
               </div>
@@ -353,62 +354,62 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
             <div className="relative min-h-0 flex-1 overflow-y-auto">
               {loading && !payload ? (
                 <div className="space-y-5 p-4 sm:p-6">
-                  <div className="h-56 animate-pulse rounded-[2rem] bg-white/55 dark:bg-white/5" />
+                  <div className="h-56 animate-pulse rounded-[2rem] bg-white/5" />
                   <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/55 dark:bg-white/5" />
-                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/55 dark:bg-white/5" />
+                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/5" />
+                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/5" />
                   </div>
                 </div>
               ) : null}
 
               {!loading && !payload ? (
-                <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-300">
+                <div className="p-6 text-center text-sm text-slate-300">
                   Profile not found.
                 </div>
               ) : null}
 
               {payload && profile ? (
-                <div className="space-y-5 p-4 sm:p-6">
-                  <section className="overflow-hidden rounded-[2rem] border border-white/40 bg-white/55 shadow-[0_22px_70px_rgba(15,23,42,0.14)] backdrop-blur-3xl dark:border-white/10 dark:bg-white/5">
-                    <div className="relative h-56 overflow-hidden bg-[linear-gradient(135deg,rgba(8,17,31,0.98),rgba(29,78,216,0.86),rgba(103,232,249,0.55))]">
+                <div className="space-y-4 p-3 sm:space-y-5 sm:p-6">
+                  <section className="overflow-hidden rounded-[1.55rem] border border-white/10 bg-slate-950/78 shadow-[0_22px_70px_rgba(0,0,0,0.28)] backdrop-blur-3xl sm:rounded-[2rem]">
+                    <div className="relative h-44 overflow-hidden bg-[linear-gradient(135deg,rgba(8,17,31,0.98),rgba(29,78,216,0.86),rgba(103,232,249,0.55))] sm:h-56">
                       <div className="absolute left-10 top-12 h-28 w-28 rounded-full border border-white/25 bg-white/12 backdrop-blur-2xl" />
                       <div className="absolute right-10 top-8 h-36 w-36 rounded-full border border-white/20 bg-white/10 backdrop-blur-2xl" />
                       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/20 to-transparent" />
                     </div>
 
-                    <div className="px-4 pb-4 sm:px-6 sm:pb-6">
-                      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                        <div className="-mt-16 flex flex-col gap-4 sm:flex-row sm:items-end">
-                          <img src={safeAvatar(profile.avatar_url)} alt={profile.name} className="h-28 w-28 rounded-[1.8rem] border-4 border-white object-cover shadow-[0_18px_50px_rgba(15,23,42,0.28)] dark:border-slate-950 sm:h-32 sm:w-32" />
-                          <div className="pb-1">
+                    <div className="px-3 pb-3 sm:px-6 sm:pb-6">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="-mt-12 flex flex-col gap-4 sm:-mt-16 sm:flex-row sm:items-end">
+                          <img src={safeAvatar(profile.avatar_url)} alt={profile.name} className="h-24 w-24 rounded-[1.5rem] border-4 border-white object-cover shadow-[0_18px_50px_rgba(15,23,42,0.28)] dark:border-slate-950 sm:h-32 sm:w-32" />
+                          <div className="pb-0 sm:pb-1 max-sm:text-center">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-2xl font-black tracking-tight text-slate-950 dark:text-white sm:text-3xl">{profile.name}</h3>
+                              <h3 className="text-2xl font-black tracking-tight text-white sm:text-slate-950 dark:sm:text-white sm:text-3xl">{profile.name}</h3>
                               {profile.is_verified ? <BlueTickBadge className="h-6 w-6" /> : null}
                             </div>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">@{profile.username || username}</p>
-                            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">{profile.bio || 'This creator has not added a bio yet.'}</p>
+                            <p className="mt-1 text-sm text-slate-300">@{profile.username || username}</p>
+                            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">{profile.bio || 'This creator has not added a bio yet.'}</p>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap">
                           {isSelf ? (
                             <>
-                              <button className="rounded-full border border-white/50 bg-white/72 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">Your profile</button>
-                              <button onClick={handleShare} className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950">Share</button>
+                              <button className="w-full rounded-full border border-white/10 bg-slate-900/70 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">Your profile</button>
+                              <button onClick={handleShare} className="w-full rounded-full bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] transition hover:brightness-110 sm:w-auto">Share</button>
                             </>
                           ) : (
                             <>
-                              <button onClick={() => void handleToggleFollow(creatorTarget)} className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${isFollowing ? 'border border-white/50 bg-slate-950 text-white dark:border-white/10 dark:bg-white dark:text-slate-950' : 'bg-sky-500 text-white hover:brightness-110 dark:bg-sky-400 dark:text-slate-950'}`}>
+                              <button onClick={() => void handleToggleFollow(creatorTarget)} className={`w-full rounded-full px-4 py-2.5 text-sm font-semibold transition sm:w-auto ${isFollowing ? 'border border-white/10 bg-slate-900/80 text-white hover:bg-slate-900' : 'bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] hover:brightness-110'}`}>
                                 {isFollowing ? 'Following' : 'Follow'}
                               </button>
-                              <button onClick={handleMessage} className="rounded-full border border-white/50 bg-white/72 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">Message</button>
+                              <button onClick={handleMessage} className="w-full rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">Message</button>
                               <div className="relative">
-                                <button onClick={() => setMoreOpen((current) => !current)} className="rounded-full border border-white/50 bg-white/72 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">More</button>
+                                <button onClick={() => setMoreOpen((current) => !current)} className="w-full rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">More</button>
                                 {moreOpen ? (
-                                  <div className="absolute right-0 top-full z-10 mt-2 w-48 overflow-hidden rounded-[1.2rem] border border-white/50 bg-white/88 p-2 shadow-xl backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90">
-                                    <button onClick={handleShare} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/5">Copy profile link</button>
-                                    <button onClick={() => void handleRestrict()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/5">Restrict</button>
-                                    <button onClick={() => void handleBlock()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10">Block</button>
+                                  <div className="absolute right-0 top-full z-10 mt-2 w-48 overflow-hidden rounded-[1.2rem] border border-white/10 bg-slate-950/96 p-2 shadow-xl backdrop-blur-2xl">
+                                    <button onClick={handleShare} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-white/5">Copy profile link</button>
+                                    <button onClick={() => void handleRestrict()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-white/5">Restrict</button>
+                                    <button onClick={() => void handleBlock()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-300 hover:bg-rose-500/10">Block</button>
                                   </div>
                                 ) : null}
                               </div>
@@ -417,35 +418,35 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <button onClick={() => setPeopleTab('followers')} className="rounded-[1.5rem] border border-white/35 bg-white/60 px-4 py-4 text-left shadow-sm backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-white/80 dark:border-white/10 dark:bg-white/5">
-                          <span className="block text-xl font-black text-slate-950 dark:text-white">{compact(profile.followers_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Followers</span>
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
+                        <button onClick={() => setPeopleTab('followers')} className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-left text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-slate-900 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                          <span className="block text-xl font-black text-white">{compact(profile.followers_count)}</span>
+                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Followers</span>
                         </button>
-                        <button onClick={() => setPeopleTab('following')} className="rounded-[1.5rem] border border-white/35 bg-white/60 px-4 py-4 text-left shadow-sm backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-white/80 dark:border-white/10 dark:bg-white/5">
-                          <span className="block text-xl font-black text-slate-950 dark:text-white">{compact(profile.following_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Following</span>
+                        <button onClick={() => setPeopleTab('following')} className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-left text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-slate-900 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                          <span className="block text-xl font-black text-white">{compact(profile.following_count)}</span>
+                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Following</span>
                         </button>
-                        <div className="rounded-[1.5rem] border border-white/35 bg-white/60 px-4 py-4 shadow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-white/5">
-                          <span className="block text-xl font-black text-slate-950 dark:text-white">{compact(profile.posts_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Posts</span>
+                        <div className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                          <span className="block text-xl font-black text-white">{compact(profile.posts_count)}</span>
+                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Posts</span>
                         </div>
-                        <div className="rounded-[1.5rem] border border-white/35 bg-white/60 px-4 py-4 shadow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-white/5">
-                          <span className="block text-xl font-black text-slate-950 dark:text-white">{compact(profile.reels_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Media</span>
+                        <div className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:rounded-[1.5rem] sm:px-4 sm:py-4">
+                          <span className="block text-xl font-black text-white">{compact(profile.reels_count)}</span>
+                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Media</span>
                         </div>
                       </div>
                     </div>
                   </section>
 
                   <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <section className="rounded-[2rem] border border-white/35 bg-white/58 p-4 shadow-[0_22px_70px_rgba(15,23,42,0.12)] backdrop-blur-3xl dark:border-white/10 dark:bg-white/5 sm:p-5">
+                    <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-4 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl sm:p-5">
                       <div className="flex flex-wrap gap-2">
                         {PROFILE_TABS.map((key) => (
                           <button
                             key={key}
                             onClick={() => setTab(key)}
-                            className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${tab === key ? 'bg-slate-950 text-white shadow-lg dark:bg-white dark:text-slate-950' : 'bg-white/78 text-slate-700 hover:bg-white dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'}`}
+                            className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${tab === key ? 'bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] text-white shadow-[0_14px_35px_rgba(99,102,241,0.25)]' : 'border border-white/10 bg-slate-900/70 text-slate-200 hover:bg-slate-900'}`}
                           >
                             {key.toUpperCase()}
                           </button>
@@ -460,18 +461,30 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
                               onClose();
                               onOpenItem(item);
                             }}
-                            className="group overflow-hidden rounded-[1.5rem] border border-white/35 bg-white/68 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-white/82 dark:border-white/10 dark:bg-white/5"
+                            className="group overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-900/70 text-left shadow-[0_16px_35px_rgba(0,0,0,0.22)] transition duration-200 hover:-translate-y-0.5 hover:bg-slate-900"
                           >
-                            <div className="relative aspect-[4/5] overflow-hidden bg-slate-100 dark:bg-white/5">
-                              <img src={item.thumbnail_url || item.media_url} alt={item.caption || 'Spotlight content'} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
-                              <div className="absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-                                {item.media_type === 'video' ? 'Video' : String(item.media_url || '').startsWith('data:image/svg+xml') ? 'Text' : 'Image'}
-                              </div>
+                            <div className="relative aspect-[4/5] overflow-hidden bg-slate-950/80">
+                              {String(item.media_url || '').startsWith('data:image/svg+xml') ? (
+                                <SpotlightTextCard
+                                  caption={item.caption}
+                                  creatorName={item.creator?.name || 'Creator'}
+                                  timeLabel={formatTimeAgo(item.published_at || item.created_at)}
+                                  variant="tile"
+                                  className="h-full w-full rounded-none p-2"
+                                />
+                              ) : (
+                                <>
+                                  <img src={item.thumbnail_url || item.media_url} alt={item.caption || 'Spotlight content'} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+                                  <div className="absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+                                    {item.media_type === 'video' ? 'Video' : 'Image'}
+                                  </div>
+                                </>
+                              )}
                             </div>
                             <div className="space-y-1 p-3">
-                              <p className="line-clamp-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{item.caption || 'Prime Spotlight post'}</p>
-                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              <p className="line-clamp-2 text-sm leading-relaxed text-slate-200">{item.caption || 'Prime Spotlight post'}</p>
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
                                 <span>{formatTimeAgo(item.published_at || item.created_at)}</span>
                                 <span>{compact(item.metrics.likes)} likes</span>
                               </div>
@@ -480,7 +493,7 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
                         ))}
 
                         {items.length === 0 ? (
-                          <div className="col-span-full rounded-[1.5rem] border border-dashed border-slate-300 bg-white/62 p-8 text-center text-sm text-slate-500 backdrop-blur-2xl dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                          <div className="col-span-full rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/70 p-8 text-center text-sm text-slate-300 backdrop-blur-2xl">
                             No content available for this tab yet.
                           </div>
                         ) : null}
@@ -488,28 +501,28 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
                     </section>
 
                     <aside className="space-y-4">
-                      <section className="rounded-[2rem] border border-white/35 bg-white/58 p-5 shadow-[0_22px_70px_rgba(15,23,42,0.12)] backdrop-blur-3xl dark:border-white/10 dark:bg-white/5">
+                      <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl">
                         <p className="text-[11px] font-black uppercase tracking-[0.28em] text-sky-500">Creator pulse</p>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                          <div className="rounded-[1.4rem] border border-white/35 bg-white/72 px-4 py-4 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Tab focus</p>
-                            <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{compact(counts[tab])}</p>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Visible in {tab}</p>
+                          <div className="rounded-[1.4rem] border border-white/10 bg-slate-900/70 px-4 py-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Tab focus</p>
+                            <p className="mt-2 text-2xl font-black text-white">{compact(counts[tab])}</p>
+                            <p className="mt-1 text-sm text-slate-400">Visible in {tab}</p>
                           </div>
-                          <div className="rounded-[1.4rem] border border-white/35 bg-white/72 px-4 py-4 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Profile state</p>
-                            <p className="mt-2 text-lg font-black text-slate-950 dark:text-white">{isSelf ? 'Owner view' : isFollowing ? 'Following' : 'Discovery mode'}</p>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Built directly inside Spotlight</p>
+                          <div className="rounded-[1.4rem] border border-white/10 bg-slate-900/70 px-4 py-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Profile state</p>
+                            <p className="mt-2 text-lg font-black text-white">{isSelf ? 'Owner view' : isFollowing ? 'Following' : 'Discovery mode'}</p>
+                            <p className="mt-1 text-sm text-slate-400">Built directly inside Spotlight</p>
                           </div>
                         </div>
                       </section>
 
-                      <section className="rounded-[2rem] border border-white/35 bg-white/58 p-5 shadow-[0_22px_70px_rgba(15,23,42,0.12)] backdrop-blur-3xl dark:border-white/10 dark:bg-white/5">
+                      <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl">
                         <p className="text-[11px] font-black uppercase tracking-[0.28em] text-violet-500">Quick actions</p>
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <button onClick={handleShare} className="rounded-full border border-white/50 bg-white/72 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">Share</button>
-                          {!isSelf ? <button onClick={handleMessage} className="rounded-full border border-white/50 bg-white/72 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white">Message</button> : null}
-                          {!isSelf ? <button onClick={() => void handleToggleFollow(creatorTarget)} className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950">{isFollowing ? 'Following' : 'Follow'}</button> : null}
+                          <button onClick={handleShare} className="rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900">Share</button>
+                          {!isSelf ? <button onClick={handleMessage} className="rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900">Message</button> : null}
+                          {!isSelf ? <button onClick={() => void handleToggleFollow(creatorTarget)} className="rounded-full bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] transition hover:brightness-110">{isFollowing ? 'Following' : 'Follow'}</button> : null}
                         </div>
                       </section>
                     </aside>

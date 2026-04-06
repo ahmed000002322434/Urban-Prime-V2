@@ -1,23 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { itemService } from '../../services/itemService';
 import { spotlightService } from '../../services/spotlightService';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
 import type { Item } from '../../types';
 import Spinner from '../../components/Spinner';
-
-// Gravity UI Components
-import { useGravityMouse } from '../../hooks/useGravityMouse';
-import GravityBackground from '../../components/gravity/GravityBackground';
-import FloatingProductHero from '../../components/gravity/FloatingProductHero';
-import GravityPurchasePanel from '../../components/gravity/GravityPurchasePanel';
-import ProductSpecs from '../../components/gravity/ProductSpecs';
-import SellerProfileCard from '../../components/gravity/SellerProfileCard';
-import GravityReviews from '../../components/gravity/GravityReviews';
-import DiscoverMoreProducts from '../../components/gravity/DiscoverMoreProducts';
-
 import LiquidGlassItemDetail from '../../components/gravity/LiquidGlassItemDetail';
 
 const ItemDetailPage: React.FC = () => {
@@ -25,20 +14,16 @@ const ItemDetailPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { addItemToCart } = useCart();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
 
-  // Data State
   const [item, setItem] = useState<Item | null>(null);
   const [relatedItems, setRelatedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Interaction State
   const [activeMode, setActiveMode] = useState<'buy' | 'bid' | 'rent'>('buy');
   const [quantity, setQuantity] = useState(1);
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [rentalDates, setRentalPeriod] = useState({ start: '', end: '' });
-  const [isWishlisted, setIsWishlisted] = useState(false);
   const trackedSpotlightViewRef = useRef<string | null>(null);
 
   const attributionStorageKey = useMemo(() => (id ? `urbanprime:spotlight:attribution:${id}` : ''), [id]);
@@ -87,51 +72,37 @@ const ItemDetailPage: React.FC = () => {
     }
   }, [attributionStorageKey, id, location.search]);
 
-  // Gravity System
-  const { springX, springY, isMobile } = useGravityMouse({ stiffness: 40, damping: 22 });
-
-  // Scroll-driven transforms (window-based – no target ref needed)
-  const { scrollY } = useScroll();
-  const headerOpacity = useTransform(scrollY, [0, 120], [0, 1]);
-  const headerBackdrop = useTransform(scrollY, [0, 120], ['blur(0px)', 'blur(32px)']);
-
   useEffect(() => {
     if (!attributionStorageKey || !spotlightAttribution || typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(attributionStorageKey, JSON.stringify(spotlightAttribution));
     } catch {
-      // ignore attribution persistence failures
+      // ignore persistence issues
     }
   }, [attributionStorageKey, spotlightAttribution]);
 
-  // --- Data Loading ---
   useEffect(() => {
     const loadData = async () => {
       if (!id) return;
       setLoading(true);
       setError(null);
+
       try {
         const fetched = await itemService.getItemById(id);
         if (!fetched) {
           setError('Item not found.');
           return;
         }
+
         setItem(spotlightAttribution ? { ...fetched, spotlightAttribution } : fetched);
-        setBidAmount(
-          Math.ceil(
-            (fetched.auctionDetails?.currentBid || fetched.auctionDetails?.startingBid || fetched.price || 0) + 1
-          )
-        );
+        setBidAmount(Math.ceil((fetched.auctionDetails?.currentBid || fetched.auctionDetails?.startingBid || fetched.price || 0) + 1));
 
         if (fetched.listingType === 'rent') setActiveMode('rent');
         else if (fetched.listingType === 'auction') setActiveMode('bid');
         else setActiveMode('buy');
 
-        const { items: related } = await itemService.getItems(
-          { category: fetched.category },
-          { page: 1, limit: 4 }
-        );
-        setRelatedItems(related.filter((i) => i.id !== fetched.id));
+        const { items: related } = await itemService.getItems({ category: fetched.category }, { page: 1, limit: 4 });
+        setRelatedItems(related.filter((relatedItem) => relatedItem.id !== fetched.id));
       } catch (err) {
         console.error(err);
         setError('Unable to load item details.');
@@ -139,6 +110,7 @@ const ItemDetailPage: React.FC = () => {
         setLoading(false);
       }
     };
+
     loadData();
   }, [id, spotlightAttribution]);
 
@@ -175,7 +147,7 @@ const ItemDetailPage: React.FC = () => {
       }
     }).catch(() => {
       if (!cancelled) {
-        // quietly ignore tracking failures so commerce attribution never blocks the item page
+        // keep commerce attribution non-blocking
       }
     });
 
@@ -184,62 +156,52 @@ const ItemDetailPage: React.FC = () => {
     };
   }, [item?.id, location.pathname, spotlightAttribution, user?.id]);
 
-  // --- Derived Data ---
-  const galleryImages = useMemo(() => {
-    if (!item) return [];
-    const imgs = [...(item.imageUrls || []), ...(item.images || [])];
-    return Array.from(new Set(imgs)).filter(Boolean);
-  }, [item]);
-
-  // --- Handlers ---
-  const handleAddToCart = (checkout = false) => {
+  const handleAddToCart = (checkout = false, mode: 'sale' | 'rent' = activeMode === 'rent' ? 'rent' : 'sale') => {
     if (!item) return;
-    const rentalPeriod =
-      activeMode === 'rent' ? { startDate: rentalDates.start, endDate: rentalDates.end } : undefined;
-    if (activeMode === 'rent' && (!rentalDates.start || !rentalDates.end)) {
+
+    const rentalPeriod = mode === 'rent' ? { startDate: rentalDates.start, endDate: rentalDates.end } : undefined;
+    if (mode === 'rent' && (!rentalDates.start || !rentalDates.end)) {
       alert('Please select rental dates');
       return;
     }
-    addItemToCart(item, activeMode === 'buy' ? quantity : 1, undefined, rentalPeriod, activeMode === 'rent' ? 'rent' : 'sale');
+
+    const checkoutItem = {
+      ...item,
+      price: mode === 'rent'
+        ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
+        : (item.buyNowPrice || item.salePrice || item.price || 0)
+    };
+
+    addItemToCart(checkoutItem, mode === 'rent' ? 1 : quantity, undefined, rentalPeriod, mode);
     if (checkout) navigate('/checkout');
   };
 
-  // --- Loading State ---
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbff] dark:bg-[#020205]">
-        <GravityBackground springX={springX} springY={springY} />
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative z-10 flex flex-col items-center gap-6"
-        >
+      <div className="min-h-screen flex items-center justify-center bg-background text-primary">
+        <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-5">
           <Spinner size="lg" />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-50 animate-pulse">
-            Loading Experience
-          </p>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-60">Loading experience</p>
         </motion.div>
       </div>
     );
   }
 
-  // --- Error State ---
   if (error || !item) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafbff] dark:bg-[#020205]">
-        <GravityBackground springX={springX} springY={springY} />
+      <div className="min-h-screen flex items-center justify-center bg-background text-primary px-4">
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative z-10 gravity-glass p-12 rounded-[48px] text-center max-w-md backdrop-blur-[40px] bg-white/20 dark:bg-black/20 border border-white/15"
+          className="max-w-md rounded-[2rem] border border-white/10 bg-white/80 p-8 text-center shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:bg-white/[0.06]"
         >
-          <p className="text-xl font-black text-text-primary uppercase tracking-wider mb-4">Item Not Found</p>
-          <p className="text-sm text-text-secondary mb-8">{error || 'The item you are looking for does not exist.'}</p>
+          <p className="text-xl font-black uppercase tracking-wider text-text-primary mb-3">Item not found</p>
+          <p className="text-sm text-text-secondary mb-7">{error || 'The item you are looking for does not exist.'}</p>
           <button
             onClick={() => navigate('/browse')}
-            className="px-8 py-3 rounded-2xl bg-primary text-white text-xs font-black uppercase tracking-widest hover:opacity-90 transition-opacity"
+            className="rounded-full bg-slate-950 px-8 py-3 text-xs font-black uppercase tracking-widest text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950"
           >
-            Browse Products
+            Browse products
           </button>
         </motion.div>
       </div>
@@ -247,12 +209,18 @@ const ItemDetailPage: React.FC = () => {
   }
 
   return (
-    <LiquidGlassItemDetail 
-      item={item} 
-      relatedItems={relatedItems} 
-      onAddToCart={handleAddToCart}
+    <LiquidGlassItemDetail
+      item={item}
+      relatedItems={relatedItems}
+      activeMode={activeMode}
+      setActiveMode={setActiveMode}
       quantity={quantity}
       setQuantity={setQuantity}
+      bidAmount={bidAmount}
+      setBidAmount={setBidAmount}
+      rentalDates={rentalDates}
+      setRentalPeriod={setRentalPeriod}
+      onAddToCart={handleAddToCart}
     />
   );
 };

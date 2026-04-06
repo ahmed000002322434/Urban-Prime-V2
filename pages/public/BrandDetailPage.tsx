@@ -284,6 +284,29 @@ const BrandDetailPage: React.FC = () => {
           ) : null}
         </div>
 
+        <div className="mt-6 rounded-3xl border border-border bg-surface p-5 shadow-soft">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">Spotlight brand story</p>
+              <h2 className="mt-2 text-xl font-black">Push this brand into Spotlight discovery</h2>
+              <p className="mt-2 max-w-2xl text-sm text-text-secondary">
+                Spotlight posts can lead shoppers into this brand's product lines, stores, and checkout flow without leaving Urban Prime.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/spotlight" className="rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-soft">
+                Open Spotlight
+              </Link>
+              <Link to="/spotlight/create" className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-110">
+                Create brand post
+              </Link>
+              <Link to={`/brands/${brand.slug}/all`} className="rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold text-text-primary hover:bg-surface-soft">
+                Browse all products
+              </Link>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-6 rounded-3xl border border-border bg-surface p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Product Lines</h2>

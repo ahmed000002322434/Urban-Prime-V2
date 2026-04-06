@@ -1,0 +1,27 @@
+# Urban Prime
+
+Urban Prime is a premium marketplace, creator hub, and social discovery platform.
+
+## Public surfaces
+- `/` Home and marketplace discovery
+- `/spotlight` Prime Spotlight social feed
+- `/spotlight/post/:id` Spotlight post detail
+- `/reels` Immersive video viewer
+- `/pixe` Creator studio and media workflows
+- `/community` Community surface
+- `/browse` Product browsing
+- `/browse-services` Service browsing
+- `/stores` Store directory
+- `/brands` Brand discovery
+- `/events` Events and moments
+- `/guides` Editorial guides
+- `/rewards` Rewards and perks
+
+## Spotlight surfaces
+- `/profile/:username` Public creator profile
+- `/spotlight/create` Create a Spotlight post
+
+## Notes
+- Public pages are indexable.
+- Auth pages, admin pages, and account management pages are intentionally noindexed.
+- The sitemap is available at `/sitemap.xml`.

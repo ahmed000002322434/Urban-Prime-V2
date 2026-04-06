@@ -1,564 +1,786 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence, useScroll } from 'framer-motion';
-import { Item } from '../../types';
+import React, { useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import type { Item } from '../../types';
 import GlassCard from './GlassCard';
-import { useGravityMouse } from '../../hooks/useGravityMouse';
-import GravityBackground from './GravityBackground';
 
 interface LiquidGlassItemDetailProps {
   item: Item;
   relatedItems: Item[];
-  onAddToCart?: (checkout?: boolean) => void;
+  activeMode: 'buy' | 'bid' | 'rent';
+  setActiveMode: (mode: 'buy' | 'bid' | 'rent') => void;
   quantity: number;
   setQuantity: (q: number) => void;
+  bidAmount: number;
+  setBidAmount: (amount: number) => void;
+  rentalDates: { start: string; end: string };
+  setRentalPeriod: (value: { start: string; end: string }) => void;
+  onAddToCart?: (checkout?: boolean, mode?: 'sale' | 'rent') => void;
 }
 
-const StarIcon = ({ size = 16, filled = true }: { size?: number; filled?: boolean }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "gold" : "none"} stroke={filled ? "gold" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-const RippleButton = ({ children, className, onClick, style, whileHover }: any) => {
-  const [ripples, setRipples] = useState<any[]>([]);
-
-  const createRipple = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const button = event.currentTarget;
-    const rect = button.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height);
-    const x = event.clientX - rect.left - size / 2;
-    const y = event.clientY - rect.top - size / 2;
-
-    const newRipple = { x, y, size, id: Date.now() };
-    setRipples([...ripples, newRipple]);
-    if (onClick) onClick(event);
-  };
-
-  return (
-    <motion.button
-      className={`relative overflow-hidden ${className}`}
-      onClick={createRipple}
-      style={style}
-      whileTap={{ scale: 0.95 }}
-      whileHover={whileHover}
-    >
-      {children}
-      <AnimatePresence>
-        {ripples.map((ripple) => (
-          <motion.span
-            key={ripple.id}
-            initial={{ scale: 0, opacity: 0.5 }}
-            animate={{ scale: 4, opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6 }}
-            onAnimationComplete={() => setRipples(prev => prev.filter(r => r.id !== ripple.id))}
-            style={{
-              position: 'absolute',
-              left: ripple.x,
-              top: ripple.y,
-              width: ripple.size,
-              height: ripple.size,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(255, 255, 255, 0.3)',
-              pointerEvents: 'none',
-            }}
-          />
-        ))}
-      </AnimatePresence>
-    </motion.button>
-  );
+const safeAvatar = (url?: string | null) => (url && url.trim() ? url : '/icons/urbanprime.svg');
+const compact = (value: number) => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0);
+const money = (value: number, currency = 'USD') =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: value % 1 === 0 ? 0 : 2
+  }).format(Number.isFinite(value) ? value : 0);
+const shortDate = (value?: string | null) =>
+  value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value)) : 'TBD';
+const relTime = (value?: string | null) => {
+  if (!value) return '';
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return days < 30 ? `${days}d` : `${Math.floor(days / 30)}mo`;
 };
 
-const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({ 
-  item, 
-  relatedItems,
-  onAddToCart,
-  quantity,
-  setQuantity
-}) => {
-  const { springX, springY, rotateX, rotateY, isMobile } = useGravityMouse({ stiffness: 40, damping: 22 });
+const isDigital = (item: Item) => item.productType === 'digital' || item.itemType === 'digital' || Boolean(item.digitalFileUrl);
+const isAuction = (item: Item) => item.listingType === 'auction';
+const isRental = (item: Item) => item.listingType === 'rent' || item.listingType === 'both';
+const isSale = (item: Item) => item.listingType === 'sale' || item.listingType === 'both';
+const imagesFor = (item: Item) => Array.from(new Set([...(item.imageUrls || []), ...(item.images || [])].filter(Boolean)));
+const primaryPrice = (item: Item, mode: 'buy' | 'bid' | 'rent') => {
+  if (mode === 'rent') return item.rentalPrice || item.rentalRates?.daily || item.price || 0;
+  if (mode === 'bid') return item.auctionDetails?.currentBid || item.auctionDetails?.startingBid || item.price || 0;
+  return item.buyNowPrice || item.salePrice || item.price || 0;
+};
 
-  const { scrollY } = useScroll();
-  const [showFloatingCTA, setShowFloatingCTA] = useState(false);
+function Pill({ children, tone = 'muted' }: { children: React.ReactNode; tone?: 'muted' | 'accent' | 'success' | 'warning' }) {
+  const cls = {
+    muted: 'border-border bg-surface/80 text-text-primary dark:bg-white/5',
+    accent: 'border-sky-200/40 bg-sky-500/10 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100',
+    success: 'border-emerald-200/40 bg-emerald-500/10 text-emerald-900 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-100',
+    warning: 'border-amber-200/40 bg-amber-500/10 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100'
+  }[tone];
+  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${cls}`}>{children}</span>;
+}
 
-  useEffect(() => {
-    return scrollY.onChange((latest) => {
-      if (latest > 500 && !showFloatingCTA) setShowFloatingCTA(true);
-      else if (latest <= 500 && showFloatingCTA) setShowFloatingCTA(false);
-    });
-  }, [scrollY, showFloatingCTA]);
-
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [isDescExpanded, setIsDescExpanded] = useState(false);
-  const [isDiscoverHovered, setIsDiscoverHovered] = useState(false);
-  const [isSellerHovered, setIsSellerHovered] = useState(false);
-  const [isReviewsHovered, setIsReviewsHovered] = useState(false);
-
-  // Data mapping
-  const series = (item as any).category || (item as any).series || "ELECTRONICS";
-  const productTitle = item.title || item.name || "Aether Orbit Pro";
-  const description = item.description || "Revolutionary graphene drivers with integrated spatial tracking for a 360-degree sonic journey.";
-  const price = item.price || 299;
-  const rating = item.avgRating || 4.98;
-  const defaultImageUrl = item.imageUrls?.[0] || item.images?.[0] || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1000&auto=format&fit=crop";
-  
-  const displayImage = selectedImage || defaultImageUrl;
-  const allImages = [...(item.imageUrls || []), ...(item.images || [])].filter(Boolean);
-  const galleryImages = Array.from(new Set(allImages.length ? allImages : [defaultImageUrl]));
-
-  let featuresList = item.features || [];
-  if (typeof featuresList === 'string') {
-    featuresList = [featuresList];
-  }
-  const quickInfo = featuresList?.length ? featuresList.slice(0, 3).map((f: string, i: number) => ({
-    icon: i === 0 ? "✨" : i === 1 ? "🚀" : "💎",
-    label: f,
-    id: i + 1
-  })) : [
-    { icon: "🎵", label: "Premium Quality", id: 1 },
-    { icon: "🛡️", label: "Verified Authentic", id: 2 },
-    { icon: "💎", label: "Exclusive Design", id: 3 },
-  ];
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.12,
-      }
-    }
-  };
-
-  const cardVariants = {
-    hidden: { opacity: 0, y: 25 },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      transition: { duration: 0.6, ease: "easeOut" }
-    }
-  };
-
-  const labelVariants = {
-    hidden: { opacity: 0, scale: 0.8 },
-    visible: { 
-      opacity: 1, 
-      scale: 1,
-      transition: { delay: 0.5, duration: 0.5 }
-    }
-  };
-
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="relative min-h-screen w-full text-[#1a1a1a] font-sans overflow-hidden bg-[#fafbff] dark:bg-[#020205]">
-      {/* Background remains site-consistent */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-         <GravityBackground springX={springX} springY={springY} />
+    <div className="rounded-[1.15rem] border border-border bg-surface/80 px-3 py-3 dark:bg-white/5">
+      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">{label}</p>
+      <p className="mt-1 text-sm font-bold text-text-primary">{value}</p>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3">
+      <span className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">{label}</span>
+      <span className="text-right text-sm font-semibold text-text-primary">{value}</span>
+    </div>
+  );
+}
+
+function ModeButton({
+  active,
+  children,
+  onClick
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-10 items-center justify-center rounded-full border px-4 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] ${
+        active
+          ? 'border-primary bg-primary text-primary-text shadow-[0_14px_30px_rgba(59,130,246,0.24)]'
+          : 'border-border bg-surface/80 text-text-primary dark:bg-white/5'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
+  item,
+  relatedItems,
+  activeMode,
+  setActiveMode,
+  quantity,
+  setQuantity,
+  bidAmount,
+  setBidAmount,
+  rentalDates,
+  setRentalPeriod,
+  onAddToCart
+}) => {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [zoomed, setZoomed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const touchStartXRef = useRef<number | null>(null);
+
+  const galleryImages = useMemo(() => imagesFor(item), [item]);
+  const activeImage = selectedImage || galleryImages[0] || item.videoUrl || '/icons/urbanprime.svg';
+  const activeImageIndex = useMemo(() => {
+    const index = galleryImages.findIndex((image) => image === activeImage);
+    return index >= 0 ? index : 0;
+  }, [activeImage, galleryImages]);
+  const price = primaryPrice(item, activeMode);
+  const ownerAvatar = safeAvatar(item.owner?.avatar);
+  const ownerSlug = encodeURIComponent(item.owner?.id || item.owner?.name || 'seller');
+  const isDigitalProduct = isDigital(item);
+  const auctionBid = item.auctionDetails?.currentBid || item.auctionDetails?.startingBid || item.price || 0;
+  const saleSave = item.compareAtPrice && item.compareAtPrice > price ? Math.round(100 - (price / item.compareAtPrice) * 100) : 0;
+  const lowStock = item.stock > 0 && item.stock <= 3;
+  const trending = Number((item as any).views || 0) >= 1000 || (item.avgRating || 0) >= 4.7 || Boolean(item.isFeatured);
+
+  const modes = [
+    { id: 'buy' as const, label: isDigitalProduct ? 'Instant access' : 'Buy', show: isSale(item) || isDigitalProduct },
+    { id: 'bid' as const, label: 'Bid', show: isAuction(item) },
+    { id: 'rent' as const, label: 'Rent', show: isRental(item) }
+  ].filter((mode) => mode.show);
+
+  const titleLine = isDigitalProduct ? 'Digital product' : item.productType || 'Product';
+  const deliveryText = isDigitalProduct
+    ? 'Instant download'
+    : item.whoPaysShipping === 'buyer'
+      ? 'Buyer pays shipping'
+      : 'Seller ships';
+  const returnText = isDigitalProduct
+    ? item.licenseType || 'License included'
+    : item.returnPolicy?.windowDays
+      ? `${item.returnPolicy.windowDays}-day returns`
+      : 'See return policy';
+  const stockText = item.stock > 0 ? (lowStock ? `Only ${item.stock} left` : 'In stock') : 'Sold out';
+  const summaryLabel = activeMode === 'bid' ? 'Current bid' : activeMode === 'rent' ? 'Daily rate' : 'Price';
+  const primaryCtaLabel = activeMode === 'bid'
+    ? 'Place bid'
+    : isDigitalProduct
+      ? 'Continue to checkout'
+      : activeMode === 'rent'
+        ? 'Reserve and checkout'
+        : 'Buy now';
+  const secondaryCtaLabel = activeMode === 'bid'
+    ? 'Add to cart'
+    : activeMode === 'rent'
+      ? 'Add rental to cart'
+      : 'Add to cart';
+
+  const setImageByOffset = (offset: number) => {
+    if (!galleryImages.length) return;
+    const nextIndex = (activeImageIndex + offset + galleryImages.length) % galleryImages.length;
+    setSelectedImage(galleryImages[nextIndex] || null);
+  };
+
+  const handleTouchStart = (event: React.TouchEvent) => {
+    touchStartXRef.current = event.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent) => {
+    if (touchStartXRef.current == null || galleryImages.length < 2) return;
+    const endX = event.changedTouches[0]?.clientX ?? touchStartXRef.current;
+    const delta = endX - touchStartXRef.current;
+    if (Math.abs(delta) > 50) {
+      setImageByOffset(delta < 0 ? 1 : -1);
+    }
+    touchStartXRef.current = null;
+  };
+
+  const openBidComposer = () => {
+    window.postMessage(
+      {
+        type: 'urbanprime:item-detail-action',
+        action: 'place_bid',
+        itemId: item.id,
+        sellerId: item.owner?.id || '',
+        amount: bidAmount,
+        item
+      },
+      window.location.origin
+    );
+  };
+
+  const primaryAction = () => {
+    if (activeMode === 'bid') return openBidComposer();
+    onAddToCart?.(true, activeMode === 'rent' ? 'rent' : 'sale');
+  };
+
+  const secondaryAction = () => {
+    if (activeMode === 'bid') {
+      onAddToCart?.(false, 'sale');
+      return;
+    }
+    onAddToCart?.(false, activeMode === 'rent' ? 'rent' : 'sale');
+  };
+
+  const renderMedia = () => (
+    <GlassCard
+      className="overflow-hidden rounded-[2rem] border border-border/70 bg-surface/80 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur-2xl dark:bg-white/[0.05]"
+      enableTilt={false}
+      enableGlow={false}
+    >
+      <div className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill>{titleLine}</Pill>
+            {item.isVerified ? <Pill tone="success">Verified</Pill> : null}
+            {trending ? <Pill tone="accent">Trending</Pill> : null}
+            {lowStock ? <Pill tone="warning">{stockText}</Pill> : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setZoomed(true)}
+            className="rounded-full border border-border bg-surface/80 px-4 py-2 text-xs font-semibold text-text-primary transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] dark:bg-white/5"
+          >
+            View full screen
+          </button>
+        </div>
+
+        <motion.button
+          type="button"
+          onClick={() => setZoomed(true)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          whileHover={{ y: -3, scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          className="relative mt-4 block w-full overflow-hidden rounded-[1.7rem] border border-border/60 bg-background/70 text-left shadow-[0_18px_60px_rgba(15,23,42,0.08)]"
+        >
+          <div className="relative aspect-[4/5] w-full overflow-hidden">
+            {item.videoUrl && !selectedImage ? (
+              <video
+                src={item.videoUrl}
+                poster={activeImage || undefined}
+                autoPlay
+                muted
+                loop
+                playsInline
+                controls
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <motion.img
+                src={activeImage}
+                alt={item.title}
+                className="h-full w-full object-cover"
+                loading="eager"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+              <Pill tone="accent">{item.listingType}</Pill>
+              {item.videoUrl ? <Pill tone="warning">Video</Pill> : null}
+            </div>
+            <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
+              <div className="max-w-[70%]">
+                <p className="text-[10px] font-black uppercase tracking-[0.26em] text-white/70">Urban Prime</p>
+                <p className="mt-1 text-lg font-bold text-white sm:text-xl">{item.title}</p>
+              </div>
+              <span className="rounded-full border border-white/15 bg-black/20 px-3 py-2 text-xs font-semibold text-white backdrop-blur-2xl">
+                Open
+              </span>
+            </div>
+          </div>
+        </motion.button>
+
+        {galleryImages.length > 1 ? (
+          <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6">
+            {galleryImages.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                type="button"
+                onClick={() => setSelectedImage(image)}
+                className={`relative aspect-square overflow-hidden rounded-[1rem] border transition duration-200 ${
+                  selectedImage === image || (!selectedImage && index === 0)
+                    ? 'border-sky-300 shadow-[0_0_0_4px_rgba(56,189,248,0.12)]'
+                    : 'border-border/60 dark:border-white/10'
+                }`}
+              >
+                <img src={image} alt={`${item.title} ${index + 1}`} className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </GlassCard>
+  );
+
+  const renderActionPair = () => (
+    <div className="mt-5 grid gap-2 sm:grid-cols-2">
+      <motion.button
+        whileHover={{ y: -2, scale: 1.01 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={primaryAction}
+        className="inline-flex h-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,rgba(15,23,42,1),rgba(37,99,235,0.96),rgba(56,189,248,0.96))] px-5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(37,99,235,0.22)] transition hover:brightness-110"
+      >
+        {primaryCtaLabel}
+      </motion.button>
+
+      <motion.button
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={secondaryAction}
+        className="inline-flex h-12 items-center justify-center rounded-full border border-border/70 bg-surface/80 px-5 text-sm font-semibold text-text-primary shadow-sm transition hover:-translate-y-0.5 hover:bg-surface/95 dark:bg-white/5"
+      >
+        {secondaryCtaLabel}
+      </motion.button>
+    </div>
+  );
+
+  const renderStats = () => (
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-2">
+      <Stat label={summaryLabel} value={money(price)} />
+      <Stat label="Rating" value={item.avgRating ? item.avgRating.toFixed(1) : 'New'} />
+      <Stat label="Stock" value={stockText} />
+      <Stat label="Updated" value={relTime(item.createdAt)} />
+    </div>
+  );
+
+  const renderCommercePanel = (compactMode = false) => (
+    <GlassCard
+      className={`rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:bg-white/[0.05] ${
+        compactMode ? '' : 'sticky top-5'
+      }`}
+      enableTilt={false}
+      enableGlow={false}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">{item.listingType}</p>
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-text-primary">{money(price)}</h2>
+        </div>
+        {saleSave > 0 ? <Pill tone="success">Save {saleSave}%</Pill> : null}
       </div>
 
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="relative z-10 max-w-[1400px] mx-auto px-6 pt-[60px] pb-20 flex flex-col gap-12"
-      >
-        {/* Main 3-Column Layout */}
-        <div className="flex flex-col lg:flex-row gap-10 items-start justify-center">
-          
-          {/* LEFT COLUMN: Quick Info Card (300px) */}
-          <motion.div variants={cardVariants} className="w-full lg:w-[300px] shrink-0 order-3 lg:order-1">
-            <GlassCard 
-              className="p-[28px] rounded-[22px] border border-white/12 backdrop-blur-[18px] bg-white/[0.08] transition-all duration-300 hover:-translate-y-[6px] hover:shadow-[0_20px_40px_rgba(0,0,0,0.15)]"
-              enableTilt={false} // Only use global hover effects as per prompt
-              enableGlow={false}
-            >
-              <h3 className="text-[20px] font-semibold mb-[20px] text-[#1a1a1a]">Quick Info</h3>
-              <div className="flex flex-col gap-[12px]">
-                {quickInfo.map((info) => (
-                  <div 
-                    key={info.id} 
-                    className="flex items-center gap-3 h-[52px] pl-[14px] rounded-[14px] bg-white/5"
-                  >
-                    <div className="w-9 h-9 flex items-center justify-center text-[20px]">
-                      {info.icon}
-                    </div>
-                    <span className="text-[15px] font-medium text-[#2a2a2a]">{info.label}</span>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="mt-[18px]">
-                <p className="text-[13px] leading-[1.6] text-[#444] italic border-l-2 border-primary/40 pl-3">
-                  AI Summary: This {item.category?.toLowerCase() || 'item'} offers distinct design, verified authenticity, and premium craft. Built to impress and perform.
-                </p>
-              </div>
-            </GlassCard>
-          </motion.div>
+      <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+        {activeMode === 'bid'
+          ? `Current bid ${money(auctionBid)}. Ends ${shortDate(item.auctionDetails?.endTime)}.`
+          : activeMode === 'rent'
+            ? `${money(price)} per day. ${item.minRentalDuration ? `${item.minRentalDuration}+ days` : 'Flexible duration'}.`
+            : isDigitalProduct
+              ? 'Instant digital delivery with license details below.'
+              : item.buyNowPrice
+                ? `Buy now for ${money(item.buyNowPrice)}.`
+                : `Available from ${money(item.salePrice || item.price || 0)}.`}
+      </p>
 
-          {/* CENTER COLUMN: Product Hero (520px) */}
-          <div className="w-full lg:w-[520px] shrink-0 flex flex-col items-center justify-center relative min-h-[520px] order-1 lg:order-2">
-            {/* Soft Glow Behind Product */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div 
-                className="w-[450px] h-[450px] rounded-full opacity-[0.35]"
-                style={{
-                  background: 'radial-gradient(circle, rgba(108,142,255,0.3) 0%, transparent 70%)',
-                  filter: 'blur(60px)'
-                }}
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <Stat label="Delivery" value={deliveryText} />
+        <Stat label="Returns" value={returnText} />
+        <Stat label="Fulfillment" value={isDigitalProduct ? 'Download' : item.whoPaysShipping || 'Seller'} />
+      </div>
+
+      <div className="mt-5 space-y-3 rounded-[1.4rem] border border-border/70 bg-background/70 p-4 dark:bg-white/5">
+        <div className="flex flex-wrap items-center gap-2">
+          {modes.map((mode) => (
+            <ModeButton key={mode.id} active={activeMode === mode.id} onClick={() => setActiveMode(mode.id)}>
+              {mode.label}
+            </ModeButton>
+          ))}
+        </div>
+
+        {activeMode === 'buy' ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Quantity</span>
+              <span className="text-sm font-bold text-text-primary">{quantity}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-border/70 bg-surface/80 p-1.5 dark:bg-white/5">
+              <button
+                type="button"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-background/70 font-bold text-text-primary transition hover:bg-background"
+              >
+                -
+              </button>
+              <div className="flex-1 text-center text-sm font-bold text-text-primary">{quantity}</div>
+              <button
+                type="button"
+                onClick={() => setQuantity(quantity + 1)}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-background/70 font-bold text-text-primary transition hover:bg-background"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeMode === 'rent' ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Start</span>
+              <input
+                type="date"
+                value={rentalDates.start}
+                onChange={(event) => setRentalPeriod({ ...rentalDates, start: event.target.value })}
+                className="mt-2 w-full bg-transparent text-sm font-semibold text-text-primary outline-none"
+              />
+            </label>
+            <label className="rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">End</span>
+              <input
+                type="date"
+                value={rentalDates.end}
+                onChange={(event) => setRentalPeriod({ ...rentalDates, end: event.target.value })}
+                className="mt-2 w-full bg-transparent text-sm font-semibold text-text-primary outline-none"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {activeMode === 'bid' ? (
+          <label className="rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+            <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Your bid</span>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-lg font-black text-text-primary">$</span>
+              <input
+                type="number"
+                min={Math.ceil(auctionBid + 1)}
+                step={1}
+                value={bidAmount}
+                onChange={(event) => setBidAmount(Number(event.target.value))}
+                className="w-full bg-transparent text-xl font-black text-text-primary outline-none"
               />
             </div>
+            <p className="mt-2 text-xs text-text-secondary">Current bid {money(auctionBid)}. Ends {shortDate(item.auctionDetails?.endTime)}.</p>
+          </label>
+        ) : null}
+      </div>
 
-            <motion.div
-              style={{ rotateX, rotateY, perspective: 1000 }}
-              className="relative z-10 w-full flex flex-col items-center justify-center cursor-zoom-in"
-              transition={{ duration: 0.25 }}
-              onClick={() => setIsZoomed(true)}
-            >
-              <motion.img 
-                animate={{ y: [0, -10, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                src={displayImage} 
-                alt={productTitle}
-                className="max-w-[420px] max-h-[460px] w-auto object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.3)] rounded-[24px]"
-              />
-              
-              {/* Image Gallery Thumbnails */}
-              <div className="flex gap-3 mt-6 justify-center z-20">
-                {galleryImages.map((img, idx) => (
-                   <motion.div 
-                     key={idx}
-                     whileHover={{ scale: 1.1 }}
-                     whileTap={{ scale: 0.9 }}
-                     onClick={(e) => { e.stopPropagation(); setSelectedImage(img as string); }}
-                     className={`w-[50px] h-[50px] rounded-[12px] overflow-hidden border-2 cursor-pointer transition-colors ${selectedImage === img || (!selectedImage && idx === 0) ? 'border-primary' : 'border-black/5 hover:border-black/20'}`}
-                   >
-                     <img src={img as string} alt="thumbnail" className="w-full h-full object-cover" />
-                   </motion.div>
-                ))}
-              </div>
-              
-              {/* Floating Feature Labels */}
-              <motion.div 
-                variants={labelVariants}
-                className="absolute top-[15%] -right-4 px-[14px] py-[6px] bg-white/70 backdrop-blur-md border border-white/20 rounded-[18px] text-[12px] font-medium text-[#1a1a1a] shadow-xl"
-              >
-                Spatial Audio
-              </motion.div>
-              <motion.div 
-                variants={labelVariants}
-                className="absolute bottom-[25%] -left-8 px-[14px] py-[6px] bg-white/70 backdrop-blur-md border border-white/20 rounded-[18px] text-[12px] font-medium text-[#1a1a1a] shadow-xl"
-              >
-                Graphene Drivers
-              </motion.div>
-              <motion.div 
-                variants={labelVariants}
-                className="absolute top-[40%] -left-4 px-[14px] py-[6px] bg-white/70 backdrop-blur-md border border-white/20 rounded-[18px] text-[12px] font-medium text-[#1a1a1a] shadow-xl"
-              >
-                Cooling System
-              </motion.div>
-            </motion.div>
+      {renderActionPair()}
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
+        <Stat label="Secure" value="Checkout" />
+        <Stat label="Delivery" value={deliveryText} />
+        <Stat label="Returns" value={returnText} />
+      </div>
+
+      <div className="mt-5 rounded-[1.4rem] border border-border/70 bg-background/70 p-4 text-sm text-text-secondary dark:bg-white/5">
+        <p className="font-semibold text-text-primary">Trust signals</p>
+        <p className="mt-2 leading-relaxed">Fast checkout, clear ownership details, and a responsive buying flow optimized for mobile and desktop.</p>
+      </div>
+    </GlassCard>
+  );
+
+  const renderDetails = (compactMode = false) => (
+    <div className="space-y-5">
+      {!compactMode ? (
+        <GlassCard className="rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Item detail</p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-text-primary sm:text-3xl">{item.title}</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Pill tone="accent">{isDigitalProduct ? 'Digital' : item.listingType}</Pill>
+              {saleSave > 0 ? <Pill tone="success">Save {saleSave}%</Pill> : null}
+              {trending ? <Pill tone="warning">Trending</Pill> : null}
+            </div>
           </div>
 
-          {/* RIGHT COLUMN: Purchase Card (380px) */}
-          <motion.div variants={cardVariants} className="w-full lg:w-[380px] shrink-0 order-2 lg:order-3">
-            <GlassCard 
-              className="p-[32px] rounded-[22px] border border-white/12 bg-white/[0.08] backdrop-blur-[20px] transition-all duration-300 hover:-translate-y-[6px] hover:shadow-[0_20px_40px_rgba(0,0,0,0.15)] flex flex-col gap-6"
-              enableTilt={false}
-              enableGlow={false}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <Stat label="Price" value={money(price)} />
+            <Stat label="Status" value={stockText} />
+            <Stat label="Delivery" value={deliveryText} />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Pill>{isDigitalProduct ? 'Digital product' : item.productType || 'Product'}</Pill>
+            {item.isVerified ? <Pill tone="success">Verified</Pill> : null}
+            {item.condition ? <Pill>{item.condition}</Pill> : null}
+            {item.spotlightAttribution?.spotlightContentId ? <Pill tone="accent">Spotlight linked</Pill> : null}
+          </div>
+        </GlassCard>
+      ) : null}
+
+      <GlassCard className="rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Description</p>
+            <h2 className="mt-1 text-lg font-black text-text-primary">Why it stands out</h2>
+          </div>
+          {lowStock ? <Pill tone="warning">{stockText}</Pill> : null}
+        </div>
+        <div className="mt-4 space-y-3">
+          <p className="text-sm leading-relaxed text-text-secondary">
+            {expanded ? item.description : (item.description || '').slice(0, compactMode ? 180 : 240)}
+            {!expanded && item.description && item.description.length > (compactMode ? 180 : 240) ? '...' : ''}
+          </p>
+          {item.description && item.description.length > (compactMode ? 180 : 240) ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="text-xs font-bold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300"
             >
-              <div className="flex flex-col gap-2">
-                <span className="text-[12px] font-medium tracking-[1px] text-[#6b6b6b] uppercase">{series}</span>
-                <h1 className="text-[30px] font-bold leading-[1.25] text-[#111]">{productTitle}</h1>
-              </div>
+              {expanded ? 'Show less' : 'Read more'}
+            </button>
+          ) : null}
+        </div>
+      </GlassCard>
 
-              <div className="relative">
-                <p className={`text-[14px] text-[#444] leading-[1.6] ${!isDescExpanded ? 'line-clamp-2' : ''} transition-all duration-300`}>
-                  {description}
-                </p>
-                {description && description.length > 80 && (
-                  <button 
-                     onClick={() => setIsDescExpanded(!isDescExpanded)}
-                     className="mt-2 text-[12px] font-bold text-blue-600 hover:text-blue-500 transition-colors"
-                  >
-                    {isDescExpanded ? 'Show Less' : 'Read More ▼'}
-                  </button>
-                )}
-              </div>
+      <GlassCard className="rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Key info</p>
+            <h2 className="mt-1 text-lg font-black text-text-primary">At a glance</h2>
+          </div>
+          {saleSave > 0 ? <Pill tone="success">Save {saleSave}%</Pill> : null}
+        </div>
+        <div className="mt-4 divide-y divide-black/6 rounded-[1.35rem] border border-black/6 bg-white/55 px-4 dark:divide-white/10 dark:border-white/10 dark:bg-white/[0.04]">
+          <InfoRow label="Category" value={item.category || 'General'} />
+          <InfoRow label="Brand" value={item.brand || 'Urban Prime'} />
+          <InfoRow label="SKU" value={item.sku || 'Not listed'} />
+          <InfoRow label="Updated" value={relTime(item.createdAt)} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(item.features || []).slice(0, 5).map((feature, index) => (
+            <Pill key={`${feature}-${index}`} tone="accent">
+              {feature}
+            </Pill>
+          ))}
+          {isDigitalProduct ? <Pill tone="warning">License included</Pill> : null}
+          {!isDigitalProduct && item.returnPolicy?.windowDays ? <Pill tone="success">{item.returnPolicy.windowDays}-day returns</Pill> : null}
+        </div>
+      </GlassCard>
 
-              <div className="flex items-center justify-between mt-[18px]">
-                <span className="text-[28px] font-semibold text-[#111]">${price}</span>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="flex gap-0.5">
-                    {[1,2,3,4,5].map(i => <StarIcon key={i} size={16} filled={i <= Math.round(rating)} />)}
+      <GlassCard className="rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Seller</p>
+            <h2 className="mt-1 text-lg font-black text-text-primary">{item.owner?.name || 'Seller'}</h2>
+          </div>
+          <Pill>{compact(Number((item.owner as any)?.salesCount || 0))} sales</Pill>
+        </div>
+        <div className="mt-4 flex items-start gap-4">
+          <img src={ownerAvatar} alt={item.owner?.name || 'Seller'} className="h-16 w-16 rounded-[1.2rem] object-cover shadow-[0_12px_30px_rgba(15,23,42,0.18)]" loading="lazy" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm leading-relaxed text-text-secondary">
+              {item.owner?.businessName || item.owner?.name || 'Seller'} ships premium listings with a clean, responsive checkout and clear ownership details.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link to={`/user/${ownerSlug}`} className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950">
+                Open profile
+              </Link>
+              <Link to="/messages" className="rounded-full border border-border/70 bg-surface/80 px-4 py-2 text-xs font-semibold text-text-primary transition hover:bg-background/80 dark:bg-white/5">
+                Message seller
+              </Link>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
+      <GlassCard className="rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Related products</p>
+            <h2 className="mt-1 text-lg font-black text-text-primary">Discover more like this</h2>
+          </div>
+          <Link to="/browse" className="text-sm font-semibold text-sky-600 dark:text-sky-300">
+            Browse all
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {relatedItems.slice(0, 4).map((relatedItem, index) => {
+            const relatedPrice = relatedItem.salePrice || relatedItem.rentalPrice || relatedItem.auctionDetails?.currentBid || relatedItem.price || 0;
+            return (
+              <Link
+                key={relatedItem.id}
+                to={`/item/${relatedItem.id}`}
+                className="group overflow-hidden rounded-[1.4rem] border border-border/70 bg-surface/80 p-3 transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.12)] dark:bg-white/[0.05]"
+              >
+                <div className="relative aspect-[4/5] overflow-hidden rounded-[1.1rem]">
+                  <img
+                    src={relatedItem.imageUrls?.[0] || relatedItem.images?.[0] || `https://picsum.photos/seed/${index + 30}/600/750`}
+                    alt={relatedItem.title}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+                  <div className="absolute left-3 top-3">
+                    <Pill>{relatedItem.listingType}</Pill>
                   </div>
-                  <span className="text-[12px] text-[#6b6b6b] font-medium">{rating} Rating</span>
                 </div>
-              </div>
+                <div className="mt-3 space-y-1">
+                  <p className="truncate text-sm font-bold text-text-primary">{relatedItem.title}</p>
+                  <p className="text-sm text-text-secondary">{money(relatedPrice)}</p>
+                </div>
+              </Link>
+            );
+          })}
+          {relatedItems.length === 0 ? (
+            <div className="rounded-[1.4rem] border border-dashed border-border p-6 text-sm text-text-secondary sm:col-span-2 xl:col-span-4">
+              Related items will appear here as the catalog grows.
+            </div>
+          ) : null}
+        </div>
+      </GlassCard>
+    </div>
+  );
 
-              <div className="flex items-center gap-4">
-                 <div className="flex items-center bg-white/10 border border-white/15 rounded-xl h-[40px] w-[120px] overflow-hidden">
-                    <motion.button 
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))} 
-                      className="w-[32px] h-full flex items-center justify-center hover:bg-white/10 transition-colors"
-                    >
-                      −
-                    </motion.button>
-                    <span className="flex-1 text-center text-[15px] font-bold text-[#111]">{quantity}</span>
-                    <motion.button 
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setQuantity(quantity + 1)} 
-                      className="w-[32px] h-full flex items-center justify-center hover:bg-white/10 transition-colors"
-                    >
-                      +
-                    </motion.button>
-                 </div>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                <RippleButton
-                  onClick={() => onAddToCart?.(false)}
-                  className="w-full h-[52px] rounded-[14px] bg-white/25 border border-white/20 text-[14px] font-bold text-[#111] transition-all"
-                  whileHover={{ translateY: -2, boxShadow: '0 10px 20px rgba(0,0,0,0.1)' }}
-                >
-                  Add to Cart
-                </RippleButton>
-                <RippleButton
-                  onClick={() => onAddToCart?.(true)}
-                  className="w-full h-[56px] rounded-[16px] bg-gradient-to-r from-[#4f7cff] to-[#7b3ff2] text-[16px] font-semibold text-white shadow-lg shadow-blue-500/20 transition-all"
-                  whileHover={{ scale: 1.05, boxShadow: '0 0 20px rgba(79,124,255,0.4)' }}
-                >
-                  Buy Now
-                </RippleButton>
-              </div>
-            </GlassCard>
-          </motion.div>
+  const renderMobileTop = () => (
+    <section className="xl:hidden space-y-4">
+      <GlassCard className="sticky top-3 z-20 rounded-[2rem] border border-border/70 bg-surface/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:bg-white/[0.05]" enableTilt={false} enableGlow={false}>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-text-secondary">Prime Spotlight</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-text-primary">{item.title}</h1>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            {saleSave > 0 ? <Pill tone="success">Save {saleSave}%</Pill> : null}
+            {trending ? <Pill tone="accent">Trending</Pill> : null}
+          </div>
         </div>
 
-        {/* BOTTOM SECTION: Extra Info Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 order-4 w-full max-w-[900px] mx-auto">
-
-          {/* Feature Highlights */}
-          <motion.div 
-             variants={cardVariants}
-             onHoverStart={() => setIsReviewsHovered(true)}
-             onHoverEnd={() => setIsReviewsHovered(false)}
-          >
-            <GlassCard 
-              className="p-[22px] w-full lg:w-[420px] rounded-[18px] border border-white/12 bg-white/[0.08] backdrop-blur-[20px] transition-all duration-300 flex flex-col justify-between overflow-hidden"
-              enableTilt={false}
-              enableGlow={false}
-              style={{ minHeight: '140px' }}
-            >
-              <h3 className="text-[16px] font-bold text-[#1a1a1a]">Recent Reviews</h3>
-              <div className="flex flex-col gap-3 mt-2">
-                <div className="flex flex-col gap-1 rounded-[14px] bg-black/5 p-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[12px] font-bold text-[#1a1a1a]">Alex M.</span>
-                    <div className="flex gap-0.5">
-                      {[1,2,3,4,5].map(i => <StarIcon key={i} size={12} />)}
-                    </div>
-                  </div>
-                  <p className="text-[12px] italic text-[#444] line-clamp-2">"The most immersive experience I've ever had. Truly futuristic."</p>
-                </div>
-                <AnimatePresence>
-                  {isReviewsHovered && (
-                     <motion.div 
-                       initial={{ height: 0, opacity: 0 }}
-                       animate={{ height: 'auto', opacity: 1 }}
-                       exit={{ height: 0, opacity: 0 }}
-                       className="flex flex-col gap-3 overflow-hidden mt-2"
-                     >
-                       <div className="flex flex-col gap-1 rounded-[14px] bg-black/5 p-3">
-                         <div className="flex justify-between items-center">
-                           <span className="text-[12px] font-bold text-[#1a1a1a]">Sarah K.</span>
-                           <div className="flex gap-0.5">
-                             {[1,2,3,4,5].map(i => <StarIcon key={i} size={12} filled={i<=4}/>)}
-                           </div>
-                         </div>
-                         <p className="text-[12px] italic text-[#444] line-clamp-2">"Great quality and matched the description perfectly."</p>
-                       </div>
-                       <button className="text-[12px] font-bold text-blue-600 hover:text-blue-500 transition-colors text-center w-full mt-1">Read all 124 reviews</button>
-                     </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </GlassCard>
-          </motion.div>
-
-          <motion.div 
-             variants={cardVariants}
-             onHoverStart={() => setIsSellerHovered(true)}
-             onHoverEnd={() => setIsSellerHovered(false)}
-          >
-            <GlassCard 
-              className="p-[22px] w-full lg:w-[420px] rounded-[18px] border border-white/12 bg-white/[0.08] backdrop-blur-[20px] transition-all duration-300 flex flex-col justify-between overflow-hidden"
-              enableTilt={false}
-              enableGlow={false}
-              style={{ minHeight: '140px' }}
-            >
-              <div className="flex items-center gap-4">
-                <img src={item.owner?.avatarUrl || "https://i.pravatar.cc/150?u=seller"} className="w-[42px] h-[42px] rounded-full border border-white/20" alt="seller" />
-                <div>
-                  <h4 className="text-[16px] font-bold text-[#1a1a1a]">{item.owner?.name || "Nova Dynamics"}</h4>
-                  <div className="flex items-center gap-2 text-[13px] text-[#6b6b6b]">
-                    <span>⭐ {item.owner?.rating || 4.9} Rating</span>
-                    <span>• {item.owner?.salesCount || "12k+"} Sales</span>
-                  </div>
-                </div>
-              </div>
-              <AnimatePresence>
-                 {isSellerHovered && (
-                   <motion.div 
-                     initial={{ height: 0, opacity: 0, marginTop: 0 }}
-                     animate={{ height: 'auto', opacity: 1, marginTop: 16 }}
-                     exit={{ height: 0, opacity: 0, marginTop: 0 }}
-                     className="text-[13px] text-[#444] flex flex-col gap-2"
-                   >
-                     <div className="flex justify-between border-t border-black/5 pt-2">
-                       <span className="font-semibold text-[#1a1a1a]">Products</span>
-                       <span>{item.owner?.productsCount || 142} Active</span>
-                     </div>
-                     <div className="flex justify-between border-t border-black/5 pt-2">
-                       <span className="font-semibold text-[#1a1a1a]">Followers</span>
-                       <span>{item.owner?.followersCount || "8.4k"}</span>
-                     </div>
-                     <div className="flex justify-between border-t border-black/5 pt-2">
-                       <span className="font-semibold text-[#1a1a1a]">Joined</span>
-                       <span>{item.owner?.joinedDate || "2023"}</span>
-                     </div>
-                   </motion.div>
-                 )}
-              </AnimatePresence>
-              <button className="text-[12px] font-bold text-blue-600 hover:text-blue-500 transition-colors text-left mt-3">View Store Profile →</button>
-            </GlassCard>
-          </motion.div>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">{summaryLabel}</p>
+            <p className="mt-1 text-[2rem] font-black tracking-tight text-text-primary">{money(price)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Status</p>
+            <p className="mt-1 text-sm font-bold text-text-primary">{stockText}</p>
+          </div>
         </div>
-        {/* Discover More Full-Width Section */}
-        <motion.div variants={cardVariants} className="w-full mt-8 order-5">
-           <div className="flex flex-col gap-6 p-8 rounded-[32px] border border-white/12 bg-white/[0.04] backdrop-blur-[20px]">
-             <div className="flex justify-between items-end">
-               <div>
-                 <h2 className="text-[28px] font-bold text-[#1a1a1a] dark:text-white tracking-tight">Discover More Products</h2>
-                 <p className="text-[15px] text-[#666] dark:text-[#aaa] mt-1">Explore items inspired by your selection</p>
-               </div>
-               <button className="text-[14px] font-bold text-blue-600 hover:text-blue-500 transition-colors">View Collection →</button>
-             </div>
-             
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-2">
-               {relatedItems.slice(0, 4).length > 0 ? relatedItems.slice(0, 4).map((relItem, i) => (
-                 <motion.div 
-                   key={relItem.id || i}
-                   whileHover={{ y: -8 }}
-                   className="group relative flex flex-col rounded-[24px] overflow-hidden border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] transition-all p-3 cursor-pointer"
-                   onClick={() => window.location.href = `/item/${relItem.id}`}
-                 >
-                   <div className="w-full h-[200px] rounded-[16px] overflow-hidden bg-black/5 mb-4 relative">
-                     <img 
-                       src={relItem.imageUrls?.[0] || relItem.images?.[0] || `https://picsum.photos/seed/${i + 70}/400`} 
-                       alt={relItem.title || "product"} 
-                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                     />
-                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <span className="bg-white/90 text-black px-4 py-2 rounded-full text-[13px] font-bold shadow-lg backdrop-blur-md translate-y-4 group-hover:translate-y-0 transition-all duration-300">View Details</span>
-                     </div>
-                   </div>
-                   <div className="flex flex-col px-2 pb-2">
-                     <span className="text-[15px] font-bold text-[#111] dark:text-white line-clamp-1">{relItem.title || "Aether Product"}</span>
-                     <span className="text-[14px] text-[#666] font-medium mt-1">${relItem.price || 299}</span>
-                   </div>
-                 </motion.div>
-               )) : [1,2,3,4].map((i) => (
-                 <motion.div 
-                   key={i}
-                   whileHover={{ y: -8 }}
-                   className="group relative flex flex-col rounded-[24px] overflow-hidden border border-white/10 bg-white/[0.05] hover:bg-white/[0.1] transition-all p-3 cursor-pointer"
-                 >
-                   <div className="w-full h-[200px] rounded-[16px] overflow-hidden bg-black/5 mb-4 relative">
-                     <img 
-                       src={`https://picsum.photos/seed/${i + 50}/400`} 
-                       alt="product mock" 
-                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                     />
-                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <span className="bg-white/90 text-black px-4 py-2 rounded-full text-[13px] font-bold shadow-lg backdrop-blur-md translate-y-4 group-hover:translate-y-0 transition-all duration-300">View Details</span>
-                     </div>
-                   </div>
-                   <div className="flex flex-col px-2 pb-2">
-                     <span className="text-[15px] font-bold text-[#111] dark:text-white line-clamp-1">Premium Item {i}</span>
-                     <span className="text-[14px] text-[#666] font-medium mt-1">$299</span>
-                   </div>
-                 </motion.div>
-               ))}
-             </div>
-           </div>
-        </motion.div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {modes.map((mode) => (
+            <ModeButton key={mode.id} active={activeMode === mode.id} onClick={() => setActiveMode(mode.id)}>
+              {mode.label}
+            </ModeButton>
+          ))}
+        </div>
+
+        {renderActionPair()}
+
+        {activeMode === 'buy' ? (
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Quantity</span>
+              <span className="text-sm font-bold text-text-primary">{quantity}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2 rounded-full border border-border/70 bg-surface/80 p-1.5 dark:bg-white/5">
+              <button
+                type="button"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-background/70 font-bold text-text-primary transition hover:bg-background"
+              >
+                -
+              </button>
+              <div className="flex-1 text-center text-sm font-bold text-text-primary">{quantity}</div>
+              <button
+                type="button"
+                onClick={() => setQuantity(quantity + 1)}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-background/70 font-bold text-text-primary transition hover:bg-background"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeMode === 'rent' ? (
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Start</span>
+              <input
+                type="date"
+                value={rentalDates.start}
+                onChange={(event) => setRentalPeriod({ ...rentalDates, start: event.target.value })}
+                className="mt-2 w-full bg-transparent text-sm font-semibold text-text-primary outline-none"
+              />
+            </label>
+            <label className="rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">End</span>
+              <input
+                type="date"
+                value={rentalDates.end}
+                onChange={(event) => setRentalPeriod({ ...rentalDates, end: event.target.value })}
+                className="mt-2 w-full bg-transparent text-sm font-semibold text-text-primary outline-none"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {activeMode === 'bid' ? (
+          <label className="mt-4 block rounded-[1.1rem] border border-border/70 bg-surface/80 p-3 dark:bg-white/5">
+            <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Your bid</span>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-lg font-black text-text-primary">$</span>
+              <input
+                type="number"
+                min={Math.ceil(auctionBid + 1)}
+                step={1}
+                value={bidAmount}
+                onChange={(event) => setBidAmount(Number(event.target.value))}
+                className="w-full bg-transparent text-xl font-black text-text-primary outline-none"
+              />
+            </div>
+          </label>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Stat label="Delivery" value={deliveryText} />
+          <Stat label="Returns" value={returnText} />
+          <Stat label="Seller" value={compact(Number((item.owner as any)?.salesCount || 0))} />
+        </div>
+      </GlassCard>
+    </section>
+  );
+
+  return (
+    <div className="relative min-h-screen overflow-x-hidden bg-background text-primary pb-10 xl:pb-0">
+      <motion.div className="relative z-10 mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 lg:px-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+        <section className="xl:hidden space-y-4">
+          {renderMedia()}
+          {renderMobileTop()}
+          {renderDetails(true)}
+        </section>
+
+        <section className="hidden xl:grid grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_420px] gap-6 items-start">
+          <div className="space-y-5">{renderMedia()}</div>
+          <div className="space-y-5">{renderDetails(false)}</div>
+          <div className="space-y-5">{renderCommercePanel(false)}</div>
+        </section>
       </motion.div>
 
-      {/* Fullscreen Zoom Modal */}
       <AnimatePresence>
-        {isZoomed && (
-          <motion.div 
+        {zoomed ? (
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl cursor-zoom-out p-8"
-            onClick={() => setIsZoomed(false)}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/88 p-4 backdrop-blur-2xl"
+            onClick={() => setZoomed(false)}
           >
-            <motion.img
-               initial={{ scale: 0.8, opacity: 0 }}
-               animate={{ scale: 1, opacity: 1 }}
-               exit={{ scale: 0.8, opacity: 0 }}
-               src={displayImage}
-               alt="Zoomed Product"
-               className="max-w-[90vw] max-h-[90vh] object-contain rounded-[24px]"
-            />
+            <motion.div
+              initial={{ scale: 0.96, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 18 }}
+              transition={{ duration: 0.22 }}
+              className="relative w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_40px_120px_rgba(0,0,0,0.45)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setZoomed(false)}
+                className="absolute right-4 top-4 z-10 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white backdrop-blur-2xl"
+              >
+                Close
+              </button>
+              {item.videoUrl && !selectedImage ? (
+                <video src={item.videoUrl} poster={activeImage || undefined} controls autoPlay className="h-[80vh] w-full object-contain" />
+              ) : (
+                <img src={activeImage} alt={item.title} className="h-[80vh] w-full object-contain" />
+              )}
+            </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Floating Action Bar */}
-      <AnimatePresence>
-        {showFloatingCTA && (
-          <motion.div
-            initial={{ y: 100, opacity: 0, x: '-50%' }}
-            animate={{ y: 0, opacity: 1, x: '-50%' }}
-            exit={{ y: 100, opacity: 0, x: '-50%' }}
-            className="fixed bottom-8 left-1/2 z-[90] flex items-center gap-4 px-3 py-3 bg-white/70 dark:bg-black/70 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)]"
-            style={{ width: 'max-content' }}
-          >
-             <div className="flex items-center gap-3 mr-2 hidden md:flex pl-3">
-               <img src={displayImage} alt="thumbnail" className="w-10 h-10 rounded-full object-cover border border-black/10 dark:border-white/10" />
-               <div className="flex flex-col w-[120px]">
-                 <span className="text-[13px] font-bold text-black dark:text-white line-clamp-1">{productTitle}</span>
-                 <span className="text-[12px] font-medium text-black/60 dark:text-white/60">${price}</span>
-               </div>
-             </div>
-             
-             <div className="flex items-center bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/15 rounded-full h-[44px] px-2">
-                <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-8 h-full text-center hover:text-primary transition-colors text-black dark:text-white font-medium">−</button>
-                <span className="w-6 text-center text-[13px] font-bold text-black dark:text-white">{quantity}</span>
-                <button onClick={() => setQuantity(quantity + 1)} className="w-8 h-full text-center hover:text-primary transition-colors text-black dark:text-white font-medium">+</button>
-             </div>
-
-             <RippleButton
-               onClick={() => onAddToCart?.(false)}
-               className="h-[44px] px-6 rounded-full bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10 text-[13px] font-bold text-[#111] dark:text-white hover:bg-black/10 dark:hover:bg-white/20 transition-all"
-               whileHover={{ translateY: -2 }}
-             >
-               Add to Cart
-             </RippleButton>
-             <RippleButton
-               onClick={() => onAddToCart?.(true)}
-               className="h-[44px] px-8 rounded-full bg-gradient-to-r from-[#4f7cff] to-[#7b3ff2] text-[14px] font-semibold text-white shadow-lg shadow-blue-500/20 transition-all"
-               whileHover={{ scale: 1.05, boxShadow: '0 0 20px rgba(79,124,255,0.4)' }}
-             >
-               Buy Now
-             </RippleButton>
-          </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );
+
 };
 
-export default LiquidGlassItemDetail;
+export default React.memo(LiquidGlassItemDetail);

@@ -269,6 +269,134 @@ app.use(express.json({ limit: '25mb' }));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(uploadsRoot));
 
+const PUBLIC_SITEMAP_PATHS = [
+  '/',
+  '/spotlight',
+  '/reels',
+  '/pixe',
+  '/community',
+  '/browse',
+  '/browse-services',
+  '/services',
+  '/stores',
+  '/brands',
+  '/live-shopping',
+  '/deals',
+  '/new-arrivals',
+  '/compare',
+  '/about',
+  '/contact',
+  '/support-center',
+  '/purchase-protection',
+  '/trust-and-safety',
+  '/privacy-policy',
+  '/terms-of-use',
+  '/shipping-policy',
+  '/return-policy',
+  '/press',
+  '/careers',
+  '/events',
+  '/guides',
+  '/perks',
+  '/rewards',
+  '/gift-cards',
+  '/affiliate',
+  '/seller-resource-center',
+  '/blogs',
+  '/lookbook',
+  '/style-guides',
+  '/games'
+];
+
+const escapeXml = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const resolvePublicBaseUrl = (req) => APP_PUBLIC_URL_NORMALIZED || getRequestOrigin(req);
+
+const buildAbsoluteUrl = (req, pathname) => {
+  const baseUrl = resolvePublicBaseUrl(req);
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return baseUrl ? `${baseUrl}${normalizedPath}` : normalizedPath;
+};
+
+const buildSitemapXml = (req) => {
+  const entries = PUBLIC_SITEMAP_PATHS.map((pathname) => {
+    const priority = pathname === '/' ? '1.0' : pathname.startsWith('/spotlight') ? '0.9' : '0.7';
+    const changefreq = pathname === '/' || pathname.startsWith('/spotlight') ? 'daily' : 'weekly';
+    return [
+      '  <url>',
+      `    <loc>${escapeXml(buildAbsoluteUrl(req, pathname))}</loc>`,
+      `    <changefreq>${changefreq}</changefreq>`,
+      `    <priority>${priority}</priority>`,
+      '  </url>'
+    ].join('\n');
+  }).join('\n');
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    entries,
+    '</urlset>'
+  ].join('\n');
+};
+
+const buildRobotsTxt = (req) => [
+  'User-agent: *',
+  'Allow: /',
+  'Disallow: /admin/',
+  'Disallow: /auth/',
+  'Disallow: /api/',
+  'Disallow: /checkout/',
+  'Disallow: /profile/settings',
+  'Disallow: /profile/edit',
+  'Disallow: /profile/legacy-edit',
+  `Sitemap: ${buildAbsoluteUrl(req, '/sitemap.xml')}`
+].join('\n');
+
+const buildLlmGuide = (req) => [
+  '# Urban Prime',
+  '',
+  'Urban Prime is a premium marketplace, creator hub, and social discovery platform.',
+  '',
+  `Base URL: ${buildAbsoluteUrl(req, '/')}`,
+  '',
+  '## Public surfaces',
+  '- `/` Home and marketplace discovery',
+  '- `/spotlight` Prime Spotlight social feed',
+  '- `/spotlight/post/:id` Spotlight post detail',
+  '- `/reels` Immersive video viewer',
+  '- `/pixe` Creator studio and media workflows',
+  '- `/community` Community surface',
+  '- `/browse` Product browsing',
+  '- `/browse-services` Service browsing',
+  '- `/stores` Store directory',
+  '- `/brands` Brand discovery',
+  '',
+  '## Spotlight surfaces',
+  '- `/profile/:username` Public creator profile',
+  '- `/spotlight/create` Create a Spotlight post',
+  '',
+  '## Notes',
+  '- Public pages are indexable.',
+  '- Auth pages, admin pages, and account management pages are intentionally noindexed.'
+].join('\n');
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain; charset=utf-8').send(buildRobotsTxt(req));
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml; charset=utf-8').send(buildSitemapXml(req));
+});
+
+app.get('/llms.txt', (req, res) => {
+  res.type('text/plain; charset=utf-8').send(buildLlmGuide(req));
+});
+
 if (!BACKEND_API_KEY && !firebaseApp && !IS_PRODUCTION) {
   console.warn('Backend auth disabled for local development. Configure BACKEND_API_KEY or Firebase admin credentials.');
 }

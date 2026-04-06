@@ -330,12 +330,21 @@ const writeCachedResponse = (path: string, payload: any, token?: string) => {
 };
 
 const invalidateReadCacheByApiPath = (path: string, token?: string) => {
+  const namespace = resolveTokenNamespace(token);
+  const cache = loadReadCache();
+
+  if (path.startsWith('/spotlight/')) {
+    const next = cache.filter((entry) => !(entry.namespace === namespace && entry.path.startsWith('/spotlight/')));
+    if (next.length !== cache.length) {
+      persistReadCache(next);
+    }
+    return;
+  }
+
   if (!path.startsWith('/api/')) return;
   const tableMatch = /^\/api\/([^/?]+)/.exec(path);
   if (!tableMatch) return;
   const tablePrefix = `/api/${tableMatch[1]}`;
-  const namespace = resolveTokenNamespace(token);
-  const cache = loadReadCache();
   const next = cache.filter((entry) => !(entry.namespace === namespace && entry.path.startsWith(tablePrefix)));
   if (next.length !== cache.length) {
     persistReadCache(next);
@@ -732,6 +741,11 @@ export const flushQueuedBackendWrites = async (latestToken?: string) => {
         );
 
         if (response.ok || shouldTreatAsConflictSuccess(payload)) {
+          invalidateReadCacheByApiPath(item.path, requestToken);
+          continue;
+        }
+
+        if (response.status === 401 || response.status === 403) {
           invalidateReadCacheByApiPath(item.path, requestToken);
           continue;
         }

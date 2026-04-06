@@ -22,6 +22,218 @@ const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ messag
     </div>
 );
 
+const SITE_NAME = 'Urban Prime';
+const SITE_DESCRIPTION = 'Urban Prime combines a premium marketplace, creator profiles, Spotlight discovery, and fast mobile browsing in one place.';
+const DEFAULT_SEO_IMAGE = '/icons/urbanprime-logo.png';
+const RESERVED_PROFILE_SLUGS = new Set([
+  'settings',
+  'edit',
+  'legacy-edit',
+  'activity',
+  'messages',
+  'orders',
+  'wishlist',
+  'reviews',
+  'coupons',
+  'followed-stores',
+  'history',
+  'switch-accounts',
+  'collections',
+  'go-live',
+  'add-post',
+  'track-delivery',
+  'wallet',
+  'permissions',
+  'workflows',
+  'addresses',
+  'notifications-settings',
+  'payment-options',
+  'analytics',
+  'store',
+  'products',
+  'sales',
+  'owner-controls',
+  'offers',
+  'promotions',
+  'earnings',
+  'provider-dashboard',
+  'services',
+  'become-a-provider',
+  'affiliate',
+  'creator-hub',
+  'spotlight'
+]);
+
+const toTitleCase = (value: string) => value
+  .replace(/[-_]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/\b\w/g, (char) => char.toUpperCase());
+
+type SeoMeta = {
+  title: string;
+  description: string;
+  image: string;
+  type: 'website' | 'article';
+  themeColor: string;
+  noIndex: boolean;
+};
+
+const resolveSeoMeta = (pathname: string): SeoMeta => {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+  const profileMatch = normalizedPath.match(/^\/profile\/([^/]+)$/);
+
+  if (normalizedPath === '/') {
+    return {
+      title: `${SITE_NAME} | Marketplace, Spotlight & Creator Hub`,
+      description: SITE_DESCRIPTION,
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#0f172a',
+      noIndex: false
+    };
+  }
+
+  if (normalizedPath === '/spotlight') {
+    return {
+      title: `Prime Spotlight | ${SITE_NAME}`,
+      description: 'Discover premium photo and video posts, creators, and conversations in Prime Spotlight.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#090b13',
+      noIndex: false
+    };
+  }
+
+  if (normalizedPath.startsWith('/spotlight/post/')) {
+    return {
+      title: `Spotlight Post | ${SITE_NAME}`,
+      description: 'Open a Spotlight post to view the full story, media, and comments.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'article',
+      themeColor: '#090b13',
+      noIndex: false
+    };
+  }
+
+  if (normalizedPath.startsWith('/spotlight/create')) {
+    return {
+      title: `Create Spotlight | ${SITE_NAME}`,
+      description: 'Publish a photo or video to Prime Spotlight.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#090b13',
+      noIndex: true
+    };
+  }
+
+  if (normalizedPath.startsWith('/item/')) {
+    return {
+      title: `Item Details | ${SITE_NAME}`,
+      description: 'Explore product details, pricing, rentals, auctions, and digital delivery on Urban Prime.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'article',
+      themeColor: '#0f172a',
+      noIndex: false
+    };
+  }
+
+  if (normalizedPath === '/reels') {
+    return {
+      title: `Reels | ${SITE_NAME}`,
+      description: 'Watch immersive short-form video content from Urban Prime creators.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#0b1220',
+      noIndex: false
+    };
+  }
+
+  if (normalizedPath === '/profile') {
+    return {
+      title: `Profile | ${SITE_NAME}`,
+      description: 'Manage your Urban Prime account and creator settings.',
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#0f172a',
+      noIndex: true
+    };
+  }
+
+  if (profileMatch) {
+    const slug = decodeURIComponent(profileMatch[1]).toLowerCase();
+    if (RESERVED_PROFILE_SLUGS.has(slug)) {
+      return {
+        title: `Profile | ${SITE_NAME}`,
+        description: 'Manage your Urban Prime account and creator settings.',
+        image: DEFAULT_SEO_IMAGE,
+        type: 'website',
+        themeColor: '#0f172a',
+        noIndex: true
+      };
+    }
+
+    return {
+      title: `@${slug} | ${SITE_NAME}`,
+      description: `Explore the creator profile for @${slug} on Urban Prime Spotlight.`,
+      image: DEFAULT_SEO_IMAGE,
+      type: 'article',
+      themeColor: '#090b13',
+      noIndex: false
+    };
+  }
+
+  const privateRoutePrefixes = ['/messages', '/notifications', '/more', '/auth', '/admin', '/checkout'];
+  if (privateRoutePrefixes.some((prefix) => normalizedPath.startsWith(prefix))) {
+    const label = normalizedPath.split('/').filter(Boolean).map(toTitleCase).join(' / ') || 'Dashboard';
+    return {
+      title: `${label} | ${SITE_NAME}`,
+      description: SITE_DESCRIPTION,
+      image: DEFAULT_SEO_IMAGE,
+      type: 'website',
+      themeColor: '#0f172a',
+      noIndex: true
+    };
+  }
+
+  const derivedLabel = normalizedPath === '/'
+    ? SITE_NAME
+    : normalizedPath.split('/').filter(Boolean).map(toTitleCase).join(' / ');
+
+  return {
+    title: `${derivedLabel ? `${derivedLabel} | ` : ''}${SITE_NAME}`,
+    description: SITE_DESCRIPTION,
+    image: DEFAULT_SEO_IMAGE,
+    type: 'website',
+    themeColor: '#0f172a',
+    noIndex: false
+  };
+};
+
+const ensureMeta = (selector: string, attributeName: 'name' | 'property', attributeValue: string, content: string) => {
+  const existing = document.head.querySelector<HTMLMetaElement>(`${selector}[${attributeName}="${attributeValue}"]`);
+  if (existing) {
+    existing.setAttribute('content', content);
+    return;
+  }
+  const meta = document.createElement('meta');
+  meta.setAttribute(attributeName, attributeValue);
+  meta.setAttribute('content', content);
+  document.head.appendChild(meta);
+};
+
+const ensureLink = (rel: string, href: string) => {
+  const existing = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (existing) {
+    existing.setAttribute('href', href);
+    return;
+  }
+  const link = document.createElement('link');
+  link.setAttribute('rel', rel);
+  link.setAttribute('href', href);
+  document.head.appendChild(link);
+};
+
 
 const Layout: React.FC = () => {
   const location = useLocation();
@@ -35,6 +247,34 @@ const Layout: React.FC = () => {
   useEffect(() => {
     adminService.getSiteSettings().then(setSiteSettings);
   }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    const seo = resolveSeoMeta(location.pathname);
+    const canonicalUrl = `${window.location.origin}${location.pathname}`;
+    const imageUrl = new URL(seo.image, window.location.origin).toString();
+
+    document.title = seo.title;
+    ensureMeta('meta', 'name', 'description', seo.description);
+    ensureMeta('meta', 'name', 'robots', seo.noIndex ? 'noindex,nofollow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1');
+    ensureMeta('meta', 'name', 'application-name', SITE_NAME);
+    ensureMeta('meta', 'name', 'apple-mobile-web-app-title', SITE_NAME);
+    ensureMeta('meta', 'name', 'theme-color', seo.themeColor);
+    ensureMeta('meta', 'property', 'og:site_name', SITE_NAME);
+    ensureMeta('meta', 'property', 'og:type', seo.type);
+    ensureMeta('meta', 'property', 'og:title', seo.title);
+    ensureMeta('meta', 'property', 'og:description', seo.description);
+    ensureMeta('meta', 'property', 'og:url', canonicalUrl);
+    ensureMeta('meta', 'property', 'og:image', imageUrl);
+    ensureMeta('meta', 'property', 'og:image:alt', `${SITE_NAME} preview image`);
+    ensureMeta('meta', 'name', 'twitter:card', 'summary_large_image');
+    ensureMeta('meta', 'name', 'twitter:title', seo.title);
+    ensureMeta('meta', 'name', 'twitter:description', seo.description);
+    ensureMeta('meta', 'name', 'twitter:image', imageUrl);
+    ensureLink('canonical', canonicalUrl);
+    document.documentElement.setAttribute('lang', 'en');
+  }, [location.pathname]);
 
   useEffect(() => {
     const handleItemDetailAction = (event: MessageEvent) => {
@@ -90,6 +330,9 @@ const Layout: React.FC = () => {
     location.pathname === '/spotlight' ||
     location.pathname.startsWith('/spotlight/post/') ||
     location.pathname.startsWith('/spotlight/create');
+  const spotlightProfileMatch = location.pathname.match(/^\/profile\/([^/]+)$/);
+  const spotlightProfileSlug = spotlightProfileMatch?.[1] ? decodeURIComponent(spotlightProfileMatch[1]).toLowerCase() : '';
+  const isSpotlightProfileSurface = Boolean(spotlightProfileSlug) && !RESERVED_PROFILE_SLUGS.has(spotlightProfileSlug);
   const isAuthRoute =
     location.pathname.startsWith('/auth') ||
     location.pathname.startsWith('/register') ||
@@ -114,7 +357,7 @@ const Layout: React.FC = () => {
 
   const showHeader = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isSpotlightSurface;
   const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface;
-  const showMobileChrome = !isAuthRoute && !isAdminRoute && !isSpotlightSurface;
+  const showMobileChrome = !isAuthRoute && !isAdminRoute && !isSpotlightSurface && !isSpotlightProfileSurface;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
   
   const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';

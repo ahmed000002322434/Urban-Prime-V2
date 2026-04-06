@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SpotlightShell from '../../components/spotlight/SpotlightShell';
+import { useSpotlightPreferences } from '../../components/spotlight/SpotlightPreferencesContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
-import { spotlightService, type SpotlightMediaType } from '../../services/spotlightService';
+import { spotlightService, type SpotlightCreateResult, type SpotlightMediaType } from '../../services/spotlightService';
 
 const CAPTION_LIMIT = 2200;
+const safeAvatar = (url?: string | null) => (url && url.trim() ? url : '/icons/urbanprime.svg');
 
 const draftKeyFor = (uid?: string) => `urbanprime:spotlight:draft:${uid || 'guest'}`;
 
@@ -47,17 +49,18 @@ const captureVideoThumbnail = async (file: File) => {
 const CreateSpotlightPage: React.FC = () => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
+  const { preferences } = useSpotlightPreferences();
   const navigate = useNavigate();
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [caption, setCaption] = useState('');
-  const [visibility, setVisibility] = useState<'public' | 'followers' | 'private'>('public');
+  const [visibility, setVisibility] = useState<'public' | 'followers' | 'private'>(preferences.defaultVisibility);
   const [allowComments, setAllowComments] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
 
   const draftStorageKey = useMemo(() => draftKeyFor(user?.id), [user?.id]);
   const suggestedHashtags = useMemo(() => extractSuggestedHashtags(caption), [caption]);
-  const profileLink = useMemo(() => `/profile/${encodeURIComponent(user?.name || 'me')}`, [user?.name]);
+  const profileLink = useMemo(() => `/profile/${encodeURIComponent(user?.id || 'me')}`, [user?.id]);
 
   useEffect(() => {
     try {
@@ -65,12 +68,12 @@ const CreateSpotlightPage: React.FC = () => {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       setCaption(String(parsed?.caption || ''));
-      setVisibility(parsed?.visibility || 'public');
+      setVisibility(parsed?.visibility || preferences.defaultVisibility);
       setAllowComments(parsed?.allowComments !== false);
     } catch {
       // ignore invalid draft
     }
-  }, [draftStorageKey]);
+  }, [draftStorageKey, preferences.defaultVisibility]);
 
   useEffect(() => {
     if (!mediaFile) {
@@ -134,11 +137,21 @@ const CreateSpotlightPage: React.FC = () => {
         allow_comments: allowComments,
         hashtags: suggestedHashtags,
         status
-      });
+      }) as SpotlightCreateResult;
+
+      const createdId = String(created?.id || '').trim();
+      if (!createdId) {
+        showNotification(
+          created?.offline || created?.queued
+            ? 'Saved locally and will sync when the backend is available.'
+            : 'The backend did not confirm this post yet.'
+        );
+        return;
+      }
 
       localStorage.removeItem(draftStorageKey);
       showNotification(status === 'published' ? 'Spotlight posted successfully.' : 'Draft saved.');
-      navigate(status === 'published' ? `/spotlight/post/${created.id}` : '/spotlight');
+      navigate(status === 'published' ? `/spotlight/post/${createdId}` : '/spotlight');
     } catch (error: any) {
       showNotification(error?.message || 'Failed to create Spotlight post.');
     } finally {
@@ -175,7 +188,7 @@ const CreateSpotlightPage: React.FC = () => {
       <section className="rounded-[1.6rem] border border-white/70 bg-white/70 p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
         <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">Your profile</p>
         <div className="mt-3 flex items-center gap-3">
-          <img src={user?.avatar || '/icons/urbanprime.svg'} alt={user?.name || 'You'} className="h-12 w-12 rounded-2xl object-cover" />
+          <img src={safeAvatar((user as any)?.avatar || (user as any)?.photoURL || null)} alt={user?.name || 'You'} className="h-12 w-12 rounded-2xl object-cover" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">{user?.name || 'Guest creator'}</p>
             <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user ? 'Ready to publish to Spotlight' : 'Login required to publish'}</p>

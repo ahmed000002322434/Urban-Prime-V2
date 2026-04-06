@@ -100,6 +100,11 @@ export interface SpotlightItem {
   reposted_from_content_id?: string | null;
 }
 
+export interface SpotlightCreateResult extends SpotlightItem {
+  queued?: boolean;
+  offline?: boolean;
+}
+
 export interface SpotlightContextResponse {
   content: SpotlightItem | null;
   same_creator: SpotlightItem[];
@@ -318,7 +323,7 @@ export const spotlightService = {
     visibility?: 'public' | 'followers' | 'private';
     allow_comments?: boolean;
     status?: 'draft' | 'published' | 'archived';
-  }) {
+  }): Promise<SpotlightCreateResult> {
     const token = await getToken();
     if (!token) {
       throw new Error('You must be signed in to create Spotlight content.');
@@ -332,7 +337,18 @@ export const spotlightService = {
       },
       token
     );
-    return response?.data as SpotlightItem;
+    const created = ((response?.data && typeof response.data === 'object' && !Array.isArray(response.data))
+      ? response.data
+      : {}) as SpotlightCreateResult;
+    if (response && typeof response === 'object') {
+      if ('queued' in response) {
+        created.queued = Boolean((response as any).queued);
+      }
+      if ('offline' in response) {
+        created.offline = Boolean((response as any).offline);
+      }
+    }
+    return created;
   },
 
   async updateContent(
