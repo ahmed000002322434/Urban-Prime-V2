@@ -1,5 +1,5 @@
 import app from '../firebase';
-import { getMessaging, getToken, isSupported, onMessage, type MessagePayload } from 'firebase/messaging';
+import type { MessagePayload } from 'firebase/messaging';
 
 const DEFAULT_SW_PATH = '/firebase-messaging-sw.js';
 const PUSH_PERMISSION_PROMPT_KEY = 'urbanprime:push-permission-prompted:v1';
@@ -23,6 +23,14 @@ export interface ForegroundPushPayload {
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 let swRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
+let messagingModulePromise: Promise<typeof import('firebase/messaging')> | null = null;
+
+const loadMessagingModule = () => {
+  if (!messagingModulePromise) {
+    messagingModulePromise = import('firebase/messaging');
+  }
+  return messagingModulePromise;
+};
 
 const toNotificationPermission = (): PushPermissionState => {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
@@ -33,14 +41,16 @@ const canUseServiceWorkerPush = async () => {
   if (typeof window === 'undefined') return false;
   if (!('Notification' in window) || !('serviceWorker' in navigator)) return false;
   try {
+    const { isSupported } = await loadMessagingModule();
     return await isSupported();
   } catch {
     return false;
   }
 };
 
-const getMessagingInstance = () => {
+const getMessagingInstance = async () => {
   if (!messagingInstance) {
+    const { getMessaging } = await loadMessagingModule();
     messagingInstance = getMessaging(app);
   }
   return messagingInstance;
@@ -117,7 +127,8 @@ export const initializePushMessaging = async (
 
   try {
     const registration = await getServiceWorkerRegistration();
-    const messaging = getMessagingInstance();
+    const messaging = await getMessagingInstance();
+    const { getToken } = await loadMessagingModule();
     const token = await getToken(messaging, {
       vapidKey,
       serviceWorkerRegistration: registration
@@ -149,7 +160,8 @@ export const subscribeToForegroundPush = async (
   if (!supported) return () => {};
 
   try {
-    const messaging = getMessagingInstance();
+    const messaging = await getMessagingInstance();
+    const { onMessage } = await loadMessagingModule();
     return onMessage(messaging, (payload) => {
       callback(normalizeForegroundPayload(payload));
     });

@@ -65,10 +65,17 @@ const GravityPurchasePanel: React.FC<GravityPurchasePanelProps> = ({
   const discount = item.compareAtPrice && item.compareAtPrice > (item.salePrice || item.price || 0)
     ? Math.round(100 - ((item.salePrice || item.price || 0) / item.compareAtPrice) * 100)
     : 0;
+  const highlights = [
+    item.isVerified ? 'Verified marketplace seller' : '',
+    item.returnPolicy?.windowDays ? `${item.returnPolicy.windowDays}-day returns` : '',
+    item.whoPaysShipping === 'seller' ? 'Seller-paid shipping' : 'Shipping calculated at checkout',
+    ...(item.certifications || []).slice(0, 2),
+    ...(item.features || []).slice(0, 2)
+  ].filter(Boolean);
 
   return (
     <GlassCard
-      className="p-5 sm:p-6 md:p-8 lg:p-10 rounded-[28px] sm:rounded-[36px] md:rounded-[48px] backdrop-blur-[40px] bg-white/30 dark:bg-black/30 border border-white/25 dark:border-white/10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.12)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]"
+      className="p-4 sm:p-5 md:p-6 lg:p-7 rounded-[28px] sm:rounded-[36px] md:rounded-[42px] backdrop-blur-[40px] bg-white/30 dark:bg-black/30 border border-white/25 dark:border-white/10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.12)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]"
       enableFloat={true}
       floatDelay={1}
       maxTilt={4}
@@ -100,7 +107,7 @@ const GravityPurchasePanel: React.FC<GravityPurchasePanelProps> = ({
         </div>
 
         {/* Title */}
-        <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black tracking-tight text-text-primary leading-[1.15] uppercase">
+        <h1 className="text-xl sm:text-2xl md:text-[2rem] lg:text-[2.15rem] font-black tracking-tight text-text-primary leading-[1.08]">
           {item.title}
         </h1>
 
@@ -274,7 +281,7 @@ const GravityPurchasePanel: React.FC<GravityPurchasePanelProps> = ({
               <span className="relative z-10 flex items-center gap-2 sm:gap-3">
                 <ShoppingCartIcon />
                 {isAddingToCart
-                  ? '✓ Added!'
+                  ? 'Added'
                   : activeMode === 'buy'
                     ? 'Secure Purchase'
                     : activeMode === 'bid'
@@ -292,6 +299,25 @@ const GravityPurchasePanel: React.FC<GravityPurchasePanelProps> = ({
               <ZapIcon size={14} />
               Express Checkout
             </motion.button>
+          </div>
+
+          <div className="space-y-3 rounded-[18px] sm:rounded-[24px] bg-black/5 p-4 dark:bg-white/5">
+            <p className="text-xs sm:text-sm leading-relaxed text-text-secondary">
+              {(item.description || '').slice(0, 170)}
+              {item.description && item.description.length > 170 ? '...' : ''}
+            </p>
+            {highlights.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {highlights.map((highlight) => (
+                  <span
+                    key={highlight}
+                    className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-text-primary dark:bg-white/5"
+                  >
+                    {highlight}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

@@ -14,7 +14,6 @@ import type {
   User,
   UserOnboardingState
 } from '../types';
-import { authService, userService } from '../services/itemService';
 import profileOnboardingService from '../services/profileOnboardingService';
 import personaService from '../services/personaService';
 import { auth, isFirebaseDisabled } from '../firebase';
@@ -26,6 +25,24 @@ import { enforceAvatarIdentity, needsAvatarNormalization } from '../utils/avatar
 const ONBOARDING_PRESET_KEY = 'urbanprime_onboarding_preset_v2';
 const ONBOARDING_REDIRECT_KEY = 'urbanprime_onboarding_redirect_v2';
 const UNIFIED_PROFILE_CACHE_PREFIX = 'urbanprime_unified_profile_cache_v2:';
+type ItemServiceModule = typeof import('../services/itemService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+  return itemServiceModulePromise;
+};
+
+const withAuthService = async <T,>(
+  callback: (service: ItemServiceModule['authService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).authService);
+
+const withUserService = async <T,>(
+  callback: (service: ItemServiceModule['userService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).userService);
 
 const toLegacyPurpose = (intents: OnboardingIntent[]): OnboardingData['purpose'] | undefined => {
   const hasSell = intents.includes('sell');
@@ -234,10 +251,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser((prev) => (prev && prev.id === currentUser.id ? { ...prev, avatar: normalized.avatar, gender: normalized.gender } : prev));
 
     try {
-      await userService.updateUserProfile(currentUser.id, {
+      await withUserService((userService) => userService.updateUserProfile(currentUser.id, {
         avatar: normalized.avatar,
         gender: normalized.gender
-      });
+      }));
     } catch (error) {
       console.warn('Avatar normalization sync skipped:', error);
     }
@@ -247,7 +264,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (avatarDirectoryNormalizationRef.current) return;
     avatarDirectoryNormalizationRef.current = true;
     try {
-      await userService.normalizeAllUserAvatars();
+      await withUserService((userService) => userService.normalizeAllUserAvatars());
     } catch (error) {
       console.warn('Avatar directory normalization skipped:', error);
     }
@@ -302,7 +319,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await applyUnifiedProfile(cachedUnified);
         return cachedUnified;
       }
-      const fallbackRaw = (await authService.getProfile(firebaseUser.uid)) || buildFallbackUser(firebaseUser);
+      const fallbackRaw = (await withAuthService((authService) => authService.getProfile(firebaseUser.uid))) || buildFallbackUser(firebaseUser);
       const fallback = enforceAvatarIdentity(fallbackRaw);
       setUser(fallback);
       const completion = fallbackCompletion(fallback);
@@ -384,7 +401,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         if (firebaseUser) {
           try {
-            await authService.syncAuthenticatedUser();
+            await withAuthService((authService) => authService.syncAuthenticatedUser());
           } catch (syncError) {
             console.warn('Auth restore sync skipped:', syncError);
           }
@@ -425,7 +442,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = useCallback(
     async (email: string, pass: string) => {
-      const authUser = await authService.login(email, pass);
+      const authUser = await withAuthService((authService) => authService.login(email, pass));
 
       // --- Admin Portal Portal Bypass ---
       if (authUser.id === 'admin-bypass') {
@@ -452,7 +469,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       city: string,
       profileOverrides?: Partial<User>
     ) => {
-      await authService.register(name, email, pass, phone, city, profileOverrides);
+      await withAuthService((authService) =>
+        authService.register(name, email, pass, phone, city, profileOverrides)
+      );
       const unified = await refreshProfile();
       if (unified?.user) return unified.user;
       if (user) return user;
@@ -462,7 +481,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const signInWithGoogle = useCallback(async () => {
-    await authService.signInWithGoogle();
+    await withAuthService((authService) => authService.signInWithGoogle());
     const unified = await refreshProfile();
     if (unified?.user) return unified.user;
     if (user) return user;
@@ -470,7 +489,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [refreshProfile, user]);
 
   const logout = useCallback(() => {
-    authService.logout();
+    void withAuthService((authService) => authService.logout());
     avatarNormalizationAttemptRef.current.clear();
     avatarDirectoryNormalizationRef.current = false;
     setUser(null);
@@ -488,11 +507,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       if (typeof window !== 'undefined') {
         const confirmed = window.confirm('Switching account will log you out first. Continue?');
-        if (!confirmed) {
-          return;
-        }
+      if (!confirmed) {
+        return;
       }
-      await authService.logout();
+      }
+      await withAuthService((authService) => authService.logout());
       avatarNormalizationAttemptRef.current.clear();
       avatarDirectoryNormalizationRef.current = false;
       setUser(null);

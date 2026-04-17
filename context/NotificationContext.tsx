@@ -4,20 +4,40 @@ import { onAuthStateChanged } from 'firebase/auth';
 import ToastNotification, { type ToastAction } from '../components/ToastNotification';
 import LottieAnimation from '../components/LottieAnimation';
 import { auth } from '../firebase';
-import { itemService, userService } from '../services/itemService';
 import { uiLottieAnimations } from '../utils/uiAnimationAssets';
-import {
-  initializePushMessaging,
-  maybePromptPushPermissionOnce,
-  requestPushPermission,
-  subscribeToForegroundPush
-} from '../services/pushNotificationService';
 import type { ChatMessage, User } from '../types';
 
 const SETTINGS_STORAGE_KEY = 'urbanprime:notification-settings:v1';
 const PUSH_TOKEN_STORAGE_KEY = 'urbanprime:push-token:v1';
 const PUSH_TOKEN_OWNER_STORAGE_KEY = 'urbanprime:push-token-owner:v1';
 const CHAT_POLL_INTERVAL_MS = 10000;
+type ItemServiceModule = typeof import('../services/itemService');
+type PushNotificationModule = typeof import('../services/pushNotificationService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+let pushNotificationModulePromise: Promise<PushNotificationModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+  return itemServiceModulePromise;
+};
+
+const loadPushNotificationModule = () => {
+  if (!pushNotificationModulePromise) {
+    pushNotificationModulePromise = import('../services/pushNotificationService');
+  }
+  return pushNotificationModulePromise;
+};
+
+const withItemService = async <T,>(
+  callback: (service: ItemServiceModule['itemService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).itemService);
+
+const withUserService = async <T,>(
+  callback: (service: ItemServiceModule['userService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).userService);
 
 export interface NotificationSettings {
   chatBannersEnabled: boolean;
@@ -257,7 +277,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, []);
 
   const requestDesktopPermission = useCallback(async (): Promise<NotificationPermission | 'unsupported'> => {
-    const permission = await requestPushPermission();
+    const permission = await (await loadPushNotificationModule()).requestPushPermission();
     setDesktopPermission(permission);
     return permission;
   }, []);
@@ -295,7 +315,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         cleanupForegroundPush();
         const existingToken = registeredPushTokenRef.current || readStoredPushToken();
         if (existingToken) {
-          await itemService.unregisterPushToken(existingToken);
+          await withItemService((itemService) => itemService.unregisterPushToken(existingToken));
           registeredPushTokenRef.current = '';
           registeredPushTokenOwnerRef.current = '';
           writeStoredPushToken('');
@@ -304,12 +324,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return;
       }
 
-      const promptedPermission = await maybePromptPushPermissionOnce();
+      const pushNotifications = await loadPushNotificationModule();
+      const promptedPermission = await pushNotifications.maybePromptPushPermissionOnce();
       if (!cancelled) {
         setDesktopPermission(promptedPermission);
       }
 
-      const initResult = await initializePushMessaging({ promptIfDefault: false });
+      const initResult = await pushNotifications.initializePushMessaging({ promptIfDefault: false });
       if (cancelled) return;
       setDesktopPermission(initResult.permission);
 
@@ -320,13 +341,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const previousToken = registeredPushTokenRef.current || readStoredPushToken();
       const previousOwner = registeredPushTokenOwnerRef.current || readStoredPushTokenOwner();
       if (previousToken && previousToken !== initResult.token && previousOwner === authUserId) {
-        await itemService.unregisterPushToken(previousToken);
+        await withItemService((itemService) => itemService.unregisterPushToken(previousToken));
       }
 
       if (previousToken !== initResult.token || previousOwner !== authUserId) {
-        const registrationOk = await itemService.registerPushToken(initResult.token, {
+        const registrationOk = await withItemService((itemService) => itemService.registerPushToken(initResult.token, {
           permission: initResult.permission
-        });
+        }));
         if (registrationOk) {
           registeredPushTokenRef.current = initResult.token;
           registeredPushTokenOwnerRef.current = authUserId;
@@ -339,7 +360,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
 
       cleanupForegroundPush();
-      foregroundPushUnsubscribeRef.current = await subscribeToForegroundPush((payload) => {
+      foregroundPushUnsubscribeRef.current = await pushNotifications.subscribeToForegroundPush((payload) => {
         if (cancelled) return;
         const shouldShowInAppBanner =
           notificationSettings.chatBannersEnabled && !locationPathRef.current.startsWith('/profile/messages');
@@ -359,9 +380,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 return;
               }
               if (payload.threadId) {
-                void itemService.sendMessageToThread(payload.threadId, authUserId, trimmed).then(() => {
+                void withItemService((itemService) => itemService.sendMessageToThread(payload.threadId, authUserId, trimmed)).then(() => {
                   triggerFloatingAnimation('reply');
-                  void itemService.markThreadRead(payload.threadId, authUserId, new Date().toISOString());
+                  void withItemService((itemService) =>
+                    itemService.markThreadRead(payload.threadId, authUserId, new Date().toISOString())
+                  );
                 });
               } else {
                 navigate(payload.link || '/profile/messages');
@@ -374,7 +397,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             onClick: () => {
               dismissNotification();
               if (payload.threadId) {
-                void itemService.markThreadRead(payload.threadId, authUserId, new Date().toISOString());
+                void withItemService((itemService) =>
+                  itemService.markThreadRead(payload.threadId, authUserId, new Date().toISOString())
+                );
               }
             }
           },
@@ -384,7 +409,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             onClick: () => {
               dismissNotification();
               if (payload.threadId) {
-                void itemService.sendMessageToThread(payload.threadId, authUserId, '+1');
+                void withItemService((itemService) =>
+                  itemService.sendMessageToThread(payload.threadId, authUserId, '+1')
+                );
               }
             }
           }
@@ -437,7 +464,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const pollMessages = async () => {
       try {
-        const threads = await itemService.getChatThreadsForUser(authUserId);
+        const threads = await withItemService((itemService) => itemService.getChatThreadsForUser(authUserId));
         for (const thread of threads) {
           const latest = thread.messages[thread.messages.length - 1];
           if (!latest) continue;
@@ -452,7 +479,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           const senderId = latest.senderId || (thread.buyerId === authUserId ? thread.sellerId : thread.buyerId);
           let sender = senderCacheRef.current.get(senderId);
           if (!sender) {
-            sender = await userService.getUserById(senderId);
+            sender = await withUserService((userService) => userService.getUserById(senderId));
             if (sender) senderCacheRef.current.set(senderId, sender);
           }
 
@@ -482,9 +509,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                   navigate(`/profile/messages/${thread.id}`);
                   return;
                 }
-                void itemService.sendMessageToThread(thread.id, authUserId, trimmed).then(() => {
+                void withItemService((itemService) => itemService.sendMessageToThread(thread.id, authUserId, trimmed)).then(() => {
                   triggerFloatingAnimation('reply');
-                  void itemService.markThreadRead(thread.id, authUserId, new Date().toISOString());
+                  void withItemService((itemService) =>
+                    itemService.markThreadRead(thread.id, authUserId, new Date().toISOString())
+                  );
                 });
               }
             },
@@ -493,7 +522,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               label: 'Mark read',
               onClick: () => {
                 dismissNotification();
-                void itemService.markThreadRead(thread.id, authUserId, messageTimestamp);
+                void withItemService((itemService) =>
+                  itemService.markThreadRead(thread.id, authUserId, messageTimestamp)
+                );
               }
             },
             {
@@ -501,7 +532,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               label: 'React +1',
               onClick: () => {
                 dismissNotification();
-                void itemService.sendMessageToThread(thread.id, authUserId, '+1');
+                void withItemService((itemService) =>
+                  itemService.sendMessageToThread(thread.id, authUserId, '+1')
+                );
               }
             }
           ] : [];
@@ -572,7 +605,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     let cancelled = false;
     const refreshUnreadNotifications = async () => {
       try {
-        const notifications = await itemService.getNotificationsForUser(authUserId, { limit: 100 });
+        const notifications = await withItemService((itemService) =>
+          itemService.getNotificationsForUser(authUserId, { limit: 100 })
+        );
         if (cancelled) return;
         setUnreadNotificationCount(notifications.filter((entry) => !entry.isRead).length);
       } catch {

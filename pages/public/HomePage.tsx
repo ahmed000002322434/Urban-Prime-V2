@@ -1,21 +1,79 @@
 
 // pages/public/HomePage.tsx
-import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useSpring, useScroll, useTransform } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { itemService } from '../../services/itemService';
 import type { Item } from '../../types';
 import Spinner from '../../components/Spinner';
 import ItemCard from '../../components/ItemCard';
-import QuickViewModal from '../../components/QuickViewModal';
-import GemstoneHeroCard from '../../components/GemstoneHeroCard';
 import { useTheme } from '../../hooks/useTheme';
+import { useHeroStyle } from '../../context/HeroStyleContext';
 import Magnetic from '../../components/Magnetic';
+import HomePageMobile from './HomePageMobile';
+import HeroSwitcher from '../../components/Hero/HeroSwitcher';
 
 // --- Assets & Icons ---
 const PlayIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;
 const StarIcon = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
-const HomePageMobile = lazy(() => import('./HomePageMobile'));
+const QuickViewModal = lazy(() => import('../../components/QuickViewModal'));
+const GemstoneHeroCard = lazy(() => import('../../components/GemstoneHeroCard'));
+
+type ItemServiceModule = typeof import('../../services/itemService');
+type HomePageCachePayload = {
+    products: Item[];
+    flashSaleItems: Item[];
+    cachedAt: number;
+};
+
+const HOME_PAGE_CACHE_KEY = 'urbanprime:home-page-cache:v1';
+const HOME_PAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+let homePageMemoryCache: HomePageCachePayload | null = null;
+
+const loadItemServiceModule = () => {
+    if (!itemServiceModulePromise) {
+        itemServiceModulePromise = import('../../services/itemService');
+    }
+
+    return itemServiceModulePromise;
+};
+
+const isFreshHomeCache = (payload: HomePageCachePayload | null) => (
+    Boolean(payload && Array.isArray(payload.products) && payload.products.length > 0 && (Date.now() - payload.cachedAt) < HOME_PAGE_CACHE_TTL_MS)
+);
+
+const readHomePageCache = (): HomePageCachePayload | null => {
+    if (homePageMemoryCache && isFreshHomeCache(homePageMemoryCache)) {
+        return homePageMemoryCache;
+    }
+
+    if (typeof window === 'undefined') {
+        return homePageMemoryCache;
+    }
+
+    try {
+        const rawValue = window.sessionStorage.getItem(HOME_PAGE_CACHE_KEY);
+        if (!rawValue) return homePageMemoryCache;
+        const parsed = JSON.parse(rawValue) as HomePageCachePayload;
+        if (!isFreshHomeCache(parsed)) return null;
+        homePageMemoryCache = parsed;
+        return parsed;
+    } catch {
+        return null;
+    }
+};
+
+const writeHomePageCache = (payload: HomePageCachePayload) => {
+    homePageMemoryCache = payload;
+    if (typeof window === 'undefined') return;
+
+    try {
+        window.sessionStorage.setItem(HOME_PAGE_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+        // Ignore storage failures; cache is best-effort only.
+    }
+};
 
 type ExploreOption = {
     id: string;
@@ -283,10 +341,16 @@ const HeroSection: React.FC = () => {
 };
 
 // --- 2. INFINITY RIBBON MARQUEE ---
-const Marquee: React.FC = () => (
-  <div className="relative z-20 -mt-10 mb-12 md:mb-20 rotate-[-1deg] scale-105 origin-center pointer-events-none select-none">
+const Marquee: React.FC<{ isBannerHero?: boolean }> = ({ isBannerHero = false }) => (
+  <div
+    className={`relative z-20 ${
+      isBannerHero
+        ? '-mt-12 mb-12 md:mb-16 rotate-[-0.45deg] scale-[1.01]'
+        : '-mt-10 mb-12 md:mb-20 rotate-[-1deg] scale-105'
+    } origin-center pointer-events-none select-none`}
+  >
     {/* Glass Strip */}
-    <div className="absolute inset-0 bg-white/70 dark:bg-[#111]/80 backdrop-blur-xl border-y border-white/20 dark:border-white/10 shadow-xl"></div>
+    <div className="absolute inset-0 border-y border-border/60 bg-surface/80 backdrop-blur-xl shadow-xl dark:border-white/10 dark:bg-[#111]/80"></div>
     
     <div className="relative flex overflow-x-hidden py-5 font-display uppercase tracking-[0.3em] text-[10px] md:text-xs font-black">
       <div className="animate-marquee whitespace-nowrap flex gap-16 text-gray-900 dark:text-white/90 items-center">
@@ -295,9 +359,9 @@ const Marquee: React.FC = () => (
             <span>{text}</span>
             <span className="text-primary"><StarIcon /></span>
              <span>Luxury Rentals</span>
-             <span className="text-purple-500"><StarIcon /></span>
+             <span className="text-[#d5bf7f]"><StarIcon /></span>
              <span>Verified</span>
-             <span className="text-cyan-500"><StarIcon /></span>
+             <span className="text-primary"><StarIcon /></span>
           </React.Fragment>
         ))}
       </div>
@@ -307,9 +371,9 @@ const Marquee: React.FC = () => (
             <span>{text}</span>
             <span className="text-primary"><StarIcon /></span>
              <span>Luxury Rentals</span>
-             <span className="text-purple-500"><StarIcon /></span>
+             <span className="text-[#d5bf7f]"><StarIcon /></span>
              <span>Verified</span>
-             <span className="text-cyan-500"><StarIcon /></span>
+             <span className="text-primary"><StarIcon /></span>
           </React.Fragment>
         ))}
       </div>
@@ -414,14 +478,14 @@ const CollectionDiscovery: React.FC = () => {
         { x: 74, y: 154, rotate: 1.2, scale: 0.86, opacity: 0.72, blur: 1.1 }
     ] as const;
 
-    let sectionSurface = 'from-white/70 via-white/40 to-white/15 border-white/55 text-slate-900';
-    let textSecondary = 'text-slate-600';
-    let activeDot = 'bg-slate-900';
-    let inactiveDot = 'bg-slate-400/45';
-    let hintTone = 'text-slate-600';
-    let glowOne = 'from-slate-300/45 to-transparent';
-    let glowTwo = 'from-cyan-100/45 to-transparent';
-    let imageOverlay = 'from-white/5 via-transparent to-white/10';
+    let sectionSurface = 'from-[rgba(255,252,245,0.88)] via-[rgba(250,245,229,0.72)] to-[rgba(241,232,199,0.34)] border-[rgba(156,167,99,0.28)] text-[#2f3720]';
+    let textSecondary = 'text-[#6f7754]';
+    let activeDot = 'bg-[#2f3720]';
+    let inactiveDot = 'bg-[#b7b487]/45';
+    let hintTone = 'text-[#6f7754]';
+    let glowOne = 'from-[#d9dfbc]/55 to-transparent';
+    let glowTwo = 'from-[#efe0b4]/55 to-transparent';
+    let imageOverlay = 'from-[#fffef7]/8 via-transparent to-[#f1e8c7]/16';
 
     if (theme === 'sandstone') {
         sectionSurface = 'from-[#f4eee4]/80 via-[#e8dcc6]/42 to-[#f6eee2]/20 border-[#d2bfa0]/55 text-[#3b2d20]';
@@ -629,7 +693,7 @@ const FeaturedRunway: React.FC<{
                 <div className="flex flex-col items-center mb-20">
                      <span className="text-primary text-xs font-bold uppercase tracking-[0.3em] mb-4">The Runway</span>
                      <h2 className="text-3xl sm:text-4xl md:text-6xl font-serif font-bold text-text-primary text-center">New Arrivals</h2>
-                     <div className="w-24 h-1 bg-gradient-to-r from-primary to-purple-600 mt-6 rounded-full"></div>
+                     <div className="w-24 h-1 bg-gradient-to-r from-primary to-[#d5bf7f] mt-6 rounded-full"></div>
                 </div>
                 
                 {isLoading && products.length === 0 ? (
@@ -671,8 +735,8 @@ const GemstoneLoungeInner: React.FC<{ items: Item[] }> = ({ items }) => {
     return (
         <section ref={containerRef} className="py-40 relative overflow-hidden bg-[#02040a] text-white">
              {/* Atmospheric Glow */}
-             <div className="absolute top-[-50%] left-[-20%] w-[80%] h-[80%] bg-blue-900/20 rounded-full blur-[150px] pointer-events-none"></div>
-             <div className="absolute bottom-[-50%] right-[-20%] w-[80%] h-[80%] bg-purple-900/20 rounded-full blur-[150px] pointer-events-none"></div>
+             <div className="absolute top-[-50%] left-[-20%] w-[80%] h-[80%] bg-[#93a05c]/18 rounded-full blur-[150px] pointer-events-none"></div>
+             <div className="absolute bottom-[-50%] right-[-20%] w-[80%] h-[80%] bg-[#d9c18c]/16 rounded-full blur-[150px] pointer-events-none"></div>
              
              {/* Noise Texture */}
              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-overlay pointer-events-none"></div>
@@ -711,7 +775,9 @@ const GemstoneLoungeInner: React.FC<{ items: Item[] }> = ({ items }) => {
                                     viewport={{ once: true }}
                                     transition={{ delay: i * 0.1, duration: 0.6 }}
                                 >
-                                    <GemstoneHeroCard item={item} />
+                                    <Suspense fallback={<div className="h-[460px] rounded-[2rem] border border-white/10 bg-white/5 animate-pulse" />}>
+                                        <GemstoneHeroCard item={item} />
+                                    </Suspense>
                                 </motion.div>
                             ))}
                         </div>
@@ -730,12 +796,14 @@ const GemstoneLounge: React.FC<{ items: Item[] }> = ({ items }) => {
 // --- MAIN PAGE ---
 const HomePageDesktop: React.FC = () => {
     const { theme } = useTheme();
-    const [products, setProducts] = useState<Item[]>([]);
+    const { heroStyle } = useHeroStyle();
+    const cachedHomePayload = readHomePageCache();
+    const [products, setProducts] = useState<Item[]>(() => cachedHomePayload?.products || []);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [flashSaleItems, setFlashSaleItems] = useState<Item[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [flashSaleItems, setFlashSaleItems] = useState<Item[]>(() => cachedHomePayload?.flashSaleItems || []);
+    const [isLoading, setIsLoading] = useState(() => !cachedHomePayload);
     const [quickViewItem, setQuickViewItem] = useState<Item | null>(null);
 
     const observer = useRef<IntersectionObserver | null>(null);
@@ -768,7 +836,9 @@ const HomePageDesktop: React.FC = () => {
         else setIsLoadingMore(true);
 
         try {
-            let productsData = await itemService.getItems({}, { page: isInitial ? 1 : page, limit: 12 });
+            const { itemService } = await loadItemServiceModule();
+            const currentPage = isInitial ? 1 : page;
+            const productsData = await itemService.getItems({}, { page: currentPage, limit: 12 });
             
             if (isInitial) {
                 setProducts(productsData.items);
@@ -779,6 +849,11 @@ const HomePageDesktop: React.FC = () => {
                     compareAtPrice: item.compareAtPrice || (item.salePrice ? item.salePrice * 1.5 : 0)
                 }));
                 setFlashSaleItems(gemItemsWithDiscount);
+                writeHomePageCache({
+                    products: productsData.items,
+                    flashSaleItems: gemItemsWithDiscount,
+                    cachedAt: Date.now()
+                });
             } else {
                 setProducts(prev => [...prev, ...productsData.items]);
             }
@@ -795,21 +870,69 @@ const HomePageDesktop: React.FC = () => {
     }, [page]);
 
     useEffect(() => {
-        fetchItems(true);
+        const scheduleInitialFetch = () => {
+            void fetchItems(true);
+        };
+
+        if (cachedHomePayload) {
+            if ('requestIdleCallback' in window) {
+                const idleHandle = (window as Window & { requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback?.(
+                    () => scheduleInitialFetch(),
+                    { timeout: 2200 }
+                );
+
+                return () => {
+                    if (typeof idleHandle === 'number') {
+                        (window as Window & { cancelIdleCallback?: (handle: number) => void }).cancelIdleCallback?.(idleHandle);
+                    }
+                };
+            }
+
+            const timer = window.setTimeout(scheduleInitialFetch, 900);
+            return () => window.clearTimeout(timer);
+        }
+
+        scheduleInitialFetch();
     }, []);
 
     useEffect(() => {
         if (page > 1) fetchItems(false);
     }, [page]);
+
+    useEffect(() => {
+        if ('requestIdleCallback' in window) {
+            const idleHandle = (window as Window & { requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback?.(
+                () => {
+                    void loadItemServiceModule();
+                },
+                { timeout: 1600 }
+            );
+
+            return () => {
+                if (typeof idleHandle === 'number') {
+                    (window as Window & { cancelIdleCallback?: (handle: number) => void }).cancelIdleCallback?.(idleHandle);
+                }
+            };
+        }
+
+        const timer = window.setTimeout(() => {
+            void loadItemServiceModule();
+        }, 700);
+
+        return () => window.clearTimeout(timer);
+    }, []);
     
     return (
         // FIX: Remove bg-white from container so global texture shows
         <div className="min-h-screen overflow-x-hidden relative bg-transparent">
-            {quickViewItem && <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />}
+            {quickViewItem && (
+                <Suspense fallback={null}>
+                    <QuickViewModal item={quickViewItem} onClose={() => setQuickViewItem(null)} />
+                </Suspense>
+            )}
             
-            <HeroSection />
-            <Marquee />
-            <CollectionDiscovery />
+            <HeroSwitcher OldHero={HeroSection} />
+            <Marquee isBannerHero={heroStyle === 'banner'} />
             <GemstoneLounge items={flashSaleItems} />
             <FeaturedRunway 
                 products={products} 
@@ -863,9 +986,7 @@ const HomePage: React.FC = () => {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.28, ease: 'easeInOut' }}
                 >
-                    <Suspense fallback={<div className="min-h-[40vh] flex items-center justify-center"><Spinner /></div>}>
-                        <HomePageMobile />
-                    </Suspense>
+                    <HomePageMobile />
                 </motion.div>
             ) : (
                 <motion.div

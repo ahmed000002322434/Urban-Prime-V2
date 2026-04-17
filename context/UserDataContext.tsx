@@ -2,10 +2,36 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { userService } from '../services/itemService';
-import { storefrontService } from '../services/storefrontService';
 // FIX: Import ItemCollection type
 import type { Item, Badge, Store, ItemCollection, WishlistItem, WishlistItemComment } from '../types';
+
+type ItemServiceModule = typeof import('../services/itemService');
+type StorefrontServiceModule = typeof import('../services/storefrontService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+let storefrontServiceModulePromise: Promise<StorefrontServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+  return itemServiceModulePromise;
+};
+
+const loadStorefrontServiceModule = () => {
+  if (!storefrontServiceModulePromise) {
+    storefrontServiceModulePromise = import('../services/storefrontService');
+  }
+  return storefrontServiceModulePromise;
+};
+
+const withUserService = async <T,>(
+  callback: (service: ItemServiceModule['userService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).userService);
+
+const withStorefrontService = async <T,>(
+  callback: (service: StorefrontServiceModule['storefrontService']) => Promise<T> | T
+): Promise<T> => callback((await loadStorefrontServiceModule()).storefrontService);
 
 interface UserDataContextType {
   wishlist: WishlistItem[];
@@ -42,10 +68,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsLoading(true);
       try {
         const [wishlistData, badgesData, storefrontData, collectionsData] = await Promise.all([
-          userService.getWishlistForUser(user.id),
-          userService.getBadges(user.badges),
-          storefrontService.getStorefrontByUserId(user.id),
-          userService.getCollectionsForUser(user.id),
+          withUserService((userService) => userService.getWishlistForUser(user.id)),
+          withUserService((userService) => userService.getBadges(user.badges)),
+          withStorefrontService((storefrontService) => storefrontService.getStorefrontByUserId(user.id)),
+          withUserService((userService) => userService.getCollectionsForUser(user.id)),
         ]);
         
         // FIX: Correctly destructure the object returned by getWishlistForUser
@@ -91,7 +117,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     try {
-      await userService.toggleWishlist(user.id, itemId);
+      await withUserService((userService) => userService.toggleWishlist(user.id, itemId));
       // Fetch fresh data to ensure consistency
       fetchUserData();
     } catch (error) {
@@ -109,7 +135,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const createCollection = useCallback(async (name: string, description: string, isPublic: boolean) => {
     if (!user) return;
     try {
-        const newCollection = await userService.createCollection(user.id, name, description, isPublic);
+        const newCollection = await withUserService((userService) =>
+          userService.createCollection(user.id, name, description, isPublic)
+        );
         setCollections(prev => [...prev, newCollection]);
     } catch (error) {
         console.error("Failed to create collection", error);
@@ -119,7 +147,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addItemToCollection = useCallback(async (collectionId: string, itemId: string) => {
     if (!user) return;
     try {
-        const updatedCollection = await userService.addItemToCollection(collectionId, itemId);
+        const updatedCollection = await withUserService((userService) =>
+          userService.addItemToCollection(collectionId, itemId)
+        );
         setCollections(prev => prev.map(c => c.id === collectionId ? updatedCollection : c));
     } catch (error) {
         console.error("Failed to add item to collection", error);
@@ -129,7 +159,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const removeItemFromCollection = useCallback(async (collectionId: string, itemId: string) => {
     if (!user) return;
     try {
-        const updatedCollection = await userService.removeItemFromCollection(collectionId, itemId);
+        const updatedCollection = await withUserService((userService) =>
+          userService.removeItemFromCollection(collectionId, itemId)
+        );
         setCollections(prev => prev.map(c => c.id === collectionId ? updatedCollection : c));
     } catch (error) {
         console.error("Failed to remove item from collection", error);
@@ -140,7 +172,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateCollection = useCallback(async (collectionId: string, updates: Partial<ItemCollection>) => {
       if (!user) return;
       try {
-          const updated = await userService.updateCollection(collectionId, updates);
+          const updated = await withUserService((userService) => userService.updateCollection(collectionId, updates));
           setCollections(prev => prev.map(c => c.id === collectionId ? { ...c, ...updated } : c));
       } catch (error) {
           console.error("Failed to update collection", error);

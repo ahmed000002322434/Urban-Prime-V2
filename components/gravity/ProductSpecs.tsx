@@ -16,16 +16,27 @@ const PackageIcon = ({ size = 16 }: { size?: number }) => (
 );
 
 const ProductSpecs: React.FC<ProductSpecsProps> = ({ item }) => {
+  const shippingSummary = (item.shippingEstimates || [])
+    .map((estimate: any) => {
+      const min = Number(estimate?.minDays || 0);
+      const max = Number(estimate?.maxDays || 0);
+      const carrier = String(estimate?.carrier || '').trim();
+      return `${carrier ? `${carrier} ` : ''}${min && max ? `${min}-${max} days` : min ? `${min}+ days` : ''}`.trim();
+    })
+    .filter(Boolean)[0];
   const specs = [
     { label: 'Category', value: item.category },
-    { label: 'Material', value: (item as any).materials?.[0]?.name || 'Premium Grade' },
-    { label: 'Condition', value: (item as any).condition || 'Pristine' },
-    { label: 'Origin', value: (item as any).originCountry || 'International' },
-    { label: 'Warranty', value: (item as any).warranty?.coverage || '2 Year Global' },
-    { label: 'Shipping', value: 'Express Secured' },
+    { label: 'Material', value: (item as any).materials?.map((material: any) => material.name).filter(Boolean).join(', ') || 'Not listed' },
+    { label: 'Condition', value: (item as any).condition || 'Not listed' },
+    { label: 'Origin', value: [item.originCity, item.originCountry].filter(Boolean).join(', ') || 'Not specified' },
+    { label: 'Warranty', value: (item as any).warranty?.coverage || 'Not listed' },
+    { label: 'Shipping', value: shippingSummary || (item.whoPaysShipping === 'seller' ? 'Seller-paid shipping' : 'Shipping calculated at checkout') },
+    { label: 'Fulfillment', value: item.fulfillmentType ? String(item.fulfillmentType).replace(/_/g, ' ') : 'Standard' },
   ].filter(s => s.value);
 
-  const features = (item as any).features || ['Premium Quality', 'Authenticated', 'Fast Delivery', 'Insured Shipping', 'Gift Packaging'];
+  const features = (item as any).features?.length
+    ? (item as any).features
+    : [...(item.packageContents || []), ...(item.careInstructions || []), ...(item.certifications || [])].filter(Boolean).slice(0, 5);
 
   return (
     <GlassCard
@@ -99,6 +110,33 @@ const ProductSpecs: React.FC<ProductSpecsProps> = ({ item }) => {
           ))}
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-text-secondary opacity-50">In the box</p>
+            <div className="mt-3 space-y-2 text-xs text-text-secondary">
+              {(item.packageContents || []).filter(Boolean).length
+                ? (item.packageContents || []).filter(Boolean).map((entry) => <p key={entry}>• {entry}</p>)
+                : <p>Package contents were not listed.</p>}
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-text-secondary opacity-50">Care</p>
+            <div className="mt-3 space-y-2 text-xs text-text-secondary">
+              {(item.careInstructions || []).filter(Boolean).length
+                ? (item.careInstructions || []).filter(Boolean).map((entry) => <p key={entry}>• {entry}</p>)
+                : <p>No care instructions were added.</p>}
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-text-secondary opacity-50">Certifications</p>
+            <div className="mt-3 space-y-2 text-xs text-text-secondary">
+              {(item.certifications || []).filter(Boolean).length
+                ? (item.certifications || []).filter(Boolean).map((entry) => <p key={entry}>• {entry}</p>)
+                : <p>No certifications were listed.</p>}
+            </div>
+          </div>
+        </div>
+
         {/* Additional Specifications */}
         {(item as any).specifications && (item as any).specifications.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-6 border-t border-white/10">
@@ -117,8 +155,12 @@ const ProductSpecs: React.FC<ProductSpecsProps> = ({ item }) => {
             <InfoIcon size={14} />
           </div>
           <div>
-            <p className="text-[10px] sm:text-xs font-black text-green-700 dark:text-green-400 uppercase tracking-wider">100% Satisfaction Guarantee</p>
-            <p className="text-[10px] sm:text-xs text-text-secondary mt-1 leading-relaxed">Every purchase is backed by our buyer protection program. If you're not satisfied, return within 7 days for a full refund.</p>
+            <p className="text-[10px] sm:text-xs font-black text-green-700 dark:text-green-400 uppercase tracking-wider">Buyer Protection</p>
+            <p className="text-[10px] sm:text-xs text-text-secondary mt-1 leading-relaxed">
+              {item.returnPolicy?.windowDays
+                ? `This listing supports ${item.returnPolicy.windowDays}-day returns${item.warranty?.coverage ? ` and includes ${item.warranty.coverage.toLowerCase()}.` : '.'}`
+                : 'Review the seller policy and warranty details before checkout for full protection terms.'}
+            </p>
           </div>
         </div>
       </div>

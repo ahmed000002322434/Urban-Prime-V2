@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface LottieAnimationProps {
   src: string;
@@ -31,6 +31,14 @@ const LottieAnimation: React.FC<LottieAnimationProps> = ({
   speed = 1
 }) => {
   const isDotLottie = src.toLowerCase().includes('.lottie');
+
+  useEffect(() => {
+    if (!isDotLottie || typeof window === 'undefined') return;
+    void import('@dotlottie/player-component').catch((error) => {
+      console.warn('Failed to load dotLottie player:', error);
+    });
+  }, [isDotLottie]);
+
   if (isDotLottie) {
     return (
       <span className={`inline-block align-middle ${className || ''}`} aria-label={alt}>

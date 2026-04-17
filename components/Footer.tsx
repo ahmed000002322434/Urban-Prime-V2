@@ -5,20 +5,16 @@
 import React, { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
-import { THEMES } from '../context/ThemeContext';
 import { useTranslation } from '../hooks/useTranslation';
 
 const TwitterIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>;
 const FacebookIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path></svg>;
 const InstagramIcon = () => <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.585-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.585-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.585.069-4.85c.149-3.225 1.664 4.771 4.919 4.919 1.266-.058 1.644.07 4.85.07zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948s.014 3.667.072 4.947c.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072s3.667-.014 4.947-.072c4.358-.2 6.78-2.618 6.98-6.98.059-1.281.073-1.689.073-4.948s-.014-3.667-.072-4.947c-.2-4.358-2.618-6.78-6.98-6.98C15.667 0 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.88 1.44 1.44 0 000-2.88z"></path></svg>;
 
-const PaletteIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="9"></circle>
-    <circle cx="8.5" cy="10" r="1.2"></circle>
-    <circle cx="12" cy="7.5" r="1.2"></circle>
-    <circle cx="15.5" cy="10.5" r="1.2"></circle>
-    <circle cx="14.5" cy="15.5" r="1.2"></circle>
+const ThemeToggleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4.2" />
+    <path d="M12 2.2v2.4M12 19.4v2.4M21.8 12h-2.4M4.6 12H2.2M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7M18.9 18.9l-1.7-1.7M6.8 6.8 5.1 5.1" />
   </svg>
 );
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>;
@@ -32,11 +28,16 @@ const ThemeSelector = () => {
 
     return (
         <div className="relative">
-            <button onClick={() => setIsOpen(p => !p)} className="p-2 rounded-full text-footer-text-secondary hover:bg-white/10 transition-colors" aria-label="Select theme">
-                <PaletteIcon />
+            <button
+                onClick={() => setIsOpen(p => !p)}
+                className="inline-flex items-center gap-2 rounded-full border border-primary/60 bg-primary/15 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-primary transition-all duration-200 hover:bg-primary/25 hover:border-primary/80 active:scale-95"
+                aria-label="Select theme"
+            >
+                <ThemeToggleIcon />
+                <span>Theme</span>
             </button>
             {isOpen && (
-                <div onMouseLeave={() => setIsOpen(false)} className="absolute bottom-full mb-3 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 w-56 bg-surface border border-border rounded-lg shadow-2xl p-2 z-10 animate-fade-in-up">
+                <div onMouseLeave={() => setIsOpen(false)} className="fixed bottom-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:fixed md:bottom-auto md:top-auto md:left-auto md:right-4 md:-translate-x-0 md:-translate-y-0 md:bottom-16 w-56 rounded-2xl border border-border/85 bg-surface p-2 shadow-[0_20px_60px_rgba(0,0,0,0.34)] backdrop-blur-2xl z-[9999] animate-fade-in-up">
                     <h4 className="text-xs font-bold text-text-secondary px-2 pb-1 uppercase">Select Theme</h4>
                     {themes.map(t => (
                         <button 
@@ -93,8 +94,8 @@ const Footer: React.FC = () => {
 
   return (
     // Added backdrop-blur-xl and border-t border-white/5 for glass effect across all themes
-    <footer className="bg-footer-background text-footer-text relative z-[60] backdrop-blur-xl border-t border-white/5">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <footer className="site-footer-shell bg-footer-background text-footer-text relative z-[60] border-t border-border/60 mb-0">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4">
         <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[800px] opacity-100 mb-12' : 'max-h-0 opacity-0'}`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-y-10 gap-x-8">
                <div>
@@ -154,7 +155,7 @@ const Footer: React.FC = () => {
             </div>
         </div>
 
-        <div className={`transition-all duration-300 ${isExpanded ? 'border-t border-white/20 pt-8' : 'border-t border-transparent pt-0'}`}>
+        <div className={`transition-all duration-300 ${isExpanded ? 'border-t border-border/60 pt-6 pb-4' : 'border-t border-transparent pt-0 pb-4'}`}>
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div className="flex-1 flex justify-center sm:justify-start items-center gap-4">
                     <ThemeSelector />
@@ -168,13 +169,13 @@ const Footer: React.FC = () => {
                           <ChevronUpIcon />
                         </div>
                     </button>
-                    <p className="text-sm text-gray-500">© 2025 <span className="urban-prime-wordmark-tight">Urban Prime</span>. All rights reserved.</p>
+                    <p className="text-sm text-footer-text-secondary">&copy; 2025-2026 <span className="urban-prime-wordmark text-[0.86rem]">Urban Prime</span>. All rights reserved.</p>
                 </div>
                 <div className="flex-1 flex justify-center sm:justify-end">
                     <div className="flex space-x-4 text-footer-text-secondary">
-                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Twitter"><TwitterIcon/></a>
-                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Facebook"><FacebookIcon/></a>
-                        <a href="https://www.instagram.com/ahmad_offcl/" target="_blank" rel="noopener noreferrer" className="hover:text-footer-text" aria-label="Instagram"><InstagramIcon/></a>
+                        <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="hover:text-[#fff7dc]" aria-label="Twitter"><TwitterIcon/></a>
+                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-[#fff7dc]" aria-label="Facebook"><FacebookIcon/></a>
+                        <a href="https://www.instagram.com/ahmad_offcl/" target="_blank" rel="noopener noreferrer" className="hover:text-[#fff7dc]" aria-label="Instagram"><InstagramIcon/></a>
                     </div>
                 </div>
             </div>

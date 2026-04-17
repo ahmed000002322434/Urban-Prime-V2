@@ -1,6 +1,16 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import type { Category } from '../types';
-import { itemService } from '../services/itemService';
+
+type ItemServiceModule = typeof import('../services/itemService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+    if (!itemServiceModulePromise) {
+        itemServiceModulePromise = import('../services/itemService');
+    }
+    return itemServiceModulePromise;
+};
 
 interface CategoryContextType {
     categories: Category[]; // Hierarchical
@@ -17,7 +27,8 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const fetchCategories = useCallback(() => {
         setIsLoading(true);
-        itemService.getHierarchicalCategories()
+        loadItemServiceModule()
+            .then(({ itemService }) => itemService.getHierarchicalCategories())
             .then(setCategories)
             .finally(() => setIsLoading(false));
     }, []);
@@ -27,6 +38,7 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, [fetchCategories]);
 
     const addCategory = async (newCategoryName: string, parentCategoryId: string) => {
+        const { itemService } = await loadItemServiceModule();
         const newCat = await itemService.addCategory(newCategoryName, parentCategoryId);
         fetchCategories(); // refetch to update state
         return newCat;

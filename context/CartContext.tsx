@@ -2,8 +2,34 @@ import React, { createContext, useState, useMemo, useCallback, useEffect } from 
 import type { Item, SubscriptionDetails, CartGroup, CartItem } from '../types';
 import { useNotification } from './NotificationContext';
 import { useAuth } from '../hooks/useAuth';
-import { itemService } from '../services/itemService';
-import { spotlightService } from '../services/spotlightService';
+
+type ItemServiceModule = typeof import('../services/itemService');
+type SpotlightServiceModule = typeof import('../services/spotlightService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+let spotlightServiceModulePromise: Promise<SpotlightServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+  return itemServiceModulePromise;
+};
+
+const loadSpotlightServiceModule = () => {
+  if (!spotlightServiceModulePromise) {
+    spotlightServiceModulePromise = import('../services/spotlightService');
+  }
+  return spotlightServiceModulePromise;
+};
+
+const withItemService = async <T,>(
+  callback: (service: ItemServiceModule['itemService']) => Promise<T> | T
+): Promise<T> => callback((await loadItemServiceModule()).itemService);
+
+const withSpotlightService = async <T,>(
+  callback: (service: SpotlightServiceModule['spotlightService']) => Promise<T> | T
+): Promise<T> => callback((await loadSpotlightServiceModule()).spotlightService);
 
 interface CartContextType {
   cartGroups: CartGroup[];
@@ -212,8 +238,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (!alreadyInCart && item.owner?.id && item.owner.id !== user?.id) {
-        itemService
-          .logItemEvent({
+        void withItemService((itemService) =>
+          itemService.logItemEvent({
             action: 'cart_add',
             ownerId: item.owner.id,
             ownerPersonaId: item.ownerPersonaId || null,
@@ -233,9 +259,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               : {}
           })
-          .catch(() => {});
+        ).catch(() => {});
         if (item.spotlightAttribution?.spotlightContentId) {
-          void spotlightService.trackProductEvent({
+          void withSpotlightService((spotlightService) => spotlightService.trackProductEvent({
             content_id: item.spotlightAttribution.spotlightContentId,
             product_link_id: item.spotlightAttribution.spotlightProductLinkId || null,
             item_id: item.id,
@@ -249,7 +275,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }),
               quantity
             }
-          }).catch(() => undefined);
+          })).catch(() => undefined);
         }
       }
     },

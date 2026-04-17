@@ -1,5 +1,5 @@
 
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -14,9 +14,9 @@ import { UploadProvider } from './context/UploadContext';
 import { OmniProvider } from './context/OmniContext';
 import { SpotlightPreferencesProvider } from './components/spotlight/SpotlightPreferencesContext';
 import { useTheme } from './hooks/useTheme';
+import { HeroStyleProvider } from './context/HeroStyleContext';
 
 import Layout from './components/Layout';
-import Spinner from './components/Spinner';
 import WelcomeScreen from './components/WelcomeScreen';
 import ContextualThemeWrapper from './components/ContextualThemeWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -25,13 +25,16 @@ import AdminRoute from './components/AdminRoute';
 import AdminLayout from './pages/admin/AdminLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import AutoDraftPersistence from './components/AutoDraftPersistence';
+import GlobalNavigationEnhancer from './components/GlobalNavigationEnhancer';
+import RouteSkeletonFallback from './components/RouteSkeletonFallback';
+import { schedulePrefetchRoutes } from './utils/routePrefetch';
+import HomePage from './pages/public/HomePage';
 
 // Layouts
 const DashboardLayout = lazy(() => import('./layouts/DashboardLayout'));
 
 // Public Pages
 const StoreFront = lazy(() => import('./pages/public/StoreFront'));
-const HomePage = lazy(() => import('./pages/public/HomePage'));
 const AboutPage = lazy(() => import('./pages/public/AboutPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/public/PrivacyPolicyPage'));
@@ -267,49 +270,28 @@ const AppContent: React.FC = () => {
   const { resolvedTheme } = useTheme();
 
   useEffect(() => {
-      const timer = setTimeout(() => setShowWelcomeScreen(false), 5000);
-      return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-      const warmupRoutes = () => {
-          void import('./pages/public/BrowsePage');
-          void import('./pages/public/RenterDirectoryPage');
-          void import('./pages/public/PixePage');
-          void import('./pages/public/PrimeSpotlightPage');
-          void import('./pages/public/SpotlightProfilePage');
-          void import('./pages/public/NotificationsPage');
-          void import('./pages/public/MorePage');
-          void import('./pages/public/StoresDirectoryPage');
-      };
-
-      const win = window as Window & {
-          requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
-          cancelIdleCallback?: (handle: number) => void;
-      };
-
-      if (typeof win.requestIdleCallback === 'function') {
-          const idleHandle = win.requestIdleCallback(() => warmupRoutes(), { timeout: 2500 });
-          return () => {
-              if (typeof win.cancelIdleCallback === 'function') {
-                  win.cancelIdleCallback(idleHandle);
-              }
-          };
-      }
-
-      const timer = window.setTimeout(warmupRoutes, 1200);
-      return () => window.clearTimeout(timer);
+    return schedulePrefetchRoutes([
+      '/browse',
+      '/stores',
+      '/brands',
+      '/reels',
+      '/spotlight',
+      '/pixe',
+      '/messages',
+      '/cart'
+    ]);
   }, []);
 
   return (
     <ContextualThemeWrapper>
+      <GlobalNavigationEnhancer />
       {resolvedTheme === 'obsidian' ? (
         <Suspense fallback={null}>
           <StarryBackground />
         </Suspense>
       ) : null}
-      {showWelcomeScreen && <WelcomeScreen />}
-      <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-white dark:bg-dark-background"><Spinner size="lg" /></div>}>
+      {showWelcomeScreen ? <WelcomeScreen onComplete={() => setShowWelcomeScreen(false)} /> : null}
+      <Suspense fallback={<RouteSkeletonFallback />}>
         <Routes>
           {/* Standalone Store Pages */}
           <Route path="/s/:storeSlug" element={<StoreFront />} />
@@ -665,9 +647,11 @@ const App: React.FC = () => {
                       <UploadProvider>
                         <AnimationProvider>
                           <OmniProvider>
-                            <ErrorBoundary>
-                              <AppContent />
-                            </ErrorBoundary>
+                            <HeroStyleProvider>
+                              <ErrorBoundary>
+                                <AppContent />
+                              </ErrorBoundary>
+                            </HeroStyleProvider>
                           </OmniProvider>
                         </AnimationProvider>
                       </UploadProvider>

@@ -4,24 +4,72 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import gsap from 'gsap';
 import { useAuth } from '../hooks/useAuth';
 import { useCart } from '../hooks/useCart';
-import { itemService, userService } from '../services/itemService';
 import type { Item, Notification, PersonaType, User } from '../types';
 import Spinner from './Spinner';
 import { useTranslation } from '../hooks/useTranslation';
+import { useHeroStyle } from '../context/HeroStyleContext';
+import { useTheme } from '../hooks/useTheme';
 import BackButton from './BackButton';
 import LogoutConfirmationModal from './LogoutConfirmationModal';
 import { LANGUAGES } from '../data/languages';
 import LottieAnimation from './LottieAnimation';
 import { authAvatarIcons, uiLottieAnimations } from '../utils/uiAnimationAssets';
+import { prefetchRoute } from '../utils/routePrefetch';
 
-const { Link, NavLink, useLocation, useNavigate } = ReactRouterDOM as any;
+const { Link: RouterLink, NavLink: RouterNavLink, useLocation, useNavigate } = ReactRouterDOM as any;
+type ItemServiceModule = typeof import('../services/itemService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+    if (!itemServiceModulePromise) {
+        itemServiceModulePromise = import('../services/itemService');
+    }
+
+    return itemServiceModulePromise;
+};
+
 const profileAvatarFallback = authAvatarIcons.male;
 const resolveProfileAvatar = (avatar?: string | null) => {
     const value = String(avatar || '').trim();
     return value || profileAvatarFallback;
 };
+
+const attachPrefetch =
+    (to: any, callback?: (event: any) => void) =>
+    (event: any) => {
+        prefetchRoute(to);
+        callback?.(event);
+    };
+
+const Link = React.forwardRef<HTMLAnchorElement, any>(({ onFocus, onMouseEnter, onTouchStart, to, ...props }, ref) => (
+    <RouterLink
+        ref={ref}
+        to={to}
+        onMouseEnter={attachPrefetch(to, onMouseEnter)}
+        onFocus={attachPrefetch(to, onFocus)}
+        onTouchStart={attachPrefetch(to, onTouchStart)}
+        {...props}
+    />
+));
+
+Link.displayName = 'HeaderPrefetchLink';
+
+const NavLink = React.forwardRef<HTMLAnchorElement, any>(({ onFocus, onMouseEnter, onTouchStart, to, ...props }, ref) => (
+    <RouterNavLink
+        ref={ref}
+        to={to}
+        onMouseEnter={attachPrefetch(to, onMouseEnter)}
+        onFocus={attachPrefetch(to, onFocus)}
+        onTouchStart={attachPrefetch(to, onTouchStart)}
+        {...props}
+    />
+));
+
+NavLink.displayName = 'HeaderPrefetchNavLink';
 
 // --- ICONS ---
 const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>;
@@ -234,14 +282,45 @@ const AccountMenu: React.FC<{
     );
 };
 
-const NotificationMenu: React.FC<{ notifications: Notification[], onMarkAsRead: () => void, unreadCount: number }> = ({ notifications, onMarkAsRead, unreadCount }) => {
+const PulseLine: React.FC<{ className?: string }> = ({ className = '' }) => (
+    <div className={`animate-pulse rounded-full bg-surface-soft/90 ${className}`}></div>
+);
+
+const NotificationMenuSkeleton = () => (
+    <div className="p-3 space-y-3">
+        {[0, 1, 2].map((index) => (
+            <div key={index} className="rounded-2xl border border-border bg-surface-soft/50 p-3">
+                <PulseLine className="h-4 w-3/4" />
+                <PulseLine className="mt-2 h-3 w-1/2" />
+            </div>
+        ))}
+    </div>
+);
+
+const SearchResultsSkeleton = () => (
+    <div className="space-y-3">
+        {[0, 1, 2, 3].map((index) => (
+            <div key={index} className="flex items-center gap-3 rounded-xl border border-border bg-surface-soft/40 p-3 animate-pulse">
+                <div className="h-12 w-12 rounded-lg bg-surface-soft"></div>
+                <div className="flex-1 space-y-2">
+                    <PulseLine className="h-3.5 w-3/4" />
+                    <PulseLine className="h-3 w-1/4" />
+                </div>
+            </div>
+        ))}
+    </div>
+);
+
+const NotificationMenu: React.FC<{ notifications: Notification[], onMarkAsRead: () => void, unreadCount: number, isLoading?: boolean }> = ({ notifications, onMarkAsRead, unreadCount, isLoading = false }) => {
     return (
         <div className="absolute top-full right-0 mt-2 w-80 bg-surface rounded-lg shadow-2xl border border-border z-50 animate-dropdown-fade-in-up">
             <div className="p-3 border-b border-border flex justify-between items-center">
                 <h4 className="font-bold text-text-primary">Notifications</h4>
                 {unreadCount > 0 && <button onClick={onMarkAsRead} className="text-xs font-semibold text-primary hover:underline">Mark all as read</button>}
             </div>
-            {notifications.length === 0 ? (
+            {isLoading ? (
+                <NotificationMenuSkeleton />
+            ) : notifications.length === 0 ? (
                 <p className="p-6 text-center text-sm text-text-secondary">You have no new notifications.</p>
             ) : (
                 <ul className="py-2 max-h-80 overflow-y-auto">
@@ -447,10 +526,14 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const { cartCount } = useCart();
     const navigate = useNavigate();
     const location = useLocation();
+    const isHomePage = location.pathname === '/';
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const { t, currentLanguageInfo, isTranslating } = useTranslation();
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+    const [scrollOpacity, setScrollOpacity] = useState(0);
+    const { heroStyle } = useHeroStyle();
+    const { resolvedTheme } = useTheme();
 
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const menuTimeoutRef = useRef<number | null>(null);
@@ -476,6 +559,8 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     
     // --- Notification State ---
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
+    const hasLoadedNotificationsRef = useRef(false);
     const unreadCount = notifications.filter(n => !n.isRead).length;
 
     useEffect(() => {
@@ -483,7 +568,11 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
 
         const handleWindowScroll = () => {
             if (isItemRoute) return;
-            setIsScrolled(window.scrollY > 50);
+            const scrollY = window.scrollY;
+            const maxScroll = 200;
+            const opacity = Math.min(scrollY / maxScroll, 1);
+            setScrollOpacity(opacity);
+            setIsScrolled(scrollY > 50);
         };
 
         const handleItemFrameScroll = (event: MessageEvent) => {
@@ -511,9 +600,34 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         };
     }, [location.pathname]);
 
-    const fetchNotifications = useCallback(async () => {
-        if (!user) return;
+    const isBannerHero = heroStyle === 'banner' && isHomePage;
+
+    useEffect(() => {
+        if (!headerRef.current) return;
+        if (!isBannerHero) {
+            gsap.set(headerRef.current, { clearProps: 'transform' });
+            return;
+        }
+        gsap.to(headerRef.current, {
+            y: isScrolled ? 0 : -4,
+            scale: 1,
+            duration: isScrolled ? 0.42 : 0.28,
+            ease: 'power2.out'
+        });
+    }, [isBannerHero, isScrolled]);
+
+    const fetchNotifications = useCallback(async (showLoader = false) => {
+        if (!user) {
+            setIsNotificationsLoading(false);
+            return;
+        }
+
+        if (showLoader) {
+            setIsNotificationsLoading(true);
+        }
+
         try {
+            const { userService } = await loadItemServiceModule();
             if (typeof userService.getNotificationsForUser !== 'function') {
                 setNotifications([]);
                 return;
@@ -524,24 +638,52 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                 limit: 50
             });
             setNotifications(Array.isArray(userNotifs) ? userNotifs : []);
+            hasLoadedNotificationsRef.current = true;
         } catch (error) {
             console.warn('Notification fetch failed:', error);
             setNotifications([]);
+        } finally {
+            setIsNotificationsLoading(false);
         }
     }, [user, activePersona?.id]);
 
     useEffect(() => {
         if (isAuthenticated) {
-            fetchNotifications();
+            let timeoutId: number | null = null;
+            let idleId: number | null = null;
+
+            const runFetch = () => {
+                timeoutId = window.setTimeout(() => {
+                    void fetchNotifications();
+                }, 900);
+            };
+
+            if ('requestIdleCallback' in window) {
+                idleId = (window as any).requestIdleCallback(runFetch, { timeout: 1800 });
+            } else {
+                runFetch();
+            }
+
+            return () => {
+                if (idleId !== null) {
+                    (window as any).cancelIdleCallback?.(idleId);
+                }
+                if (timeoutId !== null) {
+                    window.clearTimeout(timeoutId);
+                }
+            };
         } else {
             setNotifications([]);
+            setIsNotificationsLoading(false);
+            hasLoadedNotificationsRef.current = false;
         }
     }, [isAuthenticated, fetchNotifications]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
         const intervalId = window.setInterval(() => {
-            fetchNotifications();
+            if (document.visibilityState !== 'visible') return;
+            void fetchNotifications();
         }, 25000);
 
         return () => window.clearInterval(intervalId);
@@ -550,12 +692,13 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const handleMarkAsRead = async () => {
         if (!user) return;
         try {
+            const { userService } = await loadItemServiceModule();
             if (typeof userService.markNotificationsAsRead !== 'function') return;
             await userService.markNotificationsAsRead(user.id, {
                 personaId: activePersona?.id,
                 includePersona: Boolean(activePersona?.id)
             });
-            fetchNotifications();
+            await fetchNotifications();
         } catch (error) {
             console.warn('Mark notifications as read failed:', error);
         }
@@ -589,6 +732,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         }
         setIsLoadingSearch(true);
         try {
+            const { itemService } = await loadItemServiceModule();
             const { items } = await itemService.getItems({ search: query }, { page: 1, limit: 4 });
             setProducts(items);
         } catch (error) {
@@ -607,6 +751,11 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         }
         return () => { if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current); };
     }, [searchQuery, fetchProducts]);
+
+    useEffect(() => {
+        if (!isMobileSearchOpen) return;
+        void loadItemServiceModule().catch(() => undefined);
+    }, [isMobileSearchOpen]);
     
     const startVoiceSearch = () => {
         if (!('webkitSpeechRecognition' in window)) {
@@ -680,6 +829,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const showSearchPanel = isSearchOpen && (searchQuery.trim().length > 0);
 
     const handleMenuEnter = (menu: string) => {
+        if (menu === 'notifications' && isAuthenticated && !hasLoadedNotificationsRef.current && !isNotificationsLoading) {
+            void fetchNotifications(true);
+        }
         if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
         setActiveMenu(menu);
     };
@@ -690,6 +842,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const handleSearchEnter = () => {
         isHoveringSearchRef.current = true;
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        void loadItemServiceModule().catch(() => undefined);
         setIsSearchOpen(true);
     };
     
@@ -727,28 +880,99 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     }, [isSearchOpen]);
 
 
-    const getNavLinkClass = ({ isActive }: { isActive: boolean }) => 
-        `px-3 py-2 text-sm font-semibold transition-colors duration-300 rounded-md ${isActive ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`;
+    const isLightResolvedTheme = !['obsidian', 'noir', 'hydra'].includes(resolvedTheme);
 
-    const isHomePage = location.pathname === '/';
+    const bannerPillBorderProgress = Math.min(Math.max(isHomePage ? scrollOpacity : 1, 0), 1);
+    const isHomePillCollapsed = isHomePage && bannerPillBorderProgress < 0.12;
+    const homeTextClass = isHomePillCollapsed
+        ? 'text-white/95 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)]'
+        : 'text-[#1f1d12]';
+    const homeMutedTextClass = isHomePillCollapsed
+        ? 'text-white/80 hover:text-white'
+        : 'text-[#4d4630] hover:text-[#1f1d12]';
+    const homeHoverBgClass = isHomePillCollapsed ? 'hover:bg-white/10' : 'hover:bg-black/5';
 
-    const pillClasses = `
-        transition-all duration-300
-        ${isScrolled 
-            ? 'bg-surface/80 backdrop-blur-md shadow-md border border-border/80' 
-            : 'bg-surface/30 backdrop-blur-sm border border-white/20'
-        }
-    `;
+    const getNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+        `px-3 py-2 text-sm font-semibold transition-colors duration-300 rounded-md ${
+            isHomePage
+                ? isActive
+                    ? `${homeTextClass} ${isHomePillCollapsed ? 'bg-white/12' : ''}`
+                    : `${homeMutedTextClass} ${homeHoverBgClass}`
+                : isActive
+                    ? 'text-primary'
+                    : 'text-text-secondary hover:text-text-primary'
+        }`;
+
+    const pillClasses = isHomePage
+        ? 'transition-all duration-300 rounded-full border'
+        : `transition-all duration-300 rounded-full border ${
+              isScrolled ? 'bg-surface/80 backdrop-blur-xl shadow-md border-border/80' : 'bg-surface/70 backdrop-blur-lg shadow-sm border-border/60'
+          }`;
+
+    const desktopPillClasses = pillClasses;
+
+    const desktopWordmarkClass = isHomePage
+        ? homeTextClass
+        : isBannerHero
+            ? 'text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+            : 'text-text-primary';
+    const desktopWordmarkTextClass = isHomePage
+        ? `text-[0.95rem] font-extrabold tracking-widest font-["Dh_Caloins",sans-serif] ${homeTextClass}`
+        : isBannerHero
+            ? isScrolled
+                ? 'text-[0.95rem] font-extrabold tracking-widest text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.88)] font-["Dh_Caloins",sans-serif]'
+                : 'text-[0.95rem] font-extrabold tracking-widest text-white [text-shadow:0_2px_12px_rgba(0,0,0,0.42)] font-["Dh_Caloins",sans-serif]'
+            : 'text-[0.95rem] font-["Dh_Caloins",sans-serif]';
+
+    const desktopSearchButtonClass = isHomePage
+        ? `p-2.5 rounded-full bg-transparent border-transparent shadow-none ${isHomePillCollapsed ? 'text-white/90 hover:bg-white/10' : 'text-[#4d4630] hover:bg-black/5 hover:text-[#1f1d12]'}`
+        : isBannerHero
+            ? isScrolled
+                ? 'p-2.5 rounded-full text-white/90 bg-white/10 border border-white/10 hover:bg-white/16'
+                : 'p-2.5 rounded-full text-white bg-transparent border-transparent shadow-none hover:bg-white/12'
+            : 'p-2.5 rounded-full text-text-secondary bg-surface-soft hover:bg-gray-200';
+    const desktopActionButtonClass = isHomePage
+        ? `rounded-full ${isHomePillCollapsed ? 'text-white/90 hover:bg-white/10' : 'text-[#1f1d12] hover:bg-black/5'}`
+        : isBannerHero
+            ? isScrolled
+                ? 'rounded-full text-white/90 hover:bg-white/10'
+                : 'rounded-full border-transparent bg-transparent text-white shadow-none hover:bg-white/12'
+            : 'rounded-full hover:bg-surface-soft text-text-primary';
 
     const mobilePillClasses = `
         ${pillClasses}
-        bg-surface/80
+        ${isHomePage ? '' : 'bg-surface/80'}
     `;
+    const desktopBannerPillStyle: React.CSSProperties = isHomePage
+        ? isLightResolvedTheme
+            ? {
+                  backgroundColor: `rgba(248, 242, 216, ${bannerPillBorderProgress * 0.92})`,
+                  borderColor: `rgba(226, 214, 170, ${bannerPillBorderProgress * 0.9})`,
+                  borderWidth: `${bannerPillBorderProgress}px`,
+                  backdropFilter: `blur(${bannerPillBorderProgress * 18}px)`,
+                  boxShadow: `0 ${bannerPillBorderProgress * 10}px ${bannerPillBorderProgress * 26}px rgba(0,0,0,${bannerPillBorderProgress * 0.08})`
+              }
+            : {
+                  backgroundColor: `rgba(255, 255, 255, ${bannerPillBorderProgress * 0.08})`,
+                  borderColor: `rgba(255, 255, 255, ${bannerPillBorderProgress * 0.2})`,
+                  borderWidth: `${bannerPillBorderProgress}px`,
+                  backdropFilter: `blur(${6 + bannerPillBorderProgress * 12}px)`,
+                  boxShadow: `0 ${bannerPillBorderProgress * 8}px ${bannerPillBorderProgress * 28}px rgba(255,255,255,${bannerPillBorderProgress * 0.08})`
+              }
+        : {};
     const getMobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
         `px-2.5 py-1.5 text-[11px] font-semibold transition-colors duration-300 rounded-full ${
-            isActive ? 'text-primary bg-primary/10' : 'text-text-secondary hover:text-text-primary'
+            isHomePage
+                ? isActive
+                    ? `${homeTextClass} ${isHomePillCollapsed ? 'bg-white/12' : ''}`
+                    : `${homeMutedTextClass} ${homeHoverBgClass}`
+                : isActive
+                    ? 'text-primary bg-primary/10'
+                    : 'text-text-secondary hover:text-text-primary'
         }`;
-    const mobileIconBtnClass = 'p-1.5 rounded-full hover:bg-surface-soft text-text-primary';
+    const mobileIconBtnClass = isHomePage
+        ? `p-1.5 rounded-full ${isHomePillCollapsed ? 'hover:bg-white/10 text-white/90' : 'hover:bg-black/5 text-[#1f1d12]'}`
+        : 'p-1.5 rounded-full hover:bg-surface-soft text-text-primary';
 
     const searchVariants = {
         hidden: { opacity: 0, y: -5, scale: 0.98 },
@@ -769,27 +993,31 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     fixed top-4 left-0 right-0 z-50
                     hidden md:block
                     transition-all duration-300 ease-in-out
+                    pointer-events-auto
                 `}
             >
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
                     {/* Left Pill: Logo */}
-                    <div className={`flex-shrink-0 px-4 py-2 rounded-full ${pillClasses}`}>
-                        <Link to="/" className="text-xl font-extrabold font-display flex items-center gap-2">
-                           
-                           <img src="/icons/urbanprime-logo.png" alt="Urban Prime logo" className="h-9 w-auto max-w-[3.25rem] object-contain" />
-                           <span className="urban-prime-wordmark text-[0.82rem]">Urban Prime</span>
+                <div 
+                    className={`px-4 py-2 ${desktopPillClasses}`}
+                    style={desktopBannerPillStyle}>
+                        <Link to="/" className={`text-xl font-extrabold font-display flex items-center ${desktopWordmarkClass}`}>
+                           <span className={desktopWordmarkTextClass}>Urban Prime</span>
                         </Link>
                     </div>
                     
                     {/* Center Pill: Navigation + Search */}
-                    <nav ref={navContainerRef} className={`flex items-center gap-1 p-0.5 rounded-full ${pillClasses}`}>
+                    <nav 
+                        ref={navContainerRef} 
+                        className={`flex items-center gap-1 p-0.5 ${desktopPillClasses}`}
+                        style={desktopBannerPillStyle}>
                         <NavLink to="/deals" className={getNavLinkClass}>{t('header.deals')}</NavLink>
                         <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
                              <span className="text-purple-500"><GenieIcon /></span> Genie
                         </NavLink>
                         
                         <div ref={searchIconRef} onMouseEnter={handleSearchEnter} onMouseLeave={handleSearchLeave}>
-                            <button className="p-2.5 rounded-full text-text-secondary bg-surface-soft hover:bg-gray-200" aria-label="Search"><SearchIcon/></button>
+                            <button className={desktopSearchButtonClass} aria-label="Search"><SearchIcon/></button>
                         </div>
                         
                         <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
@@ -805,10 +1033,13 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     </nav>
                     
                     {/* Right Pill: User Actions */}
-                    <div className={`flex items-center gap-1 p-0.5 rounded-full ${pillClasses}`} onMouseLeave={handleMenuLeave}>
+                    <div 
+                        className={`flex items-center gap-1 p-0.5 ${desktopPillClasses}`} 
+                        onMouseLeave={handleMenuLeave}
+                        style={desktopBannerPillStyle}>
                         <div className="relative" onMouseEnter={() => handleMenuEnter('account')}>
                             {isAuthenticated && user ? (
-                                <button className="flex items-center gap-2 p-1 rounded-full hover:bg-surface-soft text-text-primary">
+                                <button className={`flex items-center gap-2 p-1 ${desktopActionButtonClass}`}>
                                     <img
                                         src={resolveProfileAvatar(user.avatar)}
                                         alt={user.name}
@@ -817,7 +1048,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                     />
                                 </button>
                             ) : (
-                                <button onClick={() => openAuthModal('login')} className="p-2 rounded-full hover:bg-surface-soft text-text-primary">
+                                <button onClick={() => openAuthModal('login')} className={`p-2 ${desktopActionButtonClass}`}>
                                     <UserIcon />
                                 </button>
                             )}
@@ -833,22 +1064,29 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         
                         {isAuthenticated && (
                              <div className="relative" onMouseEnter={() => handleMenuEnter('notifications')}>
-                                <button className="relative p-2 rounded-full hover:bg-surface-soft text-text-primary">
+                                <button className={`relative p-2 ${desktopActionButtonClass}`}>
                                     <BellIcon />
                                     {unreadCount > 0 && <span className="absolute top-0 right-0 block h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold ring-2 ring-surface">{unreadCount}</span>}
                                 </button>
-                                {activeMenu === 'notifications' && <NotificationMenu notifications={notifications} onMarkAsRead={handleMarkAsRead} unreadCount={unreadCount} />}
+                                {activeMenu === 'notifications' && (
+                                    <NotificationMenu
+                                        notifications={notifications}
+                                        onMarkAsRead={handleMarkAsRead}
+                                        unreadCount={unreadCount}
+                                        isLoading={isNotificationsLoading}
+                                    />
+                                )}
                             </div>
                         )}
 
                         <div className="relative" onMouseEnter={() => handleMenuEnter('language')}>
-                            <button className="p-2 rounded-full hover:bg-surface-soft text-text-primary">
+                            <button className={`p-2 ${desktopActionButtonClass}`}>
                                 {isTranslating ? <Spinner size="sm" className="w-8 h-8"/> : <PakistanFlagIcon />}
                             </button>
                              {activeMenu === 'language' && <LanguageMenu />}
                         </div>
                         
-                        <NavLink to="/cart" className="relative p-2 rounded-full hover:bg-surface-soft text-text-primary">
+                        <NavLink to="/cart" className={`relative p-2 ${desktopActionButtonClass}`}>
                             <CartIcon />
                             {cartCount > 0 && <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-primary text-white text-xs flex items-center justify-center font-bold">{cartCount}</span>}
                         </NavLink>
@@ -869,19 +1107,17 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
             >
                 <div className="container mx-auto px-3 sm:px-6 lg:px-8 py-1.5 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                        <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full ${mobilePillClasses}`}>
+                        <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full ${mobilePillClasses}`} style={desktopBannerPillStyle}>
                             {!isHomePage && (
                                 <button onClick={() => navigate(-1)} className="p-1 rounded-full hover:bg-surface-soft" aria-label="Go back">
                                     <span className="inline-flex scale-90"><BackIcon /></span>
                                 </button>
                             )}
-                            <Link to="/" className="text-[13px] font-extrabold font-display tracking-tight flex items-center gap-1.5">
-                                
-                                <img src="/icons/urbanprime-logo.png" alt="Urban Prime logo" className="h-7 w-auto max-w-[2.5rem] object-contain" />
-                                <span className="urban-prime-wordmark text-[0.72rem]">Urban Prime</span>
+                            <Link to="/" className="text-[13px] font-extrabold font-display tracking-tight flex items-center">
+                                <span className={`urban-prime-wordmark text-[0.72rem] ${homeTextClass}`}>Urban Prime</span>
                             </Link>
                         </div>
-                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses}`}>
+                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses}`} style={desktopBannerPillStyle}>
                             <button onClick={() => setIsMobileSearchOpen(true)} className={mobileIconBtnClass} aria-label="Search">
                                 <SearchIcon />
                             </button>
@@ -922,7 +1158,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} flex-wrap justify-center`}>
+                        <div className={`flex items-center gap-1 p-0.5 rounded-full ${mobilePillClasses} flex-wrap justify-center`} style={desktopBannerPillStyle}>
                             <NavLink to="/deals" className={getMobileNavLinkClass}>{t('header.deals')}</NavLink>
                             <NavLink to="/genie" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-purple-500' : 'hover:text-purple-500'}`}>
                                 <span className="text-purple-500"><GenieIcon /></span> Genie
@@ -993,7 +1229,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                 <div>
                                     <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3">Products</h4>
                                     {isLoadingSearch ? (
-                                        <div className="py-6 flex justify-center"><Spinner /></div>
+                                        <SearchResultsSkeleton />
                                     ) : products.length === 0 ? (
                                         <div className="rounded-xl border border-border bg-surface p-4 text-center">
                                             <LottieAnimation src={uiLottieAnimations.noResults} className="h-24 w-24 mx-auto" loop autoplay />
@@ -1080,7 +1316,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         <div className="transition-opacity duration-300 opacity-100">
                             <div className="mt-4 border-t border-border/80 pt-4 max-h-[60vh] overflow-y-auto">
                                 {isLoadingSearch ? (
-                                    <div className="text-center py-10"><Spinner /></div>
+                                    <SearchResultsSkeleton />
                                 ) : !hasSearchResults ? (
                                     <div className="text-center py-10">
                                         <LottieAnimation src={uiLottieAnimations.noResults} className="h-28 w-28 mx-auto" loop autoplay />

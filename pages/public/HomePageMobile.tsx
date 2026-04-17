@@ -2,8 +2,63 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTheme } from '../../hooks/useTheme';
-import { itemService } from '../../services/itemService';
 import type { Item } from '../../types';
+
+type ItemServiceModule = typeof import('../../services/itemService');
+type MobileHomeArrivalsCache = {
+  items: ProductCard[];
+  cachedAt: number;
+};
+
+const MOBILE_HOME_ARRIVALS_CACHE_KEY = 'urbanprime:mobile-home-arrivals:v1';
+const MOBILE_HOME_ARRIVALS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+let mobileHomeArrivalsMemoryCache: MobileHomeArrivalsCache | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../../services/itemService');
+  }
+
+  return itemServiceModulePromise;
+};
+
+const isFreshMobileHomeArrivalsCache = (payload: MobileHomeArrivalsCache | null) => (
+  Boolean(payload && Array.isArray(payload.items) && payload.items.length > 0 && (Date.now() - payload.cachedAt) < MOBILE_HOME_ARRIVALS_CACHE_TTL_MS)
+);
+
+const readMobileHomeArrivalsCache = (): MobileHomeArrivalsCache | null => {
+  if (mobileHomeArrivalsMemoryCache && isFreshMobileHomeArrivalsCache(mobileHomeArrivalsMemoryCache)) {
+    return mobileHomeArrivalsMemoryCache;
+  }
+
+  if (typeof window === 'undefined') {
+    return mobileHomeArrivalsMemoryCache;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(MOBILE_HOME_ARRIVALS_CACHE_KEY);
+    if (!rawValue) return mobileHomeArrivalsMemoryCache;
+    const parsed = JSON.parse(rawValue) as MobileHomeArrivalsCache;
+    if (!isFreshMobileHomeArrivalsCache(parsed)) return null;
+    mobileHomeArrivalsMemoryCache = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeMobileHomeArrivalsCache = (payload: MobileHomeArrivalsCache) => {
+  mobileHomeArrivalsMemoryCache = payload;
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(MOBILE_HOME_ARRIVALS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore best-effort cache failures.
+  }
+};
 
 type HeroSlide = {
   id: string;
@@ -151,8 +206,9 @@ const HomePageMobile: React.FC = () => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const cachedMobileArrivals = readMobileHomeArrivalsCache();
   const [activeSlide, setActiveSlide] = useState(0);
-  const [newArrivals, setNewArrivals] = useState<ProductCard[]>(fallbackArrivals);
+  const [newArrivals, setNewArrivals] = useState<ProductCard[]>(() => cachedMobileArrivals?.items || fallbackArrivals);
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = useState('');
 
@@ -160,6 +216,7 @@ const HomePageMobile: React.FC = () => {
     let mounted = true;
     const loadArrivals = async () => {
       try {
+        const { itemService } = await loadItemServiceModule();
         const { items } = await itemService.getItems({}, { page: 1, limit: 16 });
         if (!mounted) return;
 
@@ -182,16 +239,69 @@ const HomePageMobile: React.FC = () => {
 
         if (mapped.length > 0) {
           setNewArrivals(mapped);
+          writeMobileHomeArrivalsCache({
+            items: mapped,
+            cachedAt: Date.now()
+          });
         }
       } catch (error) {
         console.warn('Mobile home arrivals fetch failed:', error);
       }
     };
 
-    loadArrivals();
+    const scheduleLoad = () => {
+      void loadArrivals();
+    };
+
+    if (cachedMobileArrivals) {
+      if ('requestIdleCallback' in window) {
+        const idleHandle = (window as Window & { requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback?.(
+          () => scheduleLoad(),
+          { timeout: 2200 }
+        );
+
+        return () => {
+          mounted = false;
+          if (typeof idleHandle === 'number') {
+            (window as Window & { cancelIdleCallback?: (handle: number) => void }).cancelIdleCallback?.(idleHandle);
+          }
+        };
+      }
+
+      const timer = window.setTimeout(scheduleLoad, 900);
+      return () => {
+        mounted = false;
+        window.clearTimeout(timer);
+      };
+    }
+
+    scheduleLoad();
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if ('requestIdleCallback' in window) {
+      const idleHandle = (window as Window & { requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback?.(
+        () => {
+          void loadItemServiceModule();
+        },
+        { timeout: 1600 }
+      );
+
+      return () => {
+        if (typeof idleHandle === 'number') {
+          (window as Window & { cancelIdleCallback?: (handle: number) => void }).cancelIdleCallback?.(idleHandle);
+        }
+      };
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadItemServiceModule();
+    }, 700);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

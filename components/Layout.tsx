@@ -1,19 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import Header from './Header';
-import Footer from './Footer';
-import AIChatBot from './AIChatBot';
 import BackToTopButton from './BackToTopButton';
-import ComparisonBar from './ComparisonBar';
-import FloatingWidget from './FloatingWidget';
-import { adminService } from '../services/adminService';
 import type { SiteSettings } from '../types';
-import PixeFloatingButton from './PixeFloatingButton';
 import { useTheme } from '../hooks/useTheme';
-import OmniDashboard from './omni/OmniDashboard';
-import MobileAppChrome from './MobileAppChrome';
 import { useCart } from '../hooks/useCart';
+import DeferredMount from './performance/DeferredMount';
+
+const Header = lazy(() => import('./Header'));
+const Footer = lazy(() => import('./Footer'));
+const AIChatBot = lazy(() => import('./AIChatBot'));
+const ComparisonBar = lazy(() => import('./ComparisonBar'));
+const FloatingWidget = lazy(() => import('./FloatingWidget'));
+const PixeFloatingButton = lazy(() => import('./PixeFloatingButton'));
+const OmniDashboard = lazy(() => import('./omni/OmniDashboard'));
+const MobileAppChrome = lazy(() => import('./MobileAppChrome'));
 
 const SiteBanner: React.FC<{ message: string, onClose: () => void }> = ({ message, onClose }) => (
     <div className="bg-primary text-white text-center p-2 text-sm font-semibold relative z-[60]">
@@ -245,7 +246,22 @@ const Layout: React.FC = () => {
   const [isOmniOpen, setIsOmniOpen] = useState(false);
 
   useEffect(() => {
-    adminService.getSiteSettings().then(setSiteSettings);
+    let cancelled = false;
+
+    void import('../services/adminService')
+      .then(({ adminService }) => adminService.getSiteSettings())
+      .then((settings) => {
+        if (!cancelled) {
+          setSiteSettings(settings);
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to load site settings:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -359,21 +375,31 @@ const Layout: React.FC = () => {
   const showFooter = !isReelsPage && !isInspirationPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface;
   const showMobileChrome = !isAuthRoute && !isAdminRoute && !isSpotlightSurface && !isSpotlightProfileSurface;
   const isBannerActive = siteSettings?.siteBanner?.isActive && siteSettings.siteBanner.message;
+  const isWarmPublicExperience =
+    resolvedTheme === 'light' &&
+    !isDashboardRoute &&
+    !isAuthRoute &&
+    !isAdminRoute &&
+    !isSpotlightSurface;
   
   const isDarkGlass = resolvedTheme === 'obsidian' || resolvedTheme === 'hydra';
-  const layoutClasses = isDarkGlass ? 'bg-transparent text-text-primary' : 'bg-background text-text-primary';
-  const mainBgClass = isDarkGlass ? 'bg-transparent' : 'bg-background';
+  const layoutClasses = isDarkGlass || isWarmPublicExperience ? 'bg-transparent text-text-primary' : 'bg-background text-text-primary';
+  const mainBgClass = isDarkGlass || isWarmPublicExperience ? 'bg-transparent' : 'bg-background';
   const headerSpacing = showHeader && !isHomePage ? 'md:pt-24' : '';
   const mobileChromeSpacing = showMobileChrome ? 'pb-[6.25rem]' : '';
   const mainOverflowClass = 'overflow-x-hidden';
+  const publicThemeClass = isWarmPublicExperience ? 'public-theme-shell public-theme-shell--warm' : '';
+  const wordmarkShellClass = !isDashboardRoute && !isAdminRoute ? 'site-wordmark-shell' : '';
 
   return (
-    <div className={`min-h-screen flex flex-col ${layoutClasses} transition-colors duration-300 relative overflow-x-hidden`}>
+    <div className={`min-h-screen flex flex-col ${layoutClasses} ${publicThemeClass} ${wordmarkShellClass} transition-colors duration-300 relative overflow-x-hidden`}>
       {isBannerActive && showBanner && <SiteBanner message={siteSettings.siteBanner.message} onClose={() => setShowBanner(false)} />}
       {showHeader ? (
-        <div className="hidden md:block">
-          <Header onOpenOmni={() => setIsOmniOpen(true)} />
-        </div>
+        <Suspense fallback={null}>
+          <div className="relative z-[70] hidden md:block">
+            <Header onOpenOmni={() => setIsOmniOpen(true)} />
+          </div>
+        </Suspense>
       ) : null}
       <main className={`flex-grow relative z-10 ${mainBgClass} ${headerSpacing} ${mobileChromeSpacing} ${mainOverflowClass}`}>
         <div>
@@ -382,38 +408,64 @@ const Layout: React.FC = () => {
       </main>
       
       {/* Omni Interface */}
-      <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
+      <DeferredMount enabled={true} timeoutMs={1200}>
+        <Suspense fallback={null}>
+          <OmniDashboard isOpen={isOmniOpen} onClose={() => setIsOmniOpen(false)} />
+        </Suspense>
+      </DeferredMount>
 
       {!isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
-        <div className="hidden md:block">
-          <ComparisonBar />
-        </div>
+        <DeferredMount enabled={true} timeoutMs={1200}>
+          <Suspense fallback={null}>
+            <div className="hidden md:block">
+              <ComparisonBar />
+            </div>
+          </Suspense>
+        </DeferredMount>
       ) : null}
       {!isStoreCreationFlow && !isListItemPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
-        <div className="hidden md:block">
-          <FloatingWidget />
-        </div>
+        <DeferredMount enabled={true} timeoutMs={1400}>
+          <Suspense fallback={null}>
+            <div className="hidden md:block">
+              <FloatingWidget />
+            </div>
+          </Suspense>
+        </DeferredMount>
       ) : null}
       {showFooter ? (
-        showMobileChrome || isHomePage ? (
-          <div className="hidden md:block">
+        <Suspense fallback={null}>
+          {showMobileChrome || isHomePage ? (
+            <div className="relative z-[20] hidden md:block">
+              <Footer />
+            </div>
+          ) : (
             <Footer />
-          </div>
-        ) : (
-          <Footer />
-        )
+          )}
+        </Suspense>
       ) : null}
       {!isStoreCreationFlow && !isListItemPage && !isReelsPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
-        <div className="hidden md:block">
-          <AIChatBot />
-        </div>
+        <DeferredMount enabled={true} timeoutMs={1800}>
+          <Suspense fallback={null}>
+            <div className="hidden md:block">
+              <AIChatBot />
+            </div>
+          </Suspense>
+        </DeferredMount>
       ) : null}
       {!isReelsPage && !isDashboardRoute && !isItemDetailRoute && !isSpotlightSurface ? (
-        <div className="hidden md:block">
-          <PixeFloatingButton />
-        </div>
+        <DeferredMount enabled={true} timeoutMs={1600}>
+          <Suspense fallback={null}>
+            <div className="hidden md:block">
+              <PixeFloatingButton />
+            </div>
+          </Suspense>
+        </DeferredMount>
       ) : null}
-      {showMobileChrome ? <MobileAppChrome /> : null}
+      {showMobileChrome ? (
+        <Suspense fallback={null}>
+          <MobileAppChrome />
+        </Suspense>
+      ) : null}
       <BackToTopButton />
     </div>
   );

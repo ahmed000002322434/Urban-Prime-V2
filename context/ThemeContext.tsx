@@ -3,7 +3,17 @@
 
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { userService } from '../services/itemService';
+
+type ItemServiceModule = typeof import('../services/itemService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+  return itemServiceModulePromise;
+};
 
 export type Theme = 'light' | 'navy' | 'earth' | 'emerald' | 'obsidian' | 'noir' | 'sandstone' | 'icy' | 'hydra' | 'parchment' | 'grassy' | 'system';
 type ResolvedTheme = Exclude<Theme, 'system'>;
@@ -21,8 +31,8 @@ export interface ThemeDefinition {
 
 // This list is for the UI selector
 export const THEMES: ThemeDefinition[] = [
-  { name: 'system', label: 'System', colors: { primary: '#0fb9b1', background: '#f8fafc', surface: '#ffffff' }, isDark: false }, // Placeholder colors
-  { name: 'light', label: 'Default Light', colors: { primary: '#0fb9b1', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
+  { name: 'system', label: 'System', colors: { primary: '#9ca763', background: '#f7f3e5', surface: '#fffaf2' }, isDark: false }, // Placeholder colors
+  { name: 'light', label: 'Matcha Cream', colors: { primary: '#9ca763', background: '#f7f3e5', surface: '#fffaf2' }, isDark: false },
   { name: 'navy', label: 'Navy', colors: { primary: '#3b82f6', background: '#f8fafc', surface: '#ffffff' }, isDark: false },
   { name: 'obsidian', label: 'Obsidian', colors: { primary: '#ffffff', background: '#000000', surface: '#111111' }, isDark: true },
   { name: 'noir', label: 'Noir', colors: { primary: '#e7e1d6', background: '#0b0b0c', surface: 'rgba(18, 18, 20, 0.7)' }, isDark: true },
@@ -137,6 +147,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // FIX: The 'system' theme is a local preference and should not be saved to the user's profile,
         // as the 'ThemePreference' type does not include it.
         if (themeName !== 'system') {
+          const { userService } = await loadItemServiceModule();
           await userService.updateUserProfile(user.id, { themePreference: themeName });
         }
       } catch (error) {

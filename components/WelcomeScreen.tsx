@@ -1,6 +1,10 @@
 
 import React from 'react';
 
+interface WelcomeScreenProps {
+    onComplete?: () => void;
+}
+
 const UrbanPrimeLogo: React.FC = () => (
     <svg 
         width="100" 
@@ -41,13 +45,19 @@ const UrbanPrimeLogo: React.FC = () => (
 );
 
 
-const WelcomeScreen: React.FC = () => {
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     const tagline = "Experience Luxury On Demand";
+    const handleAnimationEnd = (event: React.AnimationEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget) return;
+        onComplete?.();
+    };
 
     return (
         <div 
-            className="fixed inset-0 bg-background z-[100] flex flex-col justify-center items-center text-text-primary transition-colors duration-300" 
+            className="pointer-events-none fixed inset-0 bg-background z-[100] flex flex-col justify-center items-center text-text-primary transition-colors duration-300" 
             style={{ animation: 'welcome-fade-out 0.5s ease-in-out 4.5s forwards' }}
+            onAnimationEnd={handleAnimationEnd}
+            aria-hidden="true"
         >
             <UrbanPrimeLogo />
             

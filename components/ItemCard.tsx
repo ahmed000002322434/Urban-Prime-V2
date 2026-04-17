@@ -11,6 +11,7 @@ import { useCart } from '../hooks/useCart';
 import { useTranslatedItem, useTranslation } from '../hooks/useTranslation';
 import LottieAnimation from './LottieAnimation';
 import { uiLottieAnimations } from '../utils/uiAnimationAssets';
+import { prefetchRoute } from '../utils/routePrefetch';
 
 const CompareIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.828L12 12m0 0l-3.182-3.182M12 12l3.182 3.182M12 12l-3.182 3.182M3.75 7.5h4.992V12m-4.993 0l3.182 3.182a8.25 8.25 0 0011.667 0l3.182-3.182m-13.5-2.828L12 12m0 0l3.182-3.182m0 0l3.182 3.182m0 0l3.182 3.182" /></svg>;
 const EyeIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.432 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
@@ -57,6 +58,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const imageUrl = item.imageUrls?.[0] || item.images?.[0] || `https://picsum.photos/seed/${item.id}/600/750`;
+  const itemHref = `/item/${item.id}`;
   const normalizedBrandSlug = item.brand
     ? String((item as any).brandSlug || item.brand)
         .trim()
@@ -98,7 +100,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
       e.preventDefault();
       e.stopPropagation();
       if (translatedItem.listingType === 'auction') {
-        navigate(`/item/${item.id}`);
+        navigate(itemHref);
         return;
       }
       addItemToCart(item, 1);
@@ -110,7 +112,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
     e.preventDefault();
     e.stopPropagation();
     if (translatedItem.listingType === 'auction') {
-      navigate(`/item/${item.id}`);
+      navigate(itemHref);
       return;
     }
     addItemToCart(item, 1);
@@ -156,6 +158,10 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
     scheduleHide();
   };
 
+  const handlePrefetchItemRoute = () => {
+    prefetchRoute(itemHref);
+  };
+
   const BubbleContent = () => (
     <div 
         className="thinking-bubble" 
@@ -192,7 +198,13 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
   if (viewMode === 'grid') {
     return (
       <div ref={cardRef} className="relative group flex flex-col glass-panel glass-panel-hover h-full overflow-hidden">
-        <Link to={`/item/${item.id}`} className="block">
+        <Link
+          to={itemHref}
+          className="block"
+          onMouseEnter={handlePrefetchItemRoute}
+          onFocus={handlePrefetchItemRoute}
+          onTouchStart={handlePrefetchItemRoute}
+        >
           <div className="relative overflow-hidden aspect-[4/5] bg-gray-100/10">
             <img src={imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
             {discountPercentage > 0 && <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">-{discountPercentage}%</div>}
@@ -246,7 +258,15 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
                   <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse"></div>
                 </div>
               ) : (
-                <Link to={`/item/${item.id}`} className="hover:text-primary transition-colors">{translatedItem.title}</Link>
+                <Link
+                  to={itemHref}
+                  className="hover:text-primary transition-colors"
+                  onMouseEnter={handlePrefetchItemRoute}
+                  onFocus={handlePrefetchItemRoute}
+                  onTouchStart={handlePrefetchItemRoute}
+                >
+                  {translatedItem.title}
+                </Link>
               )}
             </h3>
           </div>
@@ -293,7 +313,13 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
       <div className="absolute top-2 right-2 z-10">
           <WishlistButton itemId={item.id} />
       </div>
-      <Link to={`/item/${item.id}`} className="block flex-shrink-0 w-full sm:w-48 relative">
+      <Link
+        to={itemHref}
+        className="block flex-shrink-0 w-full sm:w-48 relative"
+        onMouseEnter={handlePrefetchItemRoute}
+        onFocus={handlePrefetchItemRoute}
+        onTouchStart={handlePrefetchItemRoute}
+      >
         <img src={imageUrl} alt={item.title} className="w-full h-full object-cover aspect-[4/3] sm:aspect-auto" />
         <ListingTypeBadge listingType={item.listingType} />
       </Link>
@@ -303,7 +329,15 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onQuickView, viewMode = 'grid
             {isLoadingTranslation ? (
               <div className="h-6 bg-surface-soft rounded animate-pulse w-3/4"></div>
             ) : (
-              <Link to={`/item/${item.id}`} className="hover:text-primary transition-colors">{translatedItem.title}</Link>
+              <Link
+                to={itemHref}
+                className="hover:text-primary transition-colors"
+                onMouseEnter={handlePrefetchItemRoute}
+                onFocus={handlePrefetchItemRoute}
+                onTouchStart={handlePrefetchItemRoute}
+              >
+                {translatedItem.title}
+              </Link>
             )}
         </h3>
         <p className="text-sm text-text-secondary line-clamp-2 flex-grow mb-4 leading-relaxed">

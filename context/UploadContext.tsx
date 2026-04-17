@@ -1,10 +1,36 @@
 
 import React, { createContext, useState, useCallback, useMemo, useContext } from 'react';
 import { useNotification } from './NotificationContext';
-import { reelService } from '../services/itemService';
 import type { Reel } from '../types';
-import { storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+
+type ItemServiceModule = typeof import('../services/itemService');
+type FirebaseModule = typeof import('../firebase');
+type FirebaseStorageModule = typeof import('firebase/storage');
+
+let uploadRuntimePromise: Promise<{
+  reelService: ItemServiceModule['reelService'];
+  storage: FirebaseModule['storage'];
+  ref: FirebaseStorageModule['ref'];
+  uploadBytesResumable: FirebaseStorageModule['uploadBytesResumable'];
+  getDownloadURL: FirebaseStorageModule['getDownloadURL'];
+}> | null = null;
+
+const loadUploadRuntime = () => {
+  if (!uploadRuntimePromise) {
+    uploadRuntimePromise = Promise.all([
+      import('../services/itemService'),
+      import('../firebase'),
+      import('firebase/storage'),
+    ]).then(([itemServiceModule, firebaseModule, firebaseStorageModule]) => ({
+      reelService: itemServiceModule.reelService,
+      storage: firebaseModule.storage,
+      ref: firebaseStorageModule.ref,
+      uploadBytesResumable: firebaseStorageModule.uploadBytesResumable,
+      getDownloadURL: firebaseStorageModule.getDownloadURL,
+    }));
+  }
+  return uploadRuntimePromise;
+};
 
 export type UploadStatus = 'uploading' | 'processing' | 'completed' | 'failed';
 
@@ -44,49 +70,57 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setTasks(prev => [newTask, ...prev]);
 
-    const storageRef = ref(storage, `reels/${reelData.creatorId}/${id}-${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    void loadUploadRuntime()
+      .then(({ storage, ref, uploadBytesResumable, getDownloadURL, reelService }) => {
+        const storageRef = ref(storage, `reels/${reelData.creatorId}/${id}-${file.name}`);
+        const uploadTask = uploadBytesResumable(storageRef, file);
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        updateTask(id, { progress: Math.round(progress) });
-      }, 
-      (error) => {
-        console.error("Upload failed:", error);
-        updateTask(id, { status: 'failed', error: error.message });
-        showNotification(`Upload failed: ${error.message}`);
-      }, 
-      async () => {
-        updateTask(id, { status: 'processing' });
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          
-          const newReel = await reelService.addReel({
-            ...reelData,
-            creatorId: reelData.creatorId!,
-            videoUrl: downloadURL,
-            caption: reelData.caption || '',
-            taggedItemIds: reelData.taggedItemIds || [],
-            status: reelData.status || 'published',
-            hashtags: reelData.hashtags || [],
-            showShopButton: reelData.showShopButton ?? true,
-            coverImageUrl: reelData.coverImageUrl || '',
-            views: 0
-          });
-          
-          updateTask(id, { status: 'completed' });
-          showNotification('Pixe uploaded successfully!');
-          
-          setTimeout(() => setTasks(prev => prev.filter(t => t.id !== id)), 5000);
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            updateTask(id, { progress: Math.round(progress) });
+          }, 
+          (error) => {
+            console.error("Upload failed:", error);
+            updateTask(id, { status: 'failed', error: error.message });
+            showNotification(`Upload failed: ${error.message}`);
+          }, 
+          async () => {
+            updateTask(id, { status: 'processing' });
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              await reelService.addReel({
+                ...reelData,
+                creatorId: reelData.creatorId!,
+                videoUrl: downloadURL,
+                caption: reelData.caption || '',
+                taggedItemIds: reelData.taggedItemIds || [],
+                status: reelData.status || 'published',
+                hashtags: reelData.hashtags || [],
+                showShopButton: reelData.showShopButton ?? true,
+                coverImageUrl: reelData.coverImageUrl || '',
+                views: 0
+              });
+              
+              updateTask(id, { status: 'completed' });
+              showNotification('Pixe uploaded successfully!');
+              
+              setTimeout(() => setTasks(prev => prev.filter(t => t.id !== id)), 5000);
 
-        } catch (error) {
-           const errorMessage = error instanceof Error ? error.message : "An unknown error occurred saving data.";
-           updateTask(id, { status: 'failed', error: errorMessage });
-           showNotification(`Processing failed: ${errorMessage}`);
-        }
-      }
-    );
+            } catch (error) {
+               const errorMessage = error instanceof Error ? error.message : "An unknown error occurred saving data.";
+               updateTask(id, { status: 'failed', error: errorMessage });
+               showNotification(`Processing failed: ${errorMessage}`);
+            }
+          }
+        );
+      })
+      .catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : 'Upload runtime failed to initialize.';
+        updateTask(id, { status: 'failed', error: errorMessage });
+        showNotification(`Upload failed: ${errorMessage}`);
+      });
 
   }, [showNotification, updateTask]);
 

@@ -3,9 +3,21 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
-import { itemService, userService } from '../services/itemService';
 import type { ChatMessage, ChatThread, PersonaType } from '../types';
 import { cx } from './dashboard/clay/classNames';
+import { prefetchRoute } from '../utils/routePrefetch';
+
+type ItemServiceModule = typeof import('../services/itemService');
+
+let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
+
+const loadItemServiceModule = () => {
+  if (!itemServiceModulePromise) {
+    itemServiceModulePromise = import('../services/itemService');
+  }
+
+  return itemServiceModulePromise;
+};
 
 type MobileTabId = 'home' | 'explore' | 'pixe';
 
@@ -278,6 +290,7 @@ const MobileAppChrome: React.FC = () => {
   const loadThreadMessages = useCallback(async (threadId: string) => {
     if (!threadId) return;
     try {
+      const { itemService } = await loadItemServiceModule();
       const messages = await itemService.getChatMessagesForThread(threadId);
       setThreadMessages((prev) => ({
         ...prev,
@@ -295,6 +308,7 @@ const MobileAppChrome: React.FC = () => {
     setMessagesError(null);
 
     try {
+      const { itemService, userService } = await loadItemServiceModule();
       const threads = await itemService.getChatThreadsForUser(user.id);
       setMessageThreads(threads);
 
@@ -389,6 +403,8 @@ const MobileAppChrome: React.FC = () => {
   }, [activeMessageThreadId, isMessagesOpen, loadThreadMessages, threadMessages]);
 
   const handleNavigate = (to: string) => {
+    const nextRoute = !isAuthenticated && to.startsWith('/profile') ? '/auth' : to;
+    prefetchRoute(nextRoute);
     if (!isAuthenticated && to.startsWith('/profile')) {
       navigate('/auth', { state: { from: { pathname: to } } });
       return;
@@ -450,6 +466,7 @@ const MobileAppChrome: React.FC = () => {
     setIsSendingMessage(true);
 
     try {
+      const { itemService } = await loadItemServiceModule();
       await itemService.sendMessageToThread(activeMessageThread.id, user.id, text);
       await Promise.all([loadThreadMessages(activeMessageThread.id), loadMessageThreads()]);
     } catch (error) {
@@ -466,7 +483,7 @@ const MobileAppChrome: React.FC = () => {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: 'easeOut' }}
-        className={`fixed inset-x-0 bottom-3 z-[90] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 backdrop-blur-xl md:hidden ${navShellClass}`}
+        className={`fixed inset-x-0 bottom-3 z-[120] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 backdrop-blur-xl md:hidden ${navShellClass}`}
       >
         <button
           onClick={() => navigate('/')}
@@ -566,7 +583,7 @@ const MobileAppChrome: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`fixed inset-0 z-[100] md:hidden ${overlayBackdropClass}`}
+            className={`fixed inset-0 z-[130] md:hidden ${overlayBackdropClass}`}
             onClick={() => {
               setIsProfileMenuOpen(false);
               setIsMessagesOpen(false);

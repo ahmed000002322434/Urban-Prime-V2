@@ -1,7 +1,6 @@
 
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, setLogLevel as setFirestoreLogLevel } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -30,18 +29,10 @@ const firebaseConfig = {
 
 const isConfigValid = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 let app: ReturnType<typeof initializeApp> | null = null;
+let analyticsInitializationPromise: Promise<void> | null = null;
 
 if (!isFirebaseDisabled() && isConfigValid) {
   app = initializeApp(firebaseConfig);
-  // Analytics can fail in dev/offline; guard to prevent startup crash.
-  try {
-    if (typeof window !== 'undefined') {
-      getAnalytics(app);
-    }
-  } catch (error) {
-    console.warn('Firebase analytics disabled:', error);
-  }
-
   try {
     setFirestoreLogLevel('silent');
   } catch (error) {
@@ -50,6 +41,21 @@ if (!isFirebaseDisabled() && isConfigValid) {
 } else {
   console.warn('Firebase disabled or not configured.');
 }
+
+export const initializeFirebaseAnalytics = async () => {
+  if (!app || typeof window === 'undefined') return;
+  if (analyticsInitializationPromise) return analyticsInitializationPromise;
+
+  analyticsInitializationPromise = import('firebase/analytics')
+    .then(({ getAnalytics }) => {
+      getAnalytics(app!);
+    })
+    .catch((error) => {
+      console.warn('Firebase analytics disabled:', error);
+    });
+
+  return analyticsInitializationPromise;
+};
 
 // Export services
 export const auth = app ? getAuth(app) : ({ currentUser: null } as any);

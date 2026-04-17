@@ -41,7 +41,7 @@ const GravityBackground: React.FC<GravityBackgroundProps> = ({ springX, springY 
         style={{
           x: blob1X,
           y: blob1Y,
-          background: 'radial-gradient(circle, rgba(108,142,255,0.25) 0%, rgba(255,108,180,0.12) 50%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(15,185,177,0.18) 0%, rgba(243,156,18,0.08) 52%, transparent 72%)',
           filter: 'blur(120px)',
         }}
       />
@@ -58,7 +58,7 @@ const GravityBackground: React.FC<GravityBackgroundProps> = ({ springX, springY 
         style={{
           x: blob2X,
           y: blob2Y,
-          background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, rgba(108,142,255,0.1) 50%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(148,163,184,0.18) 0%, rgba(15,23,42,0.08) 52%, transparent 72%)',
           filter: 'blur(140px)',
         }}
       />
@@ -74,7 +74,7 @@ const GravityBackground: React.FC<GravityBackgroundProps> = ({ springX, springY 
         style={{
           x: blob3X,
           y: blob3Y,
-          background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(108,142,255,0.08) 40%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.12) 0%, rgba(15,185,177,0.06) 42%, transparent 72%)',
           filter: 'blur(100px)',
         }}
       />
@@ -89,8 +89,8 @@ const GravityBackground: React.FC<GravityBackgroundProps> = ({ springX, springY 
             top: `${p.y}%`,
             width: p.size,
             height: p.size,
-            background: `radial-gradient(circle, rgba(180,200,255,${p.opacity}) 0%, transparent 70%)`,
-            boxShadow: `0 0 ${p.size * 2}px rgba(140,170,255,${p.opacity * 0.5})`,
+            background: `radial-gradient(circle, rgba(255,255,255,${p.opacity}) 0%, transparent 70%)`,
+            boxShadow: `0 0 ${p.size * 2}px rgba(148,163,184,${p.opacity * 0.35})`,
           }}
           animate={{
             y: [0, -30 - Math.random() * 40, 0],
