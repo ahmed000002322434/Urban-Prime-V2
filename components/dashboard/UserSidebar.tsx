@@ -19,20 +19,23 @@ const CustomersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" h
 
 const BriefcaseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 12h20"/></svg>;
 const SparkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 2 1.9 5.7 5.6 1.9-5.6 1.9L12 17l-1.9-5.6-5.6-1.9 5.6-1.9L12 2Z"/><path d="M5 20l1-3 3-1-3-1-1-3-1 3-3 1 3 1 1 3Z"/></svg>;
+const WorkspaceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 const MegaphoneIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M14 7l7-3v16l-7-3"/><path d="M9 16a3 3 0 0 1-3-3V11"/></svg>;
+const TruckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 17h1a2 2 0 0 0 2-2V9h-3V5H3v10a2 2 0 0 0 2 2h1"/><path d="M17 9h2l2 3v3a2 2 0 0 1-2 2h-1"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>;
 
 const UserSidebar: React.FC = () => {
     const { logout, user, activePersona, hasCapability } = useAuth();
     const canSell = hasCapability('sell');
     const canProvide = hasCapability('provide_service');
     const canAffiliate = hasCapability('affiliate');
+    const canShip = hasCapability('ship');
 
     return (
         <motion.aside 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3 }}
-          className="w-72 flex-shrink-0 flex flex-col border-r border-white/10 hidden md:flex glass-panel h-screen"
+          className="w-72 flex-shrink-0 flex flex-col border-r border-white/10 hidden md:flex glass-panel h-full min-h-0 self-stretch"
         >
             {/* Header */}
             <div className="p-6 h-20 flex items-center shrink-0 border-b border-white/10">
@@ -49,6 +52,7 @@ const UserSidebar: React.FC = () => {
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
                 <SidebarSection title="Workspace">
                     <SidebarNavItem to="/profile" end label="Overview" icon={<DashboardIcon />} />
+                    <SidebarNavItem to="/profile/switch-accounts" label="Add / switch workspace" icon={<WorkspaceIcon />} />
                     <SidebarNavItem to="/profile/orders" label="My Orders" icon={<OrdersIcon />} />
                     <SidebarNavItem to="/profile/messages" label="Messages" icon={<InboxIcon />} />
                     <SidebarNavItem to="/profile/wishlist" label="Wishlist" icon={<WishlistIcon />} />
@@ -75,6 +79,13 @@ const UserSidebar: React.FC = () => {
                     <SidebarSection title="Affiliate Tools">
                         <SidebarNavItem to="/profile/affiliate" label="Affiliate Center" icon={<MegaphoneIcon />} />
                         <SidebarNavItem to="/profile/promotions" label="Promotions" icon={<SparkIcon />} />
+                    </SidebarSection>
+                )}
+
+                {canShip && (
+                    <SidebarSection title="Shipper Tools">
+                        <SidebarNavItem to="/profile/shipper-dashboard" label="Shipper Dashboard" icon={<TruckIcon />} />
+                        <SidebarNavItem to="/profile/orders" label="Delivery Queue" icon={<OrdersIcon />} />
                     </SidebarSection>
                 )}
 

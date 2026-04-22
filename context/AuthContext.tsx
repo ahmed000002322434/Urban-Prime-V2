@@ -188,6 +188,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [personas, setPersonas] = useState<AccountPersona[]>([]);
   const [activePersona, setActivePersonaState] = useState<AccountPersona | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasResolvedAuth, setHasResolvedAuth] = useState(false);
   const [showOnboarding] = useState(false);
   const [onboardingPreset, setOnboardingPreset] = useState<OnboardingData['purpose'] | OnboardingIntent | null>(null);
   const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
@@ -395,7 +396,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const timeoutId = setTimeout(() => {
       setIsLoading(false);
-    }, 1500);
+      setHasResolvedAuth(true);
+    }, 4000);
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
@@ -419,6 +421,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.error('Auth initialization failed:', error);
       } finally {
         setIsLoading(false);
+        setHasResolvedAuth(true);
         clearTimeout(timeoutId);
       }
     });
@@ -759,7 +762,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ]
   );
 
-  if (isLoading) {
+  if (isLoading || !hasResolvedAuth) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <Spinner size="lg" />

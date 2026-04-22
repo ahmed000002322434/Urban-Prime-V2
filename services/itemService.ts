@@ -34,6 +34,7 @@ import { localDb } from './localDb';
 import { backendFetch, getBackendBaseUrl, isBackendConfigured } from './backendClient';
 import supabaseMirror from './supabaseMirror';
 import personaService from './personaService';
+import analyticsService from './analyticsService';
 import workService, { mapWorkListingToService } from './workService';
 import proposalService from './proposalService';
 import contractService from './contractService';
@@ -3312,13 +3313,137 @@ export const itemService = {
         };
     },
     createOrder: async (userId: string, items: CartItem[], shippingInfo: any, paymentMethod: string, options?: { actorPersonaId?: string | null; actorName?: string }): Promise<string> => {
+        const isRentMode = (item: CartItem) =>
+            item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+
+        const tryCanonicalCheckout = async (): Promise<string | null> => {
+            if (!isBackendConfigured() || !items.length) return null;
+            const allUuid = items.every((line) => isUuidLike(String(line.id || '').trim()));
+            if (!allUuid) return null;
+            try {
+                const token = await getBackendToken();
+                if (!token) return null;
+                const legacyRef = `UP-${Math.floor(100000 + Math.random() * 900000)}`;
+                const res = await backendFetch(
+                    '/commerce/orders/checkout',
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            legacy_display_ref: legacyRef,
+                            items,
+                            shipping_info: {
+                                name: shippingInfo?.name,
+                                addressLine1: shippingInfo?.addressLine1,
+                                line1: shippingInfo?.line1,
+                                city: shippingInfo?.city,
+                                state: shippingInfo?.state,
+                                zip: shippingInfo?.zip,
+                                postal_code: shippingInfo?.postal_code,
+                                country: shippingInfo?.country,
+                                phone: shippingInfo?.phone
+                            },
+                            payment_method: paymentMethod,
+                            actor_persona_id: options?.actorPersonaId ?? null,
+                            actor_name: options?.actorName || shippingInfo?.name
+                        })
+                    },
+                    token
+                );
+                const ref = String(res?.legacy_order_ref || '').trim();
+                if (!res?.ok || !ref) return null;
+
+                const buyerName = String(options?.actorName || shippingInfo?.name || 'Customer').trim() || 'Customer';
+                await Promise.all(
+                    items.map(async (item) => {
+                        if (!item.owner?.id || item.owner.id === userId) return;
+                        const action: ItemEventAction = isRentMode(item) ? 'rent' : 'purchase';
+                        const lineAmount = (() => {
+                            if (isRentMode(item) && item.rentalPeriod && item.rentalRates?.daily) {
+                                const start = new Date(item.rentalPeriod.startDate);
+                                const end = new Date(item.rentalPeriod.endDate);
+                                const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                                return item.rentalRates.daily * Math.max(1, days) * item.quantity;
+                            }
+                            return ((item.salePrice || item.price || 0) * item.quantity);
+                        })();
+                        await itemService.logItemEvent({
+                            action,
+                            ownerId: item.owner.id,
+                            ownerPersonaId: item.ownerPersonaId || null,
+                            itemId: item.id,
+                            itemTitle: item.title,
+                            listingType: item.listingType,
+                            actorId: userId,
+                            actorPersonaId: options?.actorPersonaId || null,
+                            actorName: buyerName,
+                            quantity: item.quantity,
+                            metadata: item.spotlightAttribution
+                                ? {
+                                      spotlightContentId: item.spotlightAttribution.spotlightContentId,
+                                      spotlightProductLinkId: item.spotlightAttribution.spotlightProductLinkId || null,
+                                      spotlightCampaignKey: item.spotlightAttribution.campaignKey || null,
+                                      spotlightAttributionExpiresAt: item.spotlightAttribution.expiresAt || null
+                                  }
+                                : {}
+                        });
+                        try {
+                            await analyticsService.recordCheckout(
+                                item.id,
+                                userId,
+                                buyerName,
+                                ref,
+                                lineAmount,
+                                'completed'
+                            );
+                        } catch {
+                            /* non-fatal */
+                        }
+                        if (item.spotlightAttribution?.spotlightContentId && isBackendConfigured()) {
+                            try {
+                                const t = await getBackendToken();
+                                await backendFetch(
+                                    '/spotlight/product-events',
+                                    {
+                                        method: 'POST',
+                                        body: JSON.stringify({
+                                            content_id: item.spotlightAttribution.spotlightContentId,
+                                            product_link_id: item.spotlightAttribution.spotlightProductLinkId || null,
+                                            item_id: item.id,
+                                            event_name: 'purchase',
+                                            order_id: ref,
+                                            amount: lineAmount,
+                                            campaign_key: item.spotlightAttribution.campaignKey || null,
+                                            viewer_firebase_uid: userId,
+                                            metadata: {
+                                                quantity: item.quantity,
+                                                listingType: item.listingType,
+                                                transactionMode: isRentMode(item) ? 'rent' : 'sale'
+                                            }
+                                        })
+                                    },
+                                    t
+                                );
+                            } catch (error) {
+                                console.warn('Spotlight purchase attribution tracking failed:', error);
+                            }
+                        }
+                    })
+                );
+                return ref;
+            } catch (error) {
+                console.warn('Canonical checkout unavailable, using Firestore path:', error);
+                return null;
+            }
+        };
+
+        const canonicalRef = await tryCanonicalCheckout();
+        if (canonicalRef) return canonicalRef;
+
         const batch = writeBatch(db);
         const orderId = `UP-${Math.floor(100000 + Math.random() * 900000)}`; // Simple ID generation
         const orderRef = doc(db, 'orders', orderId);
         const sellerOrderSummary = new Map<string, { listingCount: number; saleCount: number; rentCount: number; bookingIds: string[] }>();
-        const isRentMode = (item: CartItem) =>
-            item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
-        
+
         // 1. Create Main Order Document
         const totalAmount = items.reduce((sum, item) => {
             const rentMode = isRentMode(item);

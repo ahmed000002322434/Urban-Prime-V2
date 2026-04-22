@@ -7,6 +7,7 @@ import { isBackendConfigured } from '../../services/backendClient';
 import { decryptChatText, encryptChatText, getChatEncryptionStorageKey } from '../../services/chatCrypto';
 import profileOnboardingService from '../../services/profileOnboardingService';
 import { useNotification } from '../../context/NotificationContext';
+import useLowEndMode from '../../hooks/useLowEndMode';
 import type { ChatThread, User, Item, ChatMessage, CustomOffer, ChatCallSession, ChatSettings, ChatPresenceState } from '../../types';
 import Spinner from '../../components/Spinner';
 import LottieAnimation from '../../components/LottieAnimation';
@@ -36,6 +37,10 @@ type CallBannerState = 'none' | 'incoming' | 'outgoing' | 'active';
 const CHAT_SETTINGS_STORAGE_PREFIX = 'urbanprime_chat_settings_v1:';
 const CHAT_THREADS_CACHE_PREFIX = 'urbanprime_chat_threads_v2:';
 const CHAT_MESSAGES_CACHE_PREFIX = 'urbanprime_chat_messages_v2:';
+const MESSAGE_POLL_FOREGROUND_MS = 2800;
+const MESSAGE_POLL_BACKGROUND_MS = 9000;
+const META_POLL_FOREGROUND_MS = 3500;
+const META_POLL_BACKGROUND_MS = 12000;
 const DEFAULT_CHAT_SETTINGS: ChatSettings = {
     e2eEnabled: false,
     presenceVisible: true,
@@ -252,6 +257,7 @@ const MessagesPage: React.FC = () => {
     const [activeCall, setActiveCall] = useState<ChatCallSession | null>(null);
     const [callBannerState, setCallBannerState] = useState<CallBannerState>('none');
     const [presenceByUserId, setPresenceByUserId] = useState<Record<string, ChatPresenceState>>({});
+    const isLowEndMode = useLowEndMode();
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -265,8 +271,8 @@ const MessagesPage: React.FC = () => {
     const fetchMessagesInFlightRef = useRef(false);
     const threadMetaInFlightRef = useRef(false);
     const callInFlightRef = useRef(false);
-    const messagePollBackoffRef = useRef(2800);
-    const metaPollBackoffRef = useRef(3500);
+    const messagePollBackoffRef = useRef(MESSAGE_POLL_FOREGROUND_MS);
+    const metaPollBackoffRef = useRef(META_POLL_FOREGROUND_MS);
     const threadCacheKey = useMemo(() => (user?.id ? `${CHAT_THREADS_CACHE_PREFIX}${user.id}` : ''), [user?.id]);
     const messageCacheKey = useMemo(() => (threadId ? `${CHAT_MESSAGES_CACHE_PREFIX}${threadId}` : ''), [threadId]);
     const searchParamsKey = useMemo(() => searchParams.toString(), [searchParams]);
@@ -539,14 +545,14 @@ const MessagesPage: React.FC = () => {
                     if (threadMessages.length > 0) {
                         writeCachedJson(messageCacheKey, threadMessages);
                     }
-                    messagePollBackoffRef.current = 2800;
+                    messagePollBackoffRef.current = document.hidden ? MESSAGE_POLL_BACKGROUND_MS : MESSAGE_POLL_FOREGROUND_MS;
                 } catch (error) {
                     console.error('Failed to load thread messages:', error);
                     const cachedMessages = readCachedJson<ChatMessage[]>(messageCacheKey);
                     if (cachedMessages && cachedMessages.length > 0 && !cancelled) {
                         setMessages(cachedMessages);
                     }
-                    messagePollBackoffRef.current = Math.min(messagePollBackoffRef.current * 2, 12000);
+                    messagePollBackoffRef.current = Math.min(messagePollBackoffRef.current * 2, MESSAGE_POLL_BACKGROUND_MS * 2);
                 } finally {
                     fetchMessagesInFlightRef.current = false;
                 }
@@ -554,10 +560,11 @@ const MessagesPage: React.FC = () => {
             let timeoutId: number | null = null;
             const scheduleNext = () => {
                 if (cancelled) return;
+                const nextDelay = document.hidden ? Math.max(messagePollBackoffRef.current, MESSAGE_POLL_BACKGROUND_MS) : messagePollBackoffRef.current;
                 timeoutId = window.setTimeout(async () => {
                     await loadMessages();
                     scheduleNext();
-                }, messagePollBackoffRef.current);
+                }, nextDelay);
             };
             void loadMessages().then(scheduleNext);
             return () => {
@@ -619,9 +626,9 @@ const MessagesPage: React.FC = () => {
                         ...(presenceMap || {})
                     }));
                 }
-                metaPollBackoffRef.current = 3500;
+                metaPollBackoffRef.current = document.hidden ? META_POLL_BACKGROUND_MS : META_POLL_FOREGROUND_MS;
             } catch {
-                metaPollBackoffRef.current = Math.min(metaPollBackoffRef.current * 2, 14000);
+                metaPollBackoffRef.current = Math.min(metaPollBackoffRef.current * 2, META_POLL_BACKGROUND_MS * 2);
             } finally {
                 threadMetaInFlightRef.current = false;
             }
@@ -630,10 +637,11 @@ const MessagesPage: React.FC = () => {
         let timeoutId: number | null = null;
         const scheduleNext = () => {
             if (cancelled) return;
+            const nextDelay = document.hidden ? Math.max(metaPollBackoffRef.current, META_POLL_BACKGROUND_MS) : metaPollBackoffRef.current;
             timeoutId = window.setTimeout(async () => {
                 await refreshThreadMeta();
                 scheduleNext();
-            }, metaPollBackoffRef.current);
+            }, nextDelay);
         };
 
         void refreshThreadMeta().then(scheduleNext);
@@ -1037,6 +1045,15 @@ const MessagesPage: React.FC = () => {
             if (payloadText && chatSettings.e2eEnabled && threadPassphrase.trim()) {
                 payloadText = await encryptChatText(payloadText, threadPassphrase);
             }
+            const optimisticMessage: ChatMessage = {
+                id: `temp-${Date.now()}`,
+                senderId: user.id,
+                text: payloadText,
+                imageUrl: imageToSend || undefined,
+                timestamp: new Date().toISOString(),
+                type: 'text'
+            } as ChatMessage;
+            setMessages((current) => [...current, optimisticMessage]);
             await itemService.sendMessageToThread(activeThread.id, user.id, payloadText, imageToSend || undefined);
             setNewMessage('');
             setImageToSend(null);
@@ -1044,8 +1061,10 @@ const MessagesPage: React.FC = () => {
             if (isBackendConfigured()) {
                 await itemService.setThreadTypingState(activeThread.id, user.id, false);
             }
-            const latest = await itemService.getChatMessagesForThread(activeThread.id);
-            setMessages(latest);
+            if (isBackendConfigured()) {
+                const latest = await itemService.getChatMessagesForThread(activeThread.id);
+                setMessages(latest);
+            }
         } catch (error) {
             console.error("Failed to send message:", error);
             setSendError(error instanceof Error ? error.message : 'Failed to send message.');
@@ -1082,8 +1101,8 @@ const MessagesPage: React.FC = () => {
     };
     
      useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+        messagesEndRef.current?.scrollIntoView({ behavior: isLowEndMode ? 'auto' : "smooth" });
+    }, [isLowEndMode, messages]);
 
     useEffect(() => {
         return () => {

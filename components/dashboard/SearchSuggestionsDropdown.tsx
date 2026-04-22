@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
+import useLowEndMode from '../../hooks/useLowEndMode';
 import LottieAnimation from '../LottieAnimation';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 
@@ -145,6 +146,7 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
 }) => {
   const { hasCapability, activePersona } = useAuth();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isLowEndMode = useLowEndMode();
 
   // Filter suggestions based on query and capabilities
   const filteredSuggestions = React.useMemo(() => {
@@ -229,11 +231,11 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
     <AnimatePresence>
       <motion.div
         ref={dropdownRef}
-        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+        initial={{ opacity: 0, y: -6, scale: isLowEndMode ? 1 : 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -8, scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 260, damping: 22 }}
-        className="dashboard-search-dropdown absolute left-0 right-0 top-full z-[160] mt-3 max-h-[70vh] overflow-hidden rounded-3xl glass-float-panel dropdown-float dropdown-glow p-2 backdrop-blur-2xl custom-scrollbar shadow-[0_24px_60px_rgba(15,23,42,0.32)]"
+        exit={{ opacity: 0, y: -6, scale: isLowEndMode ? 1 : 0.98 }}
+        transition={isLowEndMode ? { duration: 0.14 } : { type: "spring", stiffness: 260, damping: 22 }}
+        className={`dashboard-search-dropdown absolute left-0 right-0 top-full z-[160] mt-3 max-h-[70vh] overflow-hidden rounded-3xl p-2 custom-scrollbar border border-white/12 ${isLowEndMode ? 'bg-surface shadow-xl' : 'glass-float-panel dropdown-float dropdown-glow bg-surface/96 backdrop-blur-xl shadow-[0_24px_60px_rgba(15,23,42,0.32)]'}`}
       >
         <div className="relative z-10 px-4 pt-3 pb-2 border-b border-white/10">
           <div className="flex items-center justify-between">

@@ -19,6 +19,11 @@ export const createRoleSetupDefaults = (): RoleSetupDraft => ({
   sellerHandle: '',
   providerHandle: '',
   affiliateHandle: ''
+  ,
+  shippingZone: '',
+  fleetSize: '',
+  vehicleType: '',
+  dispatchMode: ''
 });
 
 export const getRequiredRoleSetupFields = (intents: OnboardingIntent[]): string[] => {
@@ -40,6 +45,11 @@ export const getRequiredRoleSetupFields = (intents: OnboardingIntent[]): string[
     requirements.add('goals');
   }
 
+  if (normalized.has('ship')) {
+    requirements.add('shippingZone');
+    requirements.add('fleetSize');
+  }
+
   return Array.from(requirements);
 };
 
@@ -49,7 +59,9 @@ export const getRoleFieldLabel = (field: string): string => {
     industry: 'Industry',
     experienceYears: 'Experience years',
     channelType: 'Channel type',
-    goals: 'Goals'
+    goals: 'Goals',
+    shippingZone: 'Shipping zone',
+    fleetSize: 'Fleet size'
   };
 
   return labels[field] || field;

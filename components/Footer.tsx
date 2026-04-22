@@ -2,7 +2,7 @@
 
 
 // components/Footer.tsx
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
 import { useTranslation } from '../hooks/useTranslation';
@@ -25,9 +25,29 @@ const SystemThemeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16"
 const ThemeSelector = () => {
     const { theme, setTheme, themes } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const onPointerDown = (event: MouseEvent) => {
+        if (!containerRef.current) return;
+        if (!containerRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+      const onEscape = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') setIsOpen(false);
+      };
+      document.addEventListener('mousedown', onPointerDown);
+      document.addEventListener('keydown', onEscape);
+      return () => {
+        document.removeEventListener('mousedown', onPointerDown);
+        document.removeEventListener('keydown', onEscape);
+      };
+    }, [isOpen]);
 
     return (
-        <div className="relative">
+        <div className="relative" ref={containerRef}>
             <button
                 onClick={() => setIsOpen(p => !p)}
                 className="inline-flex items-center gap-2 rounded-full border border-primary/60 bg-primary/15 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-primary transition-all duration-200 hover:bg-primary/25 hover:border-primary/80 active:scale-95"
@@ -37,12 +57,15 @@ const ThemeSelector = () => {
                 <span>Theme</span>
             </button>
             {isOpen && (
-                <div onMouseLeave={() => setIsOpen(false)} className="fixed bottom-auto top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:fixed md:bottom-auto md:top-auto md:left-auto md:right-4 md:-translate-x-0 md:-translate-y-0 md:bottom-16 w-56 rounded-2xl border border-border/85 bg-surface p-2 shadow-[0_20px_60px_rgba(0,0,0,0.34)] backdrop-blur-2xl z-[9999] animate-fade-in-up">
+                <div className="absolute bottom-full left-0 mb-3 w-56 rounded-2xl border border-border/85 bg-surface p-2 shadow-[0_20px_60px_rgba(0,0,0,0.34)] z-[9999] animate-fade-in-up">
                     <h4 className="text-xs font-bold text-text-secondary px-2 pb-1 uppercase">Select Theme</h4>
                     {themes.map(t => (
                         <button 
                             key={t.name} 
-                            onClick={() => setTheme(t.name)} 
+                            onClick={() => {
+                              setTheme(t.name);
+                              setIsOpen(false);
+                            }} 
                             className={`w-full flex items-center gap-3 p-2 rounded-md text-sm transition-colors ${theme === t.name ? 'bg-primary/20 text-primary' : 'hover:bg-surface-soft text-text-secondary'}`}
                         >
                             <div className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white/50" style={{ backgroundColor: t.name === 'system' ? '#888' : t.colors.primary }}>

@@ -12,7 +12,8 @@ const intentOptions: Array<{
   { id: 'rent', title: 'Rent', description: 'Use items short-term with reminders.', tags: ['Flexible', 'Returns'] },
   { id: 'sell', title: 'Sell', description: 'Run listings and fulfill orders.', tags: ['Inventory', 'Analytics'] },
   { id: 'provide', title: 'Provide Services', description: 'Offer services and capture leads.', tags: ['Services', 'Leads'] },
-  { id: 'affiliate', title: 'Affiliate', description: 'Promote products for commission.', tags: ['Links', 'Payouts'] }
+  { id: 'affiliate', title: 'Affiliate', description: 'Promote products for commission.', tags: ['Links', 'Payouts'] },
+  { id: 'ship', title: 'Shipper', description: 'Manage pickups, tracking, and delivery operations.', tags: ['Logistics', 'Dispatch'] }
 ];
 
 interface IntentStepProps {

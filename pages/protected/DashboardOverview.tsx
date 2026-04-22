@@ -42,6 +42,19 @@ const GlassStatCard: React.FC<{ label: string; value: string | number; subtext?:
   return to ? <Link to={to} className="glass-panel-hover block">{content}</Link> : <div className="glass-panel-hover">{content}</div>;
 };
 
+const EmptyPanel: React.FC<{ title: string; body: string; actionLabel: string; to: string }> = ({ title, body, actionLabel, to }) => (
+  <div className="flex h-full min-h-[220px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-6 py-8 text-center">
+    <p className="text-sm font-black uppercase tracking-[0.16em] text-primary/90">{title}</p>
+    <p className="mt-3 max-w-md text-sm font-medium text-text-secondary leading-relaxed">{body}</p>
+    <Link
+      to={to}
+      className="mt-6 inline-flex items-center justify-center rounded-full border border-white/15 bg-white/10 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-text-primary hover:bg-primary/15 hover:border-primary/30 transition-colors"
+    >
+      {actionLabel}
+    </Link>
+  </div>
+);
+
 const DashboardHero: React.FC<{ title: string; subtitle: string; chips: string[] }> = ({ title, subtitle, chips }) => (
   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, ease: 'easeOut' }} className="relative overflow-hidden p-6 md:p-8 glass-panel">
     <div className="pointer-events-none absolute -left-16 -top-16 h-36 w-36 rounded-full bg-primary/15 blur-3xl" />
@@ -138,30 +151,48 @@ const DashboardOverview: React.FC = () => {
             <motion.div variants={itemVariants} initial="hidden" animate="show" transition={{ delay: 0.2 }} className="p-6 glass-panel">
               <h3 className="text-xl font-black text-text-primary">Earnings Overview</h3>
               <div className="mt-6 h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sellerSnapshot.earningsByMonth}>
-                    <defs><linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.4} /><stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} /></linearGradient></defs>
-                    <XAxis dataKey="month" stroke="var(--dash-border)" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--dash-border)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-                    <Tooltip contentStyle={{ background: 'var(--dash-surface)', backdropFilter: 'blur(12px)', borderRadius: '16px', border: '1px solid var(--dash-border)', color: 'inherit' }} />
-                    <Area type="monotone" dataKey="earnings" stroke="var(--color-primary)" strokeWidth={3} fillOpacity={1} fill="url(#colorEarnings)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {sellerSnapshot.earningsByMonth.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={sellerSnapshot.earningsByMonth}>
+                      <defs><linearGradient id="colorEarnings" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.4} /><stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} /></linearGradient></defs>
+                      <XAxis dataKey="month" stroke="var(--dash-border)" fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke="var(--dash-border)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                      <Tooltip contentStyle={{ background: 'var(--dash-surface)', backdropFilter: 'blur(12px)', borderRadius: '16px', border: '1px solid var(--dash-border)', color: 'inherit' }} />
+                      <Area type="monotone" dataKey="earnings" stroke="var(--color-primary)" strokeWidth={3} fillOpacity={1} fill="url(#colorEarnings)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <EmptyPanel
+                    title="Earnings will chart here"
+                    body="Once orders and payouts flow through your storefront, this view becomes a month-by-month pulse of revenue."
+                    actionLabel="Open products"
+                    to="/profile/products"
+                  />
+                )}
               </div>
             </motion.div>
 
             <motion.div variants={itemVariants} initial="hidden" animate="show" transition={{ delay: 0.3 }} className="p-6 glass-panel">
               <h3 className="text-xl font-black text-text-primary">Sales by Category</h3>
               <div className="mt-6 h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={sellerSnapshot.categorySales} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
-                      {sellerSnapshot.categorySales.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: 'var(--dash-surface)', backdropFilter: 'blur(12px)', borderRadius: '16px', border: '1px solid var(--dash-border)' }} />
-                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                {sellerSnapshot.categorySales.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={sellerSnapshot.categorySales} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
+                        {sellerSnapshot.categorySales.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: 'var(--dash-surface)', backdropFilter: 'blur(12px)', borderRadius: '16px', border: '1px solid var(--dash-border)' }} />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <EmptyPanel
+                    title="Category mix appears after sales"
+                    body="List a few items with clear categories so shoppers can discover you; sales volume will fill this breakdown."
+                    actionLabel="Manage storefront"
+                    to="/profile/store"
+                  />
+                )}
               </div>
             </motion.div>
           </div>
@@ -192,7 +223,12 @@ const DashboardOverview: React.FC = () => {
                     </Link>
                   ))
                 ) : (
-                  <p className="p-4 text-sm font-medium border border-dashed rounded-2xl border-white/10 text-text-secondary opacity-60 text-center py-8">No returns due soon.</p>
+                  <EmptyPanel
+                    title="No returns due soon"
+                    body="When you have active rentals, return dates show here so you can ship items back on time."
+                    actionLabel="Browse rentals"
+                    to="/browse"
+                  />
                 )}
               </div>
             </motion.div>
@@ -213,7 +249,12 @@ const DashboardOverview: React.FC = () => {
                     </Link>
                   ))
                 ) : (
-                  <p className="p-4 text-sm font-medium border border-dashed rounded-2xl border-white/10 text-text-secondary opacity-60 text-center py-8">No recent orders yet.</p>
+                  <EmptyPanel
+                    title="No recent orders yet"
+                    body="Your latest purchases and rentals from checkout will surface here. Start with something you love, or open your full order history."
+                    actionLabel="View orders"
+                    to="/profile/orders"
+                  />
                 )}
               </div>
             </motion.div>

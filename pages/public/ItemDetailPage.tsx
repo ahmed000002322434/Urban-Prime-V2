@@ -25,6 +25,7 @@ const ItemDetailPage: React.FC = () => {
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [rentalDates, setRentalPeriod] = useState({ start: '', end: '' });
   const trackedSpotlightViewRef = useRef<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const attributionStorageKey = useMemo(() => (id ? `urbanprime:spotlight:attribution:${id}` : ''), [id]);
   const spotlightAttribution = useMemo(() => {
@@ -84,11 +85,13 @@ const ItemDetailPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       if (!id) return;
+      const requestId = ++loadRequestIdRef.current;
       setLoading(true);
       setError(null);
 
       try {
         const fetched = await itemService.getItemById(id);
+        if (requestId !== loadRequestIdRef.current) return;
         if (!fetched) {
           setError('Item not found.');
           return;
@@ -102,16 +105,21 @@ const ItemDetailPage: React.FC = () => {
         else setActiveMode('buy');
 
         const { items: related } = await itemService.getItems({ category: fetched.category }, { page: 1, limit: 4 });
-        setRelatedItems(related.filter((relatedItem) => relatedItem.id !== fetched.id));
+        if (requestId !== loadRequestIdRef.current) return;
+        setRelatedItems(related.filter((relatedItem) => relatedItem.id !== fetched.id).slice(0, 4));
       } catch (err) {
+        if (requestId !== loadRequestIdRef.current) return;
         console.error(err);
         setError('Unable to load item details.');
       } finally {
-        setLoading(false);
+        if (requestId === loadRequestIdRef.current) setLoading(false);
       }
     };
 
     loadData();
+    return () => {
+      loadRequestIdRef.current += 1;
+    };
   }, [id, spotlightAttribution]);
 
   useEffect(() => {
@@ -162,6 +170,18 @@ const ItemDetailPage: React.FC = () => {
     const rentalPeriod = mode === 'rent' ? { startDate: rentalDates.start, endDate: rentalDates.end } : undefined;
     if (mode === 'rent' && (!rentalDates.start || !rentalDates.end)) {
       alert('Please select rental dates');
+      return;
+    }
+    if (mode === 'rent' && new Date(rentalDates.end).getTime() < new Date(rentalDates.start).getTime()) {
+      alert('Rental end date must be after start date.');
+      return;
+    }
+    if (mode === 'sale' && quantity < 1) {
+      alert('Please choose a valid quantity.');
+      return;
+    }
+    if (mode === 'sale' && item.stock > 0 && quantity > item.stock) {
+      alert(`Only ${item.stock} item(s) available.`);
       return;
     }
 

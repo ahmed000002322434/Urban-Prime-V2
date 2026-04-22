@@ -107,6 +107,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
   }, [item]);
 
   const currentPrice = priceFor(item, activeMode);
+  const minNextBid = Math.ceil(currentPrice + 1);
   const compareAt = activeMode === 'buy' ? item.compareAtPrice : undefined;
   const savePercent = compareAt && compareAt > currentPrice ? Math.round(((compareAt - currentPrice) / compareAt) * 100) : 0;
   const stayDays = rentalDays(rentalDates.start, rentalDates.end);
@@ -166,7 +167,8 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
 
   const handlePrimaryAction = () => {
     if (activeMode === 'bid') {
-      const bid = String(bidAmount || item.auctionDetails?.currentBid || item.auctionDetails?.startingBid || item.price || 0);
+      const nextBid = Math.max(minNextBid, Number.isFinite(bidAmount) ? bidAmount : minNextBid);
+      const bid = String(nextBid);
       const params = new URLSearchParams({ itemId: item.id, sellerId: item.owner?.id || '', bid });
       navigate(`/chat-with-us?${params.toString()}`);
       return;
@@ -186,6 +188,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-transparent text-text-primary">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_20%_12%,rgba(255,255,255,0.22),transparent_40%),radial-gradient(circle_at_78%_14%,rgba(99,102,241,0.2),transparent_36%)]" />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1500px] flex-col gap-10 px-4 pb-20 pt-16 sm:px-6 lg:px-10 lg:pt-20">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
@@ -283,6 +286,9 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
               <div className="mt-3 flex items-center gap-2 text-xs text-text-secondary">
                 <span className="rounded-full bg-amber-500/15 px-2 py-1 font-bold text-amber-600 dark:text-amber-300">{(item.avgRating || 0).toFixed(1)}</span>
                 <span>{item.reviews?.length || 0} reviews</span>
+                <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1 font-semibold uppercase tracking-[0.14em]">
+                  {item.isVerified ? 'Trusted seller' : 'Verified profile available'}
+                </span>
               </div>
               <div className="mt-4 border-t border-white/10 pt-4">
                 <div className="flex flex-wrap items-end gap-3">
@@ -346,9 +352,9 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Your bid</span>
                     <div className="mt-2 flex items-center gap-2">
                       <span className="text-lg font-bold text-text-primary">$</span>
-                      <input type="number" value={bidAmount} onChange={(event) => setBidAmount(Number(event.target.value))} className="w-full bg-transparent text-xl font-bold text-text-primary" />
+                      <input type="number" min={minNextBid} value={bidAmount} onChange={(event) => setBidAmount(Number(event.target.value))} className="w-full bg-transparent text-xl font-bold text-text-primary" />
                     </div>
-                    <p className="mt-2 text-xs text-text-secondary">Minimum next bid ${Math.ceil(currentPrice + 1)}</p>
+                    <p className="mt-2 text-xs text-text-secondary">Minimum next bid ${minNextBid}</p>
                   </div>
                 ) : null}
               </div>
@@ -357,7 +363,8 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 <button
                   type="button"
                   onClick={handlePrimaryAction}
-                  className="h-12 rounded-full bg-primary text-xs font-black uppercase tracking-[0.2em] text-primary-text"
+                  disabled={activeMode === 'bid' && bidAmount < minNextBid}
+                  className="h-12 rounded-full bg-primary text-xs font-black uppercase tracking-[0.2em] text-primary-text disabled:opacity-50"
                 >
                   {activeMode === 'bid' ? 'Place bid' : activeMode === 'rent' ? 'Add rental to cart' : 'Add to cart'}
                 </button>
@@ -370,6 +377,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 <p className="font-bold text-text-primary">Delivery and policy</p>
                 <p className="mt-2">{deliveryText}</p>
                 <p className="mt-1">{returnText}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-text-secondary">Secure checkout powered by Urban Prime</p>
               </div>
             </div>
           </div>
@@ -473,7 +481,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
             <p className="text-xs font-medium text-text-secondary">{money(currentPrice)}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={handlePrimaryAction} className="rounded-full bg-primary px-3 py-2 text-xs font-black uppercase tracking-wide text-primary-text">
+            <button type="button" onClick={handlePrimaryAction} disabled={activeMode === 'bid' && bidAmount < minNextBid} className="rounded-full bg-primary px-3 py-2 text-xs font-black uppercase tracking-wide text-primary-text disabled:opacity-50">
               {activeMode === 'bid' ? 'Bid' : activeMode === 'rent' ? 'Cart' : 'Add'}
             </button>
             <button type="button" onClick={handleBuyNow} disabled={!canBuy && activeMode !== 'rent'} className="rounded-full border border-white/20 px-3 py-2 text-xs font-black uppercase tracking-wide text-text-primary disabled:opacity-40">

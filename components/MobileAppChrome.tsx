@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import useLowEndMode from '../hooks/useLowEndMode';
 import type { ChatMessage, ChatThread, PersonaType } from '../types';
 import { cx } from './dashboard/clay/classNames';
 import { prefetchRoute } from '../utils/routePrefetch';
@@ -157,6 +158,7 @@ const MobileAppChrome: React.FC = () => {
   const navigate = useNavigate();
   const { user, personas, activePersona, isAuthenticated, logout } = useAuth();
   const { resolvedTheme } = useTheme();
+  const isLowEndMode = useLowEndMode();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMessagesOpen, setIsMessagesOpen] = useState(false);
@@ -271,7 +273,9 @@ const MobileAppChrome: React.FC = () => {
   const floatingSheetClass = isDarkTheme
     ? 'border-white/15 bg-[linear-gradient(160deg,rgba(20,27,38,0.96),rgba(12,18,28,0.92))] shadow-[0_28px_55px_rgba(0,0,0,0.55)]'
     : 'border-white/85 bg-[linear-gradient(160deg,rgba(255,255,255,0.92),rgba(238,246,255,0.78))] shadow-[0_28px_55px_rgba(15,23,42,0.28)]';
-  const overlayBackdropClass = isDarkTheme ? 'bg-black/55 backdrop-blur-md' : 'bg-[#0f172a]/30 backdrop-blur-md';
+  const overlayBackdropClass = isDarkTheme
+    ? (isLowEndMode ? 'bg-black/55' : 'bg-black/55 backdrop-blur-md')
+    : (isLowEndMode ? 'bg-[#0f172a]/35' : 'bg-[#0f172a]/30 backdrop-blur-md');
   const panelSurfaceClass = isDarkTheme
     ? 'border-t border-white/15 bg-[linear-gradient(160deg,rgba(15,21,32,0.98),rgba(8,12,20,0.95))] shadow-[0_-20px_50px_rgba(0,0,0,0.58)]'
     : 'border-t border-white/85 bg-[linear-gradient(160deg,rgba(248,251,253,0.97),rgba(238,245,252,0.9))] shadow-[0_-20px_50px_rgba(15,23,42,0.24)]';
@@ -385,8 +389,9 @@ const MobileAppChrome: React.FC = () => {
     }
 
     pollTimerRef.current = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       void loadMessageThreads();
-    }, 12000);
+    }, isLowEndMode ? 20000 : 12000);
 
     return () => {
       if (pollTimerRef.current) {
@@ -394,7 +399,7 @@ const MobileAppChrome: React.FC = () => {
         pollTimerRef.current = null;
       }
     };
-  }, [isMessagesOpen, loadMessageThreads, user?.id]);
+  }, [isLowEndMode, isMessagesOpen, loadMessageThreads, user?.id]);
 
   useEffect(() => {
     if (!isMessagesOpen || !activeMessageThreadId) return;
@@ -482,8 +487,8 @@ const MobileAppChrome: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className={`fixed inset-x-0 bottom-3 z-[120] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 backdrop-blur-xl md:hidden ${navShellClass}`}
+        transition={isLowEndMode ? { duration: 0.16 } : { duration: 0.35, ease: 'easeOut' }}
+        className={`fixed inset-x-0 bottom-3 z-[120] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 md:hidden ${isLowEndMode ? '' : 'backdrop-blur-xl'} ${navShellClass}`}
       >
         <button
           onClick={() => navigate('/')}
@@ -507,8 +512,8 @@ const MobileAppChrome: React.FC = () => {
 
         <div className="relative -mt-8">
           <motion.button
-            whileTap={{ scale: 0.9 }}
-            whileHover={{ scale: 1.05 }}
+            whileTap={isLowEndMode ? undefined : { scale: 0.9 }}
+            whileHover={isLowEndMode ? undefined : { scale: 1.05 }}
             onClick={() => setIsCreateOpen((prev) => !prev)}
             className="flex h-14 w-14 items-center justify-center rounded-full border border-white/35 bg-[radial-gradient(circle_at_20%_20%,#6f7d8c,#4a5663_58%,#3e4854)] p-4 text-white shadow-[0_16px_36px_rgba(15,23,42,0.42)]"
           >
@@ -522,7 +527,7 @@ const MobileAppChrome: React.FC = () => {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20, scale: 0.9 }}
                 transition={{ type: 'spring', stiffness: 220, damping: 20 }}
-                className={`absolute bottom-20 left-1/2 w-64 -translate-x-1/2 rounded-3xl border p-2.5 backdrop-blur-2xl ${floatingSheetClass}`}
+                className={`absolute bottom-20 left-1/2 w-64 -translate-x-1/2 rounded-3xl border p-2.5 ${isLowEndMode ? '' : 'backdrop-blur-2xl'} ${floatingSheetClass}`}
               >
                 {createActions.map((action) => (
                   <button

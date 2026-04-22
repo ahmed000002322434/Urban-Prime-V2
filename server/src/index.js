@@ -10,6 +10,9 @@ import fs from 'fs';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import createAnalyticsEngine from './analyticsEngine.js';
 import registerSpotlightRoutes from './spotlightEngine.js';
+import registerCommerceRoutes from './commerceRoutes.js';
+import { createStripeWebhookHandler } from './webhooks/stripeWebhook.js';
+import { createPaypalWebhookHandler } from './webhooks/paypalWebhook.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -216,7 +219,8 @@ const ALLOWED_TABLES = new Set([
   'spotlight_reports', 'saved_items', 'user_blocks', 'user_restrictions',
   'spotlight_feed_impressions', 'spotlight_product_links', 'spotlight_product_events',
   'spotlight_commission_ledger', 'spotlight_product_performance_v',
-  'spotlight_creator_conversion_v', 'spotlight_tag_conversion_v'
+  'spotlight_creator_conversion_v', 'spotlight_tag_conversion_v',
+  'webhook_events'
 ]);
 
 const uploadsRoot = path.resolve(UPLOADS_DIR || path.resolve(__dirname, '../uploads'), NODE_ENV === 'production' ? 'prod' : 'dev');
@@ -265,7 +269,12 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), createStripeWebhookHandler(supabase));
+
 app.use(express.json({ limit: '25mb' }));
+
+app.post('/webhooks/paypal', createPaypalWebhookHandler(supabase));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(uploadsRoot));
 
@@ -2063,6 +2072,13 @@ registerSpotlightRoutes({
   supabase,
   requireAuth,
   resolveUserIdFromFirebaseUid
+});
+
+registerCommerceRoutes({
+  app,
+  supabase,
+  requireAuth,
+  getUserContext
 });
 
 app.get('/health', async (_req, res) => {

@@ -19,6 +19,7 @@ const RoleSetupStep: React.FC<RoleSetupStepProps> = ({ intents, value, onChange 
   const hasSellerIntent = intents.includes('sell');
   const hasProviderIntent = intents.includes('provide');
   const hasAffiliateIntent = intents.includes('affiliate');
+  const hasShipperIntent = intents.includes('ship');
 
   const updateField = (key: keyof RoleSetupDraft) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -85,6 +86,23 @@ const RoleSetupStep: React.FC<RoleSetupStepProps> = ({ intents, value, onChange 
                 <option value="community">Community</option>
               </select>
               <input value={value.goals || ''} onChange={updateField('goals')} placeholder="Goals" className={FIELD_CLASS} />
+            </div>
+          </div>
+        )}
+
+        {hasShipperIntent && (
+          <div className="rounded-xl border border-border bg-background/60 p-3 md:col-span-2">
+            <SectionTitle>Shipper</SectionTitle>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input value={value.shippingZone || ''} onChange={updateField('shippingZone')} placeholder="Primary shipping zone" className={FIELD_CLASS} />
+              <input value={value.fleetSize || ''} onChange={updateField('fleetSize')} placeholder="Fleet size (or partner capacity)" className={FIELD_CLASS} />
+              <input value={value.vehicleType || ''} onChange={updateField('vehicleType')} placeholder="Vehicle type (bike/van/truck)" className={FIELD_CLASS} />
+              <select value={value.dispatchMode || ''} onChange={updateField('dispatchMode')} className={FIELD_CLASS}>
+                <option value="">Dispatch mode</option>
+                <option value="in_house">In-house dispatch</option>
+                <option value="third_party">Third-party courier</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
             </div>
           </div>
         )}

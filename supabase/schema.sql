@@ -1752,3 +1752,17 @@ create policy "brand_claim_requests_owner" on public.brand_claim_requests for al
 ) with check (
   public.is_service_role() or requester_user_id = auth.uid()
 );
+
+-- Payment / provider webhooks (idempotency)
+create table if not exists public.webhook_events (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  idempotency_key text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (provider, idempotency_key)
+);
+create index if not exists idx_webhook_events_provider_created on public.webhook_events(provider, created_at desc);
+alter table public.webhook_events enable row level security;
+drop policy if exists "service_role_all_webhook_events" on public.webhook_events;
+create policy "service_role_all_webhook_events" on public.webhook_events for all using (public.is_service_role()) with check (public.is_service_role());

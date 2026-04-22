@@ -12,6 +12,7 @@ import Spinner from './Spinner';
 import { useTranslation } from '../hooks/useTranslation';
 import { useHeroStyle } from '../context/HeroStyleContext';
 import { useTheme } from '../hooks/useTheme';
+import useLowEndMode from '../hooks/useLowEndMode';
 import BackButton from './BackButton';
 import LogoutConfirmationModal from './LogoutConfirmationModal';
 import { LANGUAGES } from '../data/languages';
@@ -534,6 +535,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const [scrollOpacity, setScrollOpacity] = useState(0);
     const { heroStyle } = useHeroStyle();
     const { resolvedTheme } = useTheme();
+    const isLowEndMode = useLowEndMode();
 
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const menuTimeoutRef = useRef<number | null>(null);
@@ -604,6 +606,10 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
 
     useEffect(() => {
         if (!headerRef.current) return;
+        if (isLowEndMode) {
+            gsap.set(headerRef.current, { clearProps: 'transform' });
+            return;
+        }
         if (!isBannerHero) {
             gsap.set(headerRef.current, { clearProps: 'transform' });
             return;
@@ -614,7 +620,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
             duration: isScrolled ? 0.42 : 0.28,
             ease: 'power2.out'
         });
-    }, [isBannerHero, isScrolled]);
+    }, [isBannerHero, isLowEndMode, isScrolled]);
 
     const fetchNotifications = useCallback(async (showLoader = false) => {
         if (!user) {
@@ -684,10 +690,10 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         const intervalId = window.setInterval(() => {
             if (document.visibilityState !== 'visible') return;
             void fetchNotifications();
-        }, 25000);
+        }, isLowEndMode ? 45000 : 25000);
 
         return () => window.clearInterval(intervalId);
-    }, [isAuthenticated, fetchNotifications]);
+    }, [isAuthenticated, fetchNotifications, isLowEndMode]);
 
     const handleMarkAsRead = async () => {
         if (!user) return;

@@ -1,12 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { listerService, itemService } from '../../services/itemService';
-import type { RentalHistoryItem, Item } from '../../types';
+import type { RentalHistoryItem } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useCart } from '../../hooks/useCart';
 import { useNotification } from '../../context/NotificationContext';
+import { auth } from '../../firebase';
+import { backendFetch, isBackendConfigured } from '../../services/backendClient';
 
 const OrderIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-24 h-24 text-slate-300">
@@ -29,18 +31,61 @@ const MyOrdersPage: React.FC = () => {
     const [history, setHistory] = useState<RentalHistoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
-    const fetchHistory = () => {
-        if (user) {
-            setIsLoading(true);
-            listerService.getRentalHistory(user.id)
-                .then(setHistory)
-                .finally(() => setIsLoading(false));
+    const fetchHistory = useCallback(async () => {
+        if (!user) return;
+        setIsLoading(true);
+        try {
+            const base = await listerService.getRentalHistory(user.id);
+            let merged: RentalHistoryItem[] = [...base];
+            if (isBackendConfigured() && auth.currentUser) {
+                try {
+                    const token = await auth.currentUser.getIdToken();
+                    const res = await backendFetch('/commerce/orders/history?limit=80', {}, token);
+                    const lines = Array.isArray(res?.lines) ? res.lines : [];
+                    const PLACEHOLDER_IMG = '/icons/urbanprime.svg';
+                    const canon: RentalHistoryItem[] = lines.map((line: Record<string, unknown>) => {
+                        const orderId = String(line.orderId || '');
+                        const itemId = String(line.itemId || '');
+                        const rowId = String(line.id || `${orderId}-${itemId}`);
+                        const typ = String(line.type || 'sale').toLowerCase() === 'rent' ? 'rent' : 'sale';
+                        return {
+                            id: rowId,
+                            itemId,
+                            itemTitle: String(line.itemTitle || 'Item'),
+                            itemImageUrl: PLACEHOLDER_IMG,
+                            startDate: String(line.startDate || new Date().toISOString()),
+                            endDate: String(line.endDate || line.startDate || new Date().toISOString()),
+                            totalPrice: Number(line.totalPrice || 0),
+                            status: String(line.status || 'processing').toLowerCase(),
+                            type: typ,
+                            source: 'commerce',
+                            orderId
+                        };
+                    });
+                    const keyOf = (h: RentalHistoryItem) =>
+                        `${h.source || 'firestore'}|${h.type}|${h.itemId}|${h.startDate}|${h.totalPrice}`;
+                    const seen = new Set(merged.map(keyOf));
+                    for (const row of canon) {
+                        const k = keyOf(row);
+                        if (!seen.has(k)) {
+                            seen.add(k);
+                            merged.push(row);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Commerce order history merge skipped:', e);
+                }
+            }
+            merged.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+            setHistory(merged);
+        } finally {
+            setIsLoading(false);
         }
-    }
+    }, [user]);
 
     useEffect(() => {
-        fetchHistory();
-    }, [user]);
+        void fetchHistory();
+    }, [fetchHistory]);
 
     const handleCancelBooking = async (bookingId: string) => {
         if (window.confirm("Are you sure you want to cancel this booking request?")) {
@@ -96,7 +141,9 @@ const MyOrdersPage: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[item.status]}`}>{item.status.toUpperCase()}</span>
-                                        {item.status === 'pending' ? (
+                                        {item.source === 'commerce' ? (
+                                            <Link to={`/item/${item.itemId}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">View item</Link>
+                                        ) : item.status === 'pending' ? (
                                             <button onClick={() => handleCancelBooking(item.id)} className="clay-button clay-button-primary clay-size-sm clay-tone-danger is-interactive">Cancel</button>
                                         ) : (
                                             <Link to={`/profile/orders/${item.id}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">Details</Link>
@@ -136,14 +183,20 @@ const MyOrdersPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        {item.itemType === 'digital' ? (
+                                        {item.source !== 'commerce' && item.itemType === 'digital' ? (
                                             <a href={item.digitalFileUrl} download className="clay-button clay-button-secondary clay-size-sm is-interactive">
                                                 Download
                                             </a>
-                                        ) : (
+                                        ) : item.source !== 'commerce' ? (
                                             <button onClick={() => handleBuyAgain(item.itemId)} className="clay-button clay-button-secondary clay-size-sm is-interactive">Buy Again</button>
+                                        ) : (
+                                            <button onClick={() => handleBuyAgain(item.itemId)} className="clay-button clay-button-secondary clay-size-sm is-interactive">Buy again</button>
                                         )}
-                                        <Link to={`/profile/orders/${item.id}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">Details</Link>
+                                        {item.source === 'commerce' ? (
+                                            <Link to={`/item/${item.itemId}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">View item</Link>
+                                        ) : (
+                                            <Link to={`/profile/orders/${item.id}`} className="clay-button clay-button-secondary clay-size-sm is-interactive">Details</Link>
+                                        )}
                                     </div>
                                 </li>
                             ))}

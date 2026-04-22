@@ -50,9 +50,9 @@ export interface User {
 
 
 export type AccountLifecycle = 'guest' | 'member' | 'restricted';
-export type PersonaType = 'consumer' | 'seller' | 'provider' | 'affiliate';
+export type PersonaType = 'consumer' | 'seller' | 'provider' | 'affiliate' | 'shipper';
 export type PersonaStatus = 'active' | 'pending' | 'suspended' | 'archived';
-export type Capability = 'buy' | 'rent' | 'sell' | 'provide_service' | 'affiliate' | 'admin';
+export type Capability = 'buy' | 'rent' | 'sell' | 'provide_service' | 'affiliate' | 'ship' | 'admin';
 export type CapabilityState = 'inactive' | 'pending' | 'active' | 'suspended';
 
 export type PersonaCapabilities = Record<Capability, CapabilityState>;
@@ -136,7 +136,7 @@ export interface DataModeConfig {
   enableLocalMockFallback: boolean;
 }
 
-export type OnboardingIntent = 'buy' | 'rent' | 'sell' | 'provide' | 'affiliate';
+export type OnboardingIntent = 'buy' | 'rent' | 'sell' | 'provide' | 'affiliate' | 'ship';
 export type OnboardingStepId = 'intent' | 'identity' | 'preferences' | 'role_setup' | 'review' | 'completed';
 
 export interface RoleSetupDraft {
@@ -158,7 +158,49 @@ export interface RoleSetupDraft {
   sellerHandle?: string;
   providerHandle?: string;
   affiliateHandle?: string;
+  shippingZone?: string;
+  fleetSize?: string;
+  vehicleType?: string;
+  dispatchMode?: string;
   handles?: Partial<Record<PersonaType, string>>;
+}
+
+export type PaymentRail = 'stripe' | 'paypal' | 'razorpay' | 'jazzcash' | 'bank_transfer' | 'local_bank';
+export type ShippingRail = 'shippo' | 'easypost' | 'self_managed' | 'local_courier';
+
+export interface PaymentProviderCapability {
+  rail: PaymentRail;
+  supportsCapture: boolean;
+  supportsRefunds: boolean;
+  supportsPayouts: boolean;
+  supports3DS?: boolean;
+  regions?: string[];
+}
+
+export interface ShippingProviderCapability {
+  rail: ShippingRail;
+  supportsRateQuote: boolean;
+  supportsLabelPurchase: boolean;
+  supportsLiveTracking: boolean;
+  regions?: string[];
+}
+
+export interface ShipperDashboardSnapshot {
+  generatedAt: string;
+  summary: {
+    activeShipments: number;
+    pendingPickup: number;
+    deliveredToday: number;
+    delayedShipments: number;
+  };
+  upcoming: Array<{
+    shipmentId: string;
+    orderId: string;
+    buyerName: string;
+    eta: string;
+    status: string;
+    city?: string;
+  }>;
 }
 
 export interface OnboardingDraft {
@@ -1312,6 +1354,9 @@ export interface RentalHistoryItem {
     type: 'rent' | 'sale';
     itemType?: string;
     digitalFileUrl?: string;
+    /** Canonical Supabase-backed line (vs legacy Firestore booking) */
+    source?: 'firestore' | 'commerce';
+    orderId?: string;
 }
 
 export interface Offer {

@@ -240,6 +240,7 @@ const CheckoutPage = lazy(() => import('./pages/protected/CheckoutPage'));
 const DisputeCenterPage = lazy(() => import('./pages/protected/DisputeCenterPage'));
 const HelpPage = lazy(() => import('./pages/protected/HelpPage'));
 const WorkflowHubPage = lazy(() => import('./pages/protected/WorkflowHubPage'));
+const ShipperDashboardPage = lazy(() => import('./pages/protected/ShipperDashboardPage'));
 
 // Admin Pages
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
@@ -540,6 +541,10 @@ const AppContent: React.FC = () => {
 
                     <Route element={<PersonaRoute requiredCapabilities={['affiliate']} requiredPersonaTypes={['affiliate']} mode="all" />}>
                         <Route path="affiliate" element={<AffiliateProgramPage />} />
+                    </Route>
+
+                    <Route element={<PersonaRoute requiredCapabilities={['ship']} requiredPersonaTypes={['shipper']} mode="all" />}>
+                        <Route path="shipper-dashboard" element={<ShipperDashboardPage />} />
                     </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['sell', 'provide_service']} requiredPersonaTypes={['seller', 'provider']} mode="any" />}>

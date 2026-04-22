@@ -25,7 +25,7 @@ const supabasePersonaUserIdCache = new Map<string, string>();
 const PERSONAS_STORAGE_KEY = 'urbanprime_personas_v1';
 const ACTIVE_PERSONA_STORAGE_PREFIX = 'urbanprime_active_persona_v1_';
 
-const ALL_CAPABILITIES: Capability[] = ['buy', 'rent', 'sell', 'provide_service', 'affiliate', 'admin'];
+const ALL_CAPABILITIES: Capability[] = ['buy', 'rent', 'sell', 'provide_service', 'affiliate', 'ship', 'admin'];
 
 type PersonaCreatePayload = Partial<Pick<AccountPersona, 'displayName' | 'avatar' | 'handle' | 'bio' | 'settings' | 'verification'>>;
 
@@ -35,6 +35,7 @@ const baseCapabilities = (): PersonaCapabilities => ({
   sell: 'inactive',
   provide_service: 'inactive',
   affiliate: 'inactive',
+  ship: 'inactive',
   admin: 'inactive'
 });
 
@@ -52,6 +53,9 @@ const capabilitiesForPersonaType = (type: PersonaType, user?: Partial<User>): Pe
   }
   if (type === 'affiliate') {
     caps.affiliate = 'active';
+  }
+  if (type === 'shipper') {
+    caps.ship = 'active';
   }
 
   if (user?.isAdmin) caps.admin = 'active';
