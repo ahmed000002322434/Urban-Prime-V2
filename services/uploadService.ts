@@ -2,7 +2,7 @@
 import { backendFetch, getBackendBaseUrl, isBackendConfigured } from './backendClient';
 import { shouldUseLocalMockFallback } from './dataMode';
 
-export type ImageType = 'listing' | 'profile' | 'store-banner' | 'store-logo' | 'review';
+export type ImageType = 'listing' | 'profile' | 'store-banner' | 'spotlight-banner' | 'store-logo' | 'review';
 
 export interface UploadRequest {
   file: File;
@@ -48,6 +48,7 @@ class UploadService {
   private optimizationPresets: Record<ImageType, OptimizationSettings> = {
     listing: { maxWidth: 1200, maxHeight: 1200, quality: 0.85, format: 'webp' },
     'store-banner': { maxWidth: 1920, maxHeight: 600, quality: 0.8, format: 'webp' },
+    'spotlight-banner': { maxWidth: 1800, maxHeight: 720, quality: 0.82, format: 'webp' },
     'store-logo': { maxWidth: 500, maxHeight: 500, quality: 0.9, format: 'png' },
     profile: { maxWidth: 400, maxHeight: 400, quality: 0.85, format: 'jpeg' },
     review: { maxWidth: 800, maxHeight: 800, quality: 0.8, format: 'jpeg' }

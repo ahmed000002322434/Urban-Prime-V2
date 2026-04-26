@@ -1,9 +1,10 @@
 
 import { collection, getDocs, addDoc, updateDoc, doc, getDoc, setDoc, deleteDoc, increment, query, where } from 'firebase/firestore';
-import type { SupportQuery, User, Notification, SiteSettings, AIFeature, Item, Booking, PayoutRequest } from '../types';
+import type { SupportQuery, User, Notification, SiteSettings, AIFeature, Item, Booking, PayoutRequest, CommerceAdminOverview } from '../types';
 import { db } from '../firebase';
 import { itemService, userService } from './itemService';
 import supabaseMirror from './supabaseMirror';
+import commerceService from './commerceService';
 
 const fromFirestore = <T extends { id: string }>(docSnap: any): T => {
     const data = docSnap.data();
@@ -227,6 +228,14 @@ export const adminService = {
           await updateDoc(userRef, {
               processingBalance: increment(-payoutData.amount)
           });
+          if (payoutData.walletTransactionId) {
+              await updateDoc(doc(db, 'walletTransactions', payoutData.walletTransactionId), {
+                  status: 'completed'
+              }).catch(() => undefined);
+              await supabaseMirror.mergeUpdate('walletTransactions', payoutData.walletTransactionId, {
+                  status: 'completed'
+              }).catch(() => undefined);
+          }
           
            // Log transaction status update if you track the original debit ID, 
            // otherwise, the original 'debit' remains 'pending' or can be updated here if tracked.
@@ -265,6 +274,14 @@ export const adminService = {
 
   getAllUsers: () => userService.getAllSellers(),
   getAllItems: () => itemService.getItems({}, { page: 1, limit: 1000 }).then(res => res.items),
+  async getCommerceOverview(): Promise<CommerceAdminOverview | null> {
+    try {
+      return await commerceService.getAdminOverview();
+    } catch (error) {
+      console.warn('Admin commerce overview unavailable:', error);
+      return null;
+    }
+  },
   async getAllBookings(): Promise<Booking[]> {
     if (supabaseMirror.enabled) {
       const mirrored = await supabaseMirror.list<Booking>('bookings', { limit: 2000 });

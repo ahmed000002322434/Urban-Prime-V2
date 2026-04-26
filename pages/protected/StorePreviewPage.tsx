@@ -1,12 +1,45 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useAuth } from '../../hooks/useAuth';
+import { useNotification } from '../../context/NotificationContext';
+import { storeBuildService } from '../../services/storeBuildService';
+import { affiliateCommissionService } from '../../services/affiliateCommissionService';
 
 const StorePreviewPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { showNotification } = useNotification();
   const storeData = location.state?.storeData || {};
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handlePublish = async () => {
+    try {
+      setIsPublishing(true);
+      const resolvedStoreId =
+        location.state?.storeId ||
+        storeData?.id ||
+        (user ? (await storeBuildService.getUserStore(user.id))?.id : null);
+
+      if (!resolvedStoreId) {
+        throw new Error('Store record not found.');
+      }
+
+      await storeBuildService.publishStore(resolvedStoreId);
+      if (user?.id) {
+        await affiliateCommissionService.processSellerReferralBonus(user.id, resolvedStoreId).catch(() => null);
+      }
+      showNotification('Store published successfully.');
+      navigate('/store/manager');
+    } catch (error) {
+      console.error('Store publish failed:', error);
+      showNotification('Store publish failed. Please try again.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const previewContent = (
     <div className="space-y-8">
@@ -252,10 +285,11 @@ const StorePreviewPage: React.FC = () => {
               Make Changes
             </button>
             <button
-              onClick={() => navigate('/store/manager')}
+              onClick={handlePublish}
+              disabled={isPublishing}
               className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-emerald-700"
             >
-              Publish Store Now →
+              {isPublishing ? 'Publishing...' : 'Publish Store Now →'}
             </button>
           </div>
         </div>

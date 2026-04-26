@@ -1,4 +1,5 @@
 import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'crypto';
+import createPersonaAnalyticsPages from './personaAnalyticsPages.js';
 
 const EVENT_QUEUE_COLLECTION = 'analytics_event_queue_pending';
 const EVENT_ARCHIVE_COLLECTION = 'analytics_event_queue_archive';
@@ -437,6 +438,7 @@ const createAnalyticsEngine = ({
   requireAuth,
   userCanAccessPersona,
   resolveUserIdFromFirebaseUid,
+  resolveAdminContext,
   writeAuditLog
 }) => {
   const sellerSubscribers = new Map();
@@ -1736,6 +1738,8 @@ const createAnalyticsEngine = ({
     const snapshot = await computeSellerAnalytics({ sellerPersonaId, daysBack: 30 });
     const nowIso = new Date().toISOString();
 
+    await personaAnalyticsPages.invalidateScopedPageCache('seller', sellerPersonaId);
+
     await supabase
       .from('mirror_documents')
       .upsert({
@@ -1916,6 +1920,13 @@ const createAnalyticsEngine = ({
 
     return computeSellerAnalytics({ sellerPersonaId, daysBack, timezone });
   };
+
+  const personaAnalyticsPages = createPersonaAnalyticsPages({
+    supabase,
+    userCanAccessPersona,
+    resolveAdminContext,
+    getSellerSnapshot
+  });
 
   const buildListingAnalytics = async ({ itemId, daysBack = 30, timezone = 'UTC' }) => {
     const itemContext = await resolveItemContext(itemId);
@@ -2163,6 +2174,41 @@ const createAnalyticsEngine = ({
       }
     });
 
+    app.get('/analytics/scopes/:scopeType/:scopeId/pages/:pageId', requireAuth, async (req, res) => {
+      try {
+        const scopeType = safeString(req.params.scopeType, 32).toLowerCase();
+        const scopeId = safeString(req.params.scopeId, 72);
+        const pageId = safeString(req.params.pageId, 48).toLowerCase() || 'overview';
+        const range = safeString(req.query.range || '30d', 8) || '30d';
+        const timezone = safeString(req.query.timezone || 'UTC', 80) || 'UTC';
+
+        const access = await personaAnalyticsPages.ensureScopeAccess(req, scopeType, scopeId);
+        if (!access.ok) return res.status(access.status || 400).json({ error: access.error || 'Forbidden' });
+
+        const payload = await personaAnalyticsPages.buildPagePayload(access.scope, pageId, range, timezone);
+        return res.json({ data: payload });
+      } catch (error) {
+        return res.status(400).json({ error: error?.message || 'Unable to load scoped analytics page.' });
+      }
+    });
+
+    app.get('/analytics/scopes/:scopeType/:scopeId/live', requireAuth, async (req, res) => {
+      try {
+        const scopeType = safeString(req.params.scopeType, 32).toLowerCase();
+        const scopeId = safeString(req.params.scopeId, 72);
+        const range = safeString(req.query.range || '30d', 8) || '30d';
+        const timezone = safeString(req.query.timezone || 'UTC', 80) || 'UTC';
+
+        const access = await personaAnalyticsPages.ensureScopeAccess(req, scopeType, scopeId);
+        if (!access.ok) return res.status(access.status || 400).json({ error: access.error || 'Forbidden' });
+
+        const envelope = await personaAnalyticsPages.buildLiveEnvelope(access.scope, range, timezone);
+        return res.json({ data: envelope });
+      } catch (error) {
+        return res.status(400).json({ error: error?.message || 'Unable to load live analytics envelope.' });
+      }
+    });
+
     app.get('/analytics/listings/:itemId', requireAuth, async (req, res) => {
       try {
         const itemId = safeString(req.params.itemId, 72);
@@ -2215,6 +2261,50 @@ const createAnalyticsEngine = ({
         return res.json({ data: abandoned });
       } catch (error) {
         return res.status(400).json({ error: error?.message || 'Unable to load abandoned carts.' });
+      }
+    });
+
+    app.get('/analytics/stream/:scopeType/:scopeId', requireAuth, async (req, res) => {
+      try {
+        const scopeType = safeString(req.params.scopeType, 32).toLowerCase();
+        const scopeId = safeString(req.params.scopeId, 72);
+        const access = await personaAnalyticsPages.ensureScopeAccess(req, scopeType, scopeId);
+        if (!access.ok) return res.status(access.status || 400).json({ error: access.error || 'Forbidden' });
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+        res.write(`event: connected\ndata: ${JSON.stringify({
+          type: 'analytics.connected',
+          scopeType: access.scope.scopeType,
+          scopeId: access.scope.scopeId,
+          generatedAt: new Date().toISOString(),
+          connectionState: 'live'
+        })}\n\n`);
+
+        const interval = setInterval(() => {
+          try {
+            res.write(`event: analytics\ndata: ${JSON.stringify({
+              type: 'analytics.update',
+              scopeType: access.scope.scopeType,
+              scopeId: access.scope.scopeId,
+              generatedAt: new Date().toISOString(),
+              connectionState: 'live'
+            })}\n\n`);
+          } catch {
+            // ignore dead stream writes
+          }
+        }, 5000);
+        interval.unref?.();
+
+        req.on('close', () => {
+          clearInterval(interval);
+        });
+      } catch (error) {
+        return res.status(400).json({ error: error?.message || 'Unable to open scoped analytics stream.' });
       }
     });
 

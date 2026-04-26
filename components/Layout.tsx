@@ -5,6 +5,8 @@ import BackToTopButton from './BackToTopButton';
 import type { SiteSettings } from '../types';
 import { useTheme } from '../hooks/useTheme';
 import { useCart } from '../hooks/useCart';
+import { useAuth } from '../hooks/useAuth';
+import { affiliateCommissionService } from '../services/affiliateCommissionService';
 import DeferredMount from './performance/DeferredMount';
 
 const Header = lazy(() => import('./Header'));
@@ -241,6 +243,7 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   const { addItemToCart } = useCart();
+  const { user } = useAuth();
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [showBanner, setShowBanner] = useState(true);
   const [isOmniOpen, setIsOmniOpen] = useState(false);
@@ -263,6 +266,21 @@ const Layout: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    affiliateCommissionService
+      .captureReferralFromLocation(location.search, `${location.pathname}${location.search}`)
+      .catch((error) => {
+        console.warn('Affiliate referral capture skipped:', error);
+      });
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    affiliateCommissionService.persistPendingReferralForUser(user.id).catch((error) => {
+      console.warn('Affiliate referral persistence skipped:', error);
+    });
+  }, [user?.id, location.pathname, location.search]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;

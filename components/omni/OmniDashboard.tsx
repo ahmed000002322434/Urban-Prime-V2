@@ -131,7 +131,7 @@ const OmniDashboard: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isO
         return;
       }
       case 'apply_coupon':
-        if (payload.code) applyCoupon(payload.code);
+        if (payload.code) await applyCoupon(payload.code);
         return;
       case 'open_onboarding':
         openOnboarding(payload.purpose, payload.redirectPath);

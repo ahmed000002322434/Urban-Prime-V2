@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import { itemService, userService } from '../../services/itemService';
 import { useAuth } from '../../hooks/useAuth';
 import type { ChatMessage, ChatThread, User } from '../../types';
+import SafeImage from '../messages/SafeImage';
 
 type MessageTarget = {
   id: string;
@@ -24,14 +25,76 @@ type SpotlightMessageDrawerProps = {
   onClose: () => void;
 };
 
-const safeAvatar = (url?: string | null) => (url && url.trim() ? url : '/icons/urbanprime.svg');
-const QUICK_EMOJIS = ['👋', '✨', '🔥', '💙', '😂', '🙌', '😊', '🎉', '🤍', '🚀', '💬', '🌟'];
+const QUICK_EMOJIS = [
+  '\u{1F44B}',
+  '\u{2728}',
+  '\u{1F525}',
+  '\u{1F499}',
+  '\u{1F602}',
+  '\u{1F64C}',
+  '\u{1F60A}',
+  '\u{1F389}',
+  '\u{1F929}',
+  '\u{1F680}',
+  '\u{1F4AC}',
+  '\u{1F31F}'
+];
+
+const MAX_SEARCH_QUERY_LENGTH = 80;
+const MAX_DRAFT_LENGTH = 1200;
+
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+    <path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14m5.2 12.2L21 21" />
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+    <path d="M22 2 11 13" />
+    <path d="m22 2-7 20-4-9-9-4Z" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5">
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+const BackIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+    <path d="M15 18 9 12l6-6" />
+  </svg>
+);
 
 const formatTime = (value?: string | Date | null) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const formatThreadTime = (value?: string | Date | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfMessageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (startOfMessageDay === startOfToday) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  if (startOfMessageDay === startOfToday - 86400000) return 'Yesterday';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const getMessageText = (message: ChatMessage) => {
+  if (typeof message.text === 'string' && message.text.trim()) return message.text;
+  if (typeof message.content === 'string' && message.content.trim()) return message.content;
+  if (message.imageUrl) return 'Shared an image';
+  if (message.audioUrl) return 'Shared a voice note';
+  return 'Message';
 };
 
 const normalizeTarget = (candidate?: User | null, fallbackId?: string): MessageTarget | null => {
@@ -44,6 +107,15 @@ const normalizeTarget = (candidate?: User | null, fallbackId?: string): MessageT
     avatar_url: anyCandidate.avatar_url || anyCandidate.avatar || null
   };
 };
+
+const sanitizeInput = (value: string, maxLength: number) => value
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+  .slice(0, maxLength);
+
+const sanitizeSearchValue = (value: string) => sanitizeInput(value, MAX_SEARCH_QUERY_LENGTH)
+  .replace(/[\r\n\t]+/g, ' ');
+
+const sanitizeDraftValue = (value: string) => sanitizeInput(value, MAX_DRAFT_LENGTH);
 
 const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, target, onClose }) => {
   const { user, openAuthModal } = useAuth();
@@ -61,16 +133,25 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [sending, setSending] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  ));
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('chat');
   const threadsPollTimerRef = useRef<number | null>(null);
   const messagesPollTimerRef = useRef<number | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const targetLabel = selectedTarget?.name || 'Conversation';
+  const threadCountLabel = messages.length === 0 ? 'New chat' : messages.length === 1 ? '1 message' : `${messages.length} messages`;
+  const quickEmojis = isMobile ? QUICK_EMOJIS.slice(0, 6) : QUICK_EMOJIS;
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const loadMessages = useCallback(async (resolvedThreadId: string, options?: { silent?: boolean }) => {
     if (!resolvedThreadId) return;
     if (!options?.silent) setLoading(true);
     try {
-      const rows = await itemService.getChatMessagesForThread(resolvedThreadId);
+      const rows = await itemService.getChatMessagesForThread(resolvedThreadId, { limit: 80 });
       setMessages(rows);
     } finally {
       if (!options?.silent) setLoading(false);
@@ -89,21 +170,22 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
     if (!options?.silent) setLoadingThreads(true);
     try {
       const rawThreads: ChatThread[] = await itemService.getChatThreadsForUser(user.id);
-      const previews: ThreadPreview[] = [];
-      for (const thread of rawThreads.slice(0, 12)) {
-        const counterpartId = String(thread.buyerId === user.id ? thread.sellerId : thread.buyerId || '');
-        if (!counterpartId) continue;
-        const counterpart = await userService.getUserById(counterpartId).catch(() => null);
-        const targetPreview = normalizeTarget(counterpart, counterpartId);
-        if (!targetPreview) continue;
-        previews.push({
-          threadId: thread.id,
-          target: targetPreview,
-          lastMessage: thread.lastMessage || 'New conversation',
-          lastUpdated: thread.lastUpdated || new Date().toISOString()
-        });
-      }
-      setThreads(previews);
+      const previews = await Promise.all(
+        rawThreads.slice(0, 12).map(async (thread): Promise<ThreadPreview | null> => {
+          const counterpartId = String(thread.buyerId === user.id ? thread.sellerId : thread.buyerId || '');
+          if (!counterpartId) return null;
+          const counterpart = await userService.getUserById(counterpartId).catch(() => null);
+          const targetPreview = normalizeTarget(counterpart, counterpartId);
+          if (!targetPreview) return null;
+          return {
+            threadId: thread.id,
+            target: targetPreview,
+            lastMessage: thread.lastMessage || 'New conversation',
+            lastUpdated: thread.lastUpdated || new Date().toISOString()
+          };
+        })
+      );
+      setThreads(previews.filter((entry): entry is ThreadPreview => Boolean(entry)));
     } finally {
       if (!options?.silent) setLoadingThreads(false);
     }
@@ -114,6 +196,33 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
     setSelectedTarget(target);
     if (target) setMode('inbox');
   }, [open, target]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const syncViewport = (event?: MediaQueryListEvent) => {
+      setIsMobile(event ? event.matches : mediaQuery.matches);
+    };
+
+    syncViewport();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncViewport);
+      return () => mediaQuery.removeEventListener('change', syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    if (isMobile) {
+      setMobileView(target ? 'chat' : 'list');
+      return;
+    }
+    setMobileView('chat');
+  }, [isMobile, open, target]);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -134,10 +243,10 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
 
   useEffect(() => {
     if (!open || !user) return;
-    const trimmed = searchQuery.trim();
+    const trimmed = deferredSearchQuery.trim();
     let alive = true;
     const timer = window.setTimeout(() => {
-      (async () => {
+      void (async () => {
         if (trimmed.length < 2) {
           if (alive) setSearchResults([]);
           if (alive) setLoadingSearch(false);
@@ -147,9 +256,11 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
         try {
           const users = await userService.searchUsers(trimmed, { excludeUserId: user.id, limit: 8 });
           if (!alive) return;
-          setSearchResults(users
-            .map((candidate) => normalizeTarget(candidate, candidate.id))
-            .filter((entry): entry is MessageTarget => Boolean(entry)));
+          setSearchResults(
+            users
+              .map((candidate) => normalizeTarget(candidate, candidate.id))
+              .filter((entry): entry is MessageTarget => Boolean(entry))
+          );
         } finally {
           if (alive) setLoadingSearch(false);
         }
@@ -159,12 +270,12 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [open, searchQuery, user]);
+  }, [deferredSearchQuery, open, user]);
 
   useEffect(() => {
     if (!open || !user || !selectedTarget) return;
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         await resolveThreadForTarget(selectedTarget);
       } catch {
@@ -201,6 +312,22 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
     };
   }, [loadMessages, open, threadId]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    messagesEndRef.current?.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'end'
+    });
+  }, [messages, open, threadId]);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.style.height = '0px';
+    composer.style.height = `${Math.min(composer.scrollHeight, 156)}px`;
+  }, [draft]);
+
   const canSend = useMemo(() => Boolean(user && selectedTarget && threadId), [selectedTarget, threadId, user]);
 
   const handleSelectTarget = useCallback(async (nextTarget: MessageTarget) => {
@@ -209,244 +336,393 @@ const SpotlightMessageDrawer: React.FC<SpotlightMessageDrawerProps> = ({ open, t
       return;
     }
     setSelectedTarget(nextTarget);
+    if (isMobile) setMobileView('chat');
     setMode('inbox');
     setSearchQuery('');
-  }, [openAuthModal, user]);
+  }, [isMobile, openAuthModal, user]);
 
   const handleSend = useCallback(async () => {
     if (!user) {
       openAuthModal('login');
       return;
     }
-    if (!selectedTarget || !threadId || !draft.trim()) return;
+    if (sending) return;
+    const nextDraft = sanitizeDraftValue(draft).trim();
+    if (!selectedTarget || !threadId || !nextDraft) return;
     setSending(true);
     try {
-      await itemService.sendMessageToThread(threadId, user.id, draft.trim());
+      await itemService.sendMessageToThread(threadId, user.id, nextDraft);
       setDraft('');
       await loadMessages(threadId);
-      setThreads((prev) => prev.map((thread) => (thread.threadId === threadId ? { ...thread, lastMessage: draft.trim(), lastUpdated: new Date().toISOString() } : thread)));
+      setThreads((prev) => prev.map((thread) => (
+        thread.threadId === threadId
+          ? { ...thread, lastMessage: nextDraft, lastUpdated: new Date().toISOString() }
+          : thread
+      )));
     } finally {
       setSending(false);
     }
-  }, [draft, loadMessages, openAuthModal, selectedTarget, threadId, user]);
+  }, [draft, loadMessages, openAuthModal, selectedTarget, sending, threadId, user]);
+
+  const sidebarContent = (
+    <>
+      <div className="spotlight-message-search-shell">
+        <div className="spotlight-message-search">
+          <SearchIcon />
+          <input
+            value={searchQuery}
+            onChange={(event) => {
+              const nextValue = sanitizeSearchValue(event.target.value);
+              setSearchQuery(nextValue);
+              if (nextValue.trim()) setMode('new');
+            }}
+            onFocus={() => {
+              if (isMobile) setMobileView('list');
+            }}
+            maxLength={MAX_SEARCH_QUERY_LENGTH}
+            placeholder="Search creators or start fresh"
+            className="spotlight-message-search-input"
+          />
+        </div>
+        <p className="spotlight-message-search-helper">
+          Quick Spotlight chat is temporary. Your full inbox lives in Dashboard Messages.
+        </p>
+      </div>
+
+      <div className="spotlight-message-sidebar-block">
+        <div className="spotlight-message-sidebar-head">
+          <div>
+            <p className="spotlight-message-kicker">Recent chats</p>
+            <p className="spotlight-message-sidebar-copy">Jump back into active Spotlight conversations.</p>
+          </div>
+          <button type="button" onClick={() => setMode('new')} className="spotlight-message-inline-action">
+            Start new
+          </button>
+        </div>
+
+        <div className="spotlight-message-thread-list">
+          {loadingThreads ? (
+            <div className="space-y-2">
+              <div className="spotlight-message-skeleton h-16" />
+              <div className="spotlight-message-skeleton h-16" />
+              <div className="spotlight-message-skeleton h-16" />
+            </div>
+          ) : threads.length > 0 ? (
+            threads.map((thread) => {
+              const active = selectedTarget?.id === thread.target.id;
+              return (
+                <button
+                  key={thread.threadId}
+                  type="button"
+                  onClick={() => void handleSelectTarget(thread.target)}
+                  className={`spotlight-message-thread-card ${active ? 'is-active' : ''}`}
+                >
+                  <SafeImage
+                    src={thread.target.avatar_url || '/icons/urbanprime.svg'}
+                    alt={thread.target.name}
+                    className="h-11 w-11 rounded-[1rem] object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold">{thread.target.name}</p>
+                      <span className="spotlight-message-thread-time">{formatThreadTime(thread.lastUpdated)}</span>
+                    </div>
+                    <p className="truncate text-xs opacity-75">{thread.lastMessage || 'New conversation'}</p>
+                  </div>
+                </button>
+              );
+            })
+          ) : (
+            <div className="spotlight-message-empty-card">
+              Your recent conversations will appear here.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {mode === 'new' || searchQuery.trim() ? (
+        <div className="spotlight-message-sidebar-block">
+          <div className="spotlight-message-sidebar-head">
+            <div>
+              <p className="spotlight-message-kicker">Search results</p>
+              <p className="spotlight-message-sidebar-copy">Find people without leaving the Spotlight flow.</p>
+            </div>
+            {loadingSearch ? <span className="spotlight-message-status-pill">Searching...</span> : null}
+          </div>
+
+          <div className="spotlight-message-search-results">
+            {searchResults.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                onClick={() => void handleSelectTarget(candidate)}
+                className="spotlight-message-thread-card"
+              >
+                <SafeImage
+                  src={candidate.avatar_url || '/icons/urbanprime.svg'}
+                  alt={candidate.name}
+                  className="h-10 w-10 rounded-[1rem] object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{candidate.name}</p>
+                  <p className="text-xs opacity-75">Tap to start a private chat</p>
+                </div>
+              </button>
+            ))}
+
+            {!loadingSearch && searchQuery.trim() && searchResults.length === 0 ? (
+              <div className="spotlight-message-empty-card">
+                No users matched your search.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+
+  const conversationContent = (
+    <>
+      <div className="spotlight-message-mainbar">
+        <div className="spotlight-message-mainbar-top">
+          <div>
+            <p className="spotlight-message-kicker">Conversation</p>
+            <h4 className="text-sm font-black">
+              {selectedTarget ? `Say hi, ${selectedTarget.name}` : 'Pick a creator or start new chat'}
+            </h4>
+          </div>
+          <div className="spotlight-message-mainbar-meta">
+            {isMobile ? (
+              <button type="button" onClick={() => setMobileView('list')} className="spotlight-message-mobile-toggle">
+                <BackIcon />
+                <span>Chats</span>
+              </button>
+            ) : null}
+            <span className="spotlight-message-status-pill">{threadCountLabel}</span>
+            {!isMobile ? <span className="spotlight-message-mainbar-copy">Drag the header to move</span> : null}
+          </div>
+        </div>
+
+        <div className="spotlight-message-notice">
+          <div className="min-w-0">
+            <p className="spotlight-message-notice-title">Temporary Spotlight inbox</p>
+            <p className="spotlight-message-notice-copy">Your real inbox and full message history live in Dashboard Messages.</p>
+          </div>
+          <a href="/profile/messages" className="spotlight-message-notice-link">
+            Open full inbox
+          </a>
+        </div>
+      </div>
+
+      <div className="spotlight-message-canvas">
+        <div className="spotlight-message-stream">
+          {loading ? (
+            <div className="space-y-3">
+              <div className="spotlight-message-skeleton h-16" />
+              <div className="spotlight-message-skeleton h-16" />
+              <div className="spotlight-message-skeleton h-16" />
+            </div>
+          ) : messages.length > 0 ? (
+            <div className="space-y-3">
+              {messages.map((message) => {
+                const mine = String(message.senderId) === String(user?.id || '');
+                return (
+                  <div key={message.id} className={`spotlight-message-row ${mine ? 'is-own' : 'is-peer'}`}>
+                    {!mine ? (
+                      <SafeImage
+                        src={selectedTarget?.avatar_url || '/icons/urbanprime.svg'}
+                        alt={targetLabel}
+                        className="spotlight-message-mini-avatar"
+                      />
+                    ) : null}
+                    <div className={`spotlight-message-bubble ${mine ? 'is-own' : 'is-peer'}`}>
+                      <p className="whitespace-pre-wrap leading-relaxed">{getMessageText(message)}</p>
+                      <p className={`spotlight-message-meta ${mine ? 'is-own' : ''}`}>{formatTime(message.timestamp)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          ) : selectedTarget ? (
+            <div className="spotlight-message-empty">
+              Say hello and start a private Spotlight conversation.
+            </div>
+          ) : (
+            <div className="spotlight-message-empty">
+              Use search to find someone new.
+            </div>
+          )}
+        </div>
+
+        <div className="spotlight-message-composer-shell">
+          <div className="spotlight-message-emoji-row">
+            {quickEmojis.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => setDraft((current) => sanitizeDraftValue(
+                  `${current}${current && !current.endsWith(' ') ? ' ' : ''}${emoji}`
+                ))}
+                className="spotlight-message-emoji-chip"
+                aria-label={`Insert ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
+          <form
+            className="spotlight-message-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSend();
+            }}
+          >
+            <div className="spotlight-message-form-field">
+              <textarea
+                ref={composerRef}
+                value={draft}
+                onChange={(event) => setDraft(sanitizeDraftValue(event.target.value))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                disabled={!selectedTarget}
+                maxLength={MAX_DRAFT_LENGTH}
+                placeholder={selectedTarget ? `Message ${selectedTarget.name}...` : 'Choose someone to start chatting'}
+                rows={1}
+                className="spotlight-message-textarea"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!canSend || sending || !draft.trim()}
+              className="spotlight-message-send"
+            >
+              <SendIcon />
+              <span>{sending ? 'Sending' : 'Send'}</span>
+            </button>
+          </form>
+
+          <p className="spotlight-message-helper">
+            This quick Spotlight chat is temporary. Use Dashboard Messages for your full inbox and long-term conversations.
+          </p>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <AnimatePresence>
       {open && target ? (
         <div className="spotlight-modal spotlight-message-modal pointer-events-none fixed inset-0 z-[90] flex items-end justify-end p-2 sm:p-3 md:p-5">
           <motion.div
-            className="spotlight-message-panel pointer-events-auto flex h-[min(92vh,840px)] w-full max-w-[1040px] flex-col overflow-hidden rounded-t-[1.4rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_30px_90px_rgba(0,0,0,0.52)] backdrop-blur-3xl max-sm:border-white/10 max-sm:bg-slate-950/96 max-sm:shadow-[0_28px_80px_rgba(0,0,0,0.52)] sm:rounded-[2rem]"
-            initial={{ y: 28, opacity: 0, scale: 0.96 }}
+            className="spotlight-message-panel pointer-events-auto flex w-full flex-col overflow-hidden"
+            initial={{ y: 28, opacity: 0, scale: 0.965 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 28, opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
+            exit={{ y: 28, opacity: 0, scale: 0.965 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
             drag="y"
             dragControls={dragControls}
             dragListener={false}
             dragElastic={0.08}
             dragMomentum={false}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-white/10 bg-slate-950/80 px-3 py-2.5 sm:px-4 sm:py-3">
+            <header className="spotlight-message-header">
               <button
                 type="button"
                 onPointerDown={(event) => dragControls.start(event)}
-                className="flex items-center gap-3 text-left"
+                className="spotlight-message-header-main"
               >
-                <span className="mt-1 h-10 w-10 rounded-full bg-gradient-to-br from-violet-500/40 via-indigo-500/30 to-cyan-400/30 shadow-sm ring-1 ring-white/10" />
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Glassy inbox</p>
-                  <h3 className="text-sm font-black text-white">{targetLabel}</h3>
+                <span className="spotlight-message-avatar-shell">
+                  <SafeImage
+                    src={selectedTarget?.avatar_url || '/icons/urbanprime.svg'}
+                    alt={targetLabel}
+                    className="h-11 w-11 rounded-[1.15rem] object-cover"
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="spotlight-message-kicker">Spotlight messages</p>
+                  <h3 className="truncate text-sm font-black">{targetLabel}</h3>
+                  <p className="spotlight-message-subtitle">
+                    {selectedTarget
+                      ? 'Temporary quick chat from Spotlight. Full inbox is in Dashboard Messages.'
+                      : 'Choose a creator to start chatting'}
+                  </p>
                 </div>
               </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMode('inbox')}
-                  className={`rounded-full border px-3 py-2 text-xs font-bold transition ${mode === 'inbox' ? 'border-white/10 bg-white/10 text-white' : 'border-white/10 bg-slate-900/70 text-slate-300'}`}
-                >
-                  Inbox
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('new')}
-                  className={`rounded-full border px-3 py-2 text-xs font-bold transition ${mode === 'new' ? 'border-white/10 bg-white/10 text-white' : 'border-white/10 bg-slate-900/70 text-slate-300'}`}
-                >
-                  New chat
-                </button>
-                <button
-                  onClick={onClose}
-                  className="rounded-full border border-white/10 bg-slate-900/80 p-2 text-white transition hover:-translate-y-0.5 hover:bg-slate-900"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-5 w-5"><path d="M6 6l12 12M18 6 6 18" /></svg>
+
+              <div className="spotlight-message-header-actions">
+                {!isMobile || mobileView === 'list' ? (
+                  <div className="spotlight-message-mode-switch" role="tablist" aria-label="Message mode">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'inbox'}
+                      onClick={() => setMode('inbox')}
+                      className={`spotlight-message-tab ${mode === 'inbox' ? 'is-active' : ''}`}
+                    >
+                      Inbox
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'new'}
+                      onClick={() => setMode('new')}
+                      className={`spotlight-message-tab ${mode === 'new' ? 'is-active' : ''}`}
+                    >
+                      New chat
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setMobileView('list')} className="spotlight-message-mobile-toggle">
+                    <BackIcon />
+                    <span>All chats</span>
+                  </button>
+                )}
+
+                <button type="button" onClick={onClose} className="spotlight-message-close" aria-label="Close message drawer">
+                  <CloseIcon />
                 </button>
               </div>
-            </div>
+            </header>
 
-            <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[320px_minmax(0,1fr)]">
-              <aside className="flex min-h-0 flex-col gap-3 border-b border-white/10 bg-slate-950/60 p-2.5 lg:max-h-none lg:border-b-0 lg:border-r lg:p-4">
-                <div className="flex items-center gap-2 rounded-[1.15rem] border border-white/10 bg-slate-900/70 p-2 shadow-sm">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-slate-400"><path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14m5.2 12.2L21 21" /></svg>
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                      if (event.target.value.trim()) setMode('new');
-                    }}
-                    placeholder="Search creators"
-                    className="w-full bg-transparent px-1 py-1.5 text-sm text-white outline-none placeholder:text-slate-400"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Recent chats</p>
-                  <button type="button" onClick={() => setMode('new')} className="text-xs font-bold text-cyan-300 transition hover:text-cyan-200">Start new</button>
-                </div>
-
-                <div className="max-h-[40vh] min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 lg:max-h-none">
-                  {loadingThreads ? (
-                    <div className="space-y-2">
-                      <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                      <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                      <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                    </div>
-                  ) : threads.length > 0 ? (
-                    threads.map((thread) => {
-                      const active = selectedTarget?.id === thread.target.id;
-                      return (
-                        <button
-                          key={thread.threadId}
-                          type="button"
-                          onClick={() => void handleSelectTarget(thread.target)}
-                          className={`flex w-full items-center gap-3 rounded-[1.15rem] border px-2.5 py-2.5 text-left transition duration-200 hover:-translate-y-0.5 sm:rounded-[1.35rem] sm:px-3 sm:py-3 ${active ? 'border-white/10 bg-white/10 text-white shadow-lg' : 'border-white/10 bg-slate-900/60 text-white shadow-sm backdrop-blur-xl'}`}
-                        >
-                          <img src={safeAvatar(thread.target.avatar_url)} alt={thread.target.name} className="h-11 w-11 rounded-2xl object-cover" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm font-semibold">{thread.target.name}</p>
-                            </div>
-                            <p className={`truncate text-xs ${active ? 'text-white/70' : 'text-slate-300'}`}>{thread.lastMessage || 'New conversation'}</p>
-                          </div>
-                        </button>
-                      );
-                    })
+            <div className="spotlight-message-layout">
+              {!isMobile ? (
+                <>
+                  <aside className="spotlight-message-sidebar">{sidebarContent}</aside>
+                  <section className="spotlight-message-main">{conversationContent}</section>
+                </>
+              ) : (
+                <AnimatePresence mode="wait" initial={false}>
+                  {mobileView === 'list' ? (
+                    <motion.aside
+                      key="spotlight-message-list"
+                      className="spotlight-message-sidebar"
+                      initial={{ x: -28, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: -22, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                    >
+                      {sidebarContent}
+                    </motion.aside>
                   ) : (
-                    <div className="rounded-[1.45rem] border border-dashed border-white/10 bg-slate-900/55 p-5 text-sm text-slate-300">
-                      Your recent conversations will appear here.
-                    </div>
+                    <motion.section
+                      key="spotlight-message-chat"
+                      className="spotlight-message-main"
+                      initial={{ x: 28, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: 22, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                    >
+                      {conversationContent}
+                    </motion.section>
                   )}
-                </div>
-
-                {mode === 'new' || searchQuery.trim() ? (
-                  <div className="rounded-[1.2rem] border border-white/10 bg-slate-900/60 p-3 shadow-sm backdrop-blur-xl sm:rounded-[1.45rem] sm:p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Search results</p>
-                      {loadingSearch ? <span className="text-[11px] font-semibold text-sky-500">Searching...</span> : null}
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      {searchResults.map((candidate) => (
-                        <button
-                          key={candidate.id}
-                          type="button"
-                          onClick={() => void handleSelectTarget(candidate)}
-                          className="flex w-full items-center gap-3 rounded-[1.05rem] border border-white/10 bg-slate-900/65 px-2.5 py-2.5 text-left transition hover:-translate-y-0.5 backdrop-blur-xl sm:rounded-[1.2rem] sm:px-3 sm:py-3"
-                        >
-                          <img src={safeAvatar(candidate.avatar_url)} alt={candidate.name} className="h-10 w-10 rounded-2xl object-cover" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-white">{candidate.name}</p>
-                            <p className="text-xs text-slate-400">Tap to start a new chat</p>
-                          </div>
-                        </button>
-                      ))}
-                      {!loadingSearch && searchQuery.trim() && searchResults.length === 0 ? (
-                        <p className="rounded-[1.2rem] border border-dashed border-white/10 bg-slate-900/55 p-4 text-sm text-slate-300">
-                          No users matched your search.
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-              </aside>
-
-              <section className="flex min-h-0 flex-col">
-                <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5 sm:px-4 sm:py-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Conversation</p>
-                    <h4 className="text-sm font-black text-white">{selectedTarget ? `Say hi, ${selectedTarget.name}` : 'Pick a creator or start new chat'}</h4>
-                  </div>
-                  <span className="rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-[11px] font-semibold text-slate-300">
-                    Drag the header to move
-                  </span>
-                </div>
-
-                <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
-                  <div className="min-h-0 overflow-y-auto p-4">
-                    {loading ? (
-                      <div className="space-y-3">
-                        <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                        <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                        <div className="h-16 rounded-[1.25rem] bg-white/5" />
-                      </div>
-                    ) : messages.length > 0 ? (
-                    <div className="space-y-3">
-                      {messages.map((message) => {
-                        const mine = String(message.senderId) === String(user?.id || '');
-                        return (
-                          <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                              <div className={`max-w-[82%] rounded-[1.15rem] px-3.5 py-2.5 text-sm shadow-sm sm:rounded-[1.35rem] sm:px-4 sm:py-3 ${mine ? 'bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] text-white' : 'bg-slate-900/70 text-slate-100'}`}>
-                                <p className="whitespace-pre-wrap leading-relaxed">{message.text || message.content || 'Message'}</p>
-                                <p className={`mt-1 text-[11px] font-semibold ${mine ? 'text-white/60' : 'text-slate-400'}`}>{formatTime(message.timestamp)}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : selectedTarget ? (
-                      <div className="flex min-h-full items-center justify-center rounded-[1.6rem] border border-dashed border-white/10 bg-slate-900/55 p-8 text-center text-sm text-slate-300 backdrop-blur-xl">
-                        Say hello and start a private Spotlight conversation.
-                      </div>
-                    ) : (
-                      <div className="flex min-h-full items-center justify-center rounded-[1.6rem] border border-dashed border-white/10 bg-slate-900/55 p-8 text-center text-sm text-slate-300 backdrop-blur-xl">
-                        Use search to find someone new.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="sticky bottom-0 border-t border-white/10 bg-slate-950/88 p-2.5 backdrop-blur-2xl sm:p-4">
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {QUICK_EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => setDraft((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}${emoji}`)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-900/80 text-base shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-900 sm:h-9 sm:w-9"
-                          aria-label={`Insert ${emoji}`}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 rounded-[1.15rem] border border-white/10 bg-slate-900/75 p-2 shadow-sm backdrop-blur-xl sm:rounded-[1.35rem]">
-                      <textarea
-                        value={draft}
-                        onChange={(event) => setDraft(event.target.value)}
-                        placeholder={selectedTarget ? `Message ${selectedTarget.name}...` : 'Choose someone to start chatting'}
-                        rows={2}
-                        className="min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-slate-400"
-                      />
-                      <button
-                        onClick={() => void handleSend()}
-                        disabled={!canSend || sending}
-                        className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-950 shadow-[0_12px_28px_rgba(255,255,255,0.12)] transition hover:scale-[1.01] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {sending ? 'Sending' : 'Send'}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      Search other users, start a new thread, or continue an existing one without leaving Spotlight.
-                    </p>
-                  </div>
-                </div>
-              </section>
+                </AnimatePresence>
+              )}
             </div>
           </motion.div>
         </div>

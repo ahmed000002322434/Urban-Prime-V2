@@ -15,13 +15,19 @@ type LocalDbStore =
   | 'chatMessages'
   | 'storeLayouts'
   | 'affiliatePrograms'
+  | 'affiliateUsers'
+  | 'affiliateLinks'
+  | 'affiliateCoupons'
+  | 'affiliateCommissions'
+  | 'affiliateClicks'
+  | 'affiliateSubmissions'
   | 'storeAnalytics'
   | 'payouts';
 
 type LocalDbRecord = Record<string, any> & { id?: string };
 
 const DB_NAME = 'urbanprime_local_db_v1';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SEED_FLAG_KEY = 'seeded_v1';
 
 const STORES: LocalDbStore[] = [
@@ -38,6 +44,12 @@ const STORES: LocalDbStore[] = [
   'chatMessages',
   'storeLayouts',
   'affiliatePrograms',
+  'affiliateUsers',
+  'affiliateLinks',
+  'affiliateCoupons',
+  'affiliateCommissions',
+  'affiliateClicks',
+  'affiliateSubmissions',
   'storeAnalytics',
   'payouts'
 ];

@@ -57,15 +57,23 @@ const DigitalProductsPage: React.FC = () => {
                     <div className="text-left">
                         <h2 className="text-3xl font-display font-bold mb-2 text-gray-900 dark:text-dark-text">Have a Digital Product to Sell?</h2>
                         <p className="text-gray-600 dark:text-gray-400 max-w-xl">
-                           Join our growing community of digital creators. List your software, templates, art, and more with our AI-powered tools to create stunning listings in minutes.
+                           Publish ZIP-backed digital products with private post-purchase delivery, or launch game builds into the new discovery shelves.
                         </p>
                     </div>
-                    <Link
-                        to="/profile/products/new-digital"
-                        className="inline-block bg-primary text-white font-bold py-3 px-8 rounded-full hover:opacity-90 transition-colors text-lg flex-shrink-0"
-                    >
-                        Start Selling Today
-                    </Link>
+                    <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
+                        <Link
+                            to="/profile/products/new-digital"
+                            className="inline-block bg-primary text-white font-bold py-3 px-8 rounded-full hover:opacity-90 transition-colors text-lg"
+                        >
+                            Sell Digital Goods
+                        </Link>
+                        <Link
+                            to="/games"
+                            className="inline-block border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-dark-text font-bold py-3 px-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-lg"
+                        >
+                            Explore Games
+                        </Link>
+                    </div>
                 </div>
             </section>
         </div>

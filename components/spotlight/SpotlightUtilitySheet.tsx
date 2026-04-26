@@ -58,6 +58,82 @@ const formatTimeAgo = (value?: string | null) => {
   return `${Math.floor(days / 30)}mo`;
 };
 
+const getNotificationPresentation = (entry: Notification) => {
+  const title = String((entry as any)?.title || '').toLowerCase();
+  const message = String(entry?.message || '').toLowerCase();
+  const link = String(entry?.link || '').toLowerCase();
+  const haystack = `${title} ${message} ${link}`;
+
+  if (haystack.includes('follow')) {
+    return {
+      label: 'Follow',
+      shellClass: 'bg-sky-500/12 text-sky-200 ring-1 ring-sky-400/18',
+      badgeClass: 'bg-sky-500/12 text-sky-200'
+    };
+  }
+  if (haystack.includes('comment') || haystack.includes('reply') || haystack.includes('message')) {
+    return {
+      label: 'Reply',
+      shellClass: 'bg-violet-500/12 text-violet-200 ring-1 ring-violet-400/18',
+      badgeClass: 'bg-violet-500/12 text-violet-200'
+    };
+  }
+  if (haystack.includes('like') || haystack.includes('love')) {
+    return {
+      label: 'Like',
+      shellClass: 'bg-rose-500/12 text-rose-200 ring-1 ring-rose-400/18',
+      badgeClass: 'bg-rose-500/12 text-rose-200'
+    };
+  }
+  if (String(entry?.type || '').toLowerCase() === 'sale' || haystack.includes('sale') || haystack.includes('order') || haystack.includes('purchase')) {
+    return {
+      label: 'Order',
+      shellClass: 'bg-emerald-500/12 text-emerald-200 ring-1 ring-emerald-400/18',
+      badgeClass: 'bg-emerald-500/12 text-emerald-200'
+    };
+  }
+  return {
+    label: 'Update',
+    shellClass: 'bg-white/8 text-slate-200 ring-1 ring-white/10',
+    badgeClass: 'bg-white/8 text-slate-300'
+  };
+};
+
+const NotificationGlyph = ({ entry }: { entry: Notification }) => {
+  const presentation = getNotificationPresentation(entry);
+  const label = presentation.label;
+
+  return (
+    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${presentation.shellClass}`}>
+      {label === 'Follow' ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.95" className="h-5 w-5">
+          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+          <path d="M4 20a8 8 0 0 1 12.8-6.4" />
+          <path d="M19 8v6M16 11h6" />
+        </svg>
+      ) : label === 'Reply' ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.95" className="h-5 w-5">
+          <path d="M5 6.5h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-11a2 2 0 0 1 2-2Z" />
+        </svg>
+      ) : label === 'Like' ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.95" className="h-5 w-5">
+          <path d="M12 21s-7.5-4.8-7.5-10.4A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 3.6C19.5 16.2 12 21 12 21Z" />
+        </svg>
+      ) : label === 'Order' ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.95" className="h-5 w-5">
+          <path d="M6 7h15l-1.4 6.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.6L5 4H3" />
+          <circle cx="10" cy="19" r="1.4" />
+          <circle cx="18" cy="19" r="1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.95" className="h-5 w-5">
+          <path d="M12 3l2.7 5.8L21 11l-6.1 2.2L12 19l-2.9-5.8L3 11l6.3-2.2L12 3Z" />
+        </svg>
+      )}
+    </span>
+  );
+};
+
 const SpotlightUtilitySheet: React.FC<SpotlightUtilitySheetProps> = ({ open, variant, onClose }) => {
   const { user, openAuthModal } = useAuth();
   const { showNotification } = useNotification();
@@ -202,7 +278,7 @@ const SpotlightUtilitySheet: React.FC<SpotlightUtilitySheetProps> = ({ open, var
                           <div className="h-20 rounded-[1.45rem] bg-white/5" />
                         </div>
                       ) : notifications.length > 0 ? (
-                        <div className="space-y-3">
+                        <div className="space-y-2.5">
                           {notifications.map((entry, index) => (
                             <motion.div
                               key={String(entry.id || `${index}`)}
@@ -218,25 +294,33 @@ const SpotlightUtilitySheet: React.FC<SpotlightUtilitySheetProps> = ({ open, var
                                   }
                                   onClose();
                                 }}
-                                  className={`block rounded-[1.45rem] border p-4 shadow-[0_18px_50px_rgba(0,0,0,0.16)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_65px_rgba(0,0,0,0.24)] ${
+                                className={`group block rounded-[1.35rem] border px-4 py-4 transition duration-200 hover:border-white/16 hover:bg-[#121d2b] ${
                                   entry.isRead
-                                    ? 'border-white/10 bg-slate-900/70'
-                                    : 'border-cyan-400/25 bg-cyan-400/10'
+                                    ? 'border-white/10 bg-[#0b1320]/78'
+                                    : 'border-sky-400/22 bg-[#0f1c2b]/92 shadow-[0_14px_34px_rgba(14,165,233,0.08)]'
                                 }`}
                               >
                                 <div className="flex items-start gap-3">
-                                  <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.isRead ? 'bg-slate-500' : 'bg-cyan-300'}`} />
+                                  <NotificationGlyph entry={entry} />
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0">
-                                        <p className="text-sm font-bold text-white">{entry.title || 'Spotlight update'}</p>
-                                        <p className="mt-1 text-sm leading-relaxed text-slate-300">{entry.message}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="truncate text-sm font-semibold text-white">{(entry as any).title || 'Spotlight update'}</p>
+                                          {!entry.isRead ? <span className="h-2 w-2 shrink-0 rounded-full bg-sky-300" /> : null}
+                                        </div>
+                                        <p className="mt-1 text-sm leading-6 text-slate-300">{entry.message}</p>
                                       </div>
-                                      <span className="shrink-0 rounded-full bg-slate-900/80 px-3 py-1 text-xs font-semibold text-slate-300">
+                                      <span className="shrink-0 pt-0.5 text-[11px] font-medium text-slate-400">
                                         {formatTimeAgo(entry.createdAt)}
                                       </span>
                                     </div>
-                                    {entry.link ? <p className="mt-2 text-xs font-semibold text-cyan-300">Open activity</p> : null}
+                                    <div className="mt-3 flex items-center gap-2">
+                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${getNotificationPresentation(entry).badgeClass}`}>
+                                        {getNotificationPresentation(entry).label}
+                                      </span>
+                                      {entry.link ? <span className="text-xs font-semibold text-slate-400 transition group-hover:text-sky-300">Open activity</span> : null}
+                                    </div>
                                   </div>
                                 </div>
                               </Link>

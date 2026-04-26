@@ -1,3 +1,4 @@
+import { auth } from '../firebase';
 import { dataModeConfig, prefersSupabase } from './dataMode';
 
 type QueuedWriteRequest = {
@@ -19,6 +20,11 @@ type CachedReadEntry = {
   expiresAt: number;
 };
 
+type BackendFetchOptions = RequestInit & {
+  backendNoQueue?: boolean;
+  backendNoCache?: boolean;
+};
+
 const BACKEND_LAST_OK_KEY = 'urbanprime_backend_last_ok_v1';
 const BACKEND_OVERRIDE_KEY = 'urbanprime_backend_override_v1';
 const BACKEND_QUEUE_KEY = 'urbanprime_backend_write_queue_v1';
@@ -29,6 +35,7 @@ const BACKEND_READ_CACHE_MAX_ITEMS = 250;
 const BACKEND_HEALTH_TIMEOUT_MS = 1800;
 const BACKEND_RETRY_INTERVAL_MS = 20000;
 const DEFAULT_BACKEND_READ_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_BACKEND_REQUEST_TIMEOUT_MS = 12_000;
 const CANDIDATE_DEFAULT_COOLDOWN_MS = 30_000;
 const CANDIDATE_NOT_FOUND_COOLDOWN_MS = 90_000;
 const CANDIDATE_RATE_LIMIT_MIN_COOLDOWN_MS = 5_000;
@@ -36,6 +43,7 @@ const CANDIDATE_RATE_LIMIT_MAX_COOLDOWN_MS = 300_000;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RETRYABLE_CANDIDATE_STATUS_CODES = new Set([404, 405, 408, 425, 500, 502, 503, 504]);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const UNIFIED_PROFILE_CACHE_PREFIX = 'urbanprime_unified_profile_cache_v2:';
 
 let activeBackendBaseUrl = '';
 let resolveBackendPromise: Promise<string> | null = null;
@@ -69,6 +77,11 @@ const parsePositiveInt = (value: string | undefined, fallback: number) => {
 const BACKEND_READ_CACHE_TTL_MS = parsePositiveInt(
   (import.meta.env.VITE_BACKEND_READ_CACHE_TTL_MS as string | undefined),
   DEFAULT_BACKEND_READ_CACHE_TTL_MS
+);
+
+const BACKEND_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  (import.meta.env.VITE_BACKEND_REQUEST_TIMEOUT_MS as string | undefined),
+  DEFAULT_BACKEND_REQUEST_TIMEOUT_MS
 );
 
 const parseHostMappedCandidates = (value: string | null | undefined) => {
@@ -159,6 +172,12 @@ const isUrbanPrimeBetaHost = () => {
   return String(window.location.hostname || '').trim().toLowerCase() === 'urbanprimebeta.vercel.app';
 };
 
+const isLocalBrowserHost = () => {
+  if (!isBrowserRuntime()) return false;
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+};
+
 const isSameOriginCandidate = (candidate: string) => {
   if (!isBrowserRuntime()) return false;
   const sameOrigin = normalizeBaseUrl(window.location.origin);
@@ -190,6 +209,42 @@ const setStorageValue = (key: string, value: string) => {
 };
 
 const getBackendApiKey = () => (import.meta.env.VITE_BACKEND_API_KEY as string | undefined)?.trim();
+
+const getPersistedFirebaseUid = () => {
+  if (!isBrowserRuntime()) return '';
+  if (auth.currentUser?.uid) return String(auth.currentUser.uid).trim();
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = String(window.localStorage.key(index) || '');
+      if (!key.startsWith('firebase:authUser:')) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const uid = String(parsed?.uid || '').trim();
+      if (uid) return uid;
+    }
+  } catch {
+    // ignore local auth cache parse failures
+  }
+
+  try {
+    const fallbackKeys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = String(window.localStorage.key(index) || '');
+      if (key.startsWith(UNIFIED_PROFILE_CACHE_PREFIX)) {
+        fallbackKeys.push(key);
+      }
+    }
+    if (fallbackKeys.length === 1) {
+      return fallbackKeys[0].slice(UNIFIED_PROFILE_CACHE_PREFIX.length).trim();
+    }
+  } catch {
+    // ignore unified profile cache lookup failures
+  }
+
+  return '';
+};
 
 const createClientId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -341,6 +396,14 @@ const invalidateReadCacheByApiPath = (path: string, token?: string) => {
     return;
   }
 
+  if (path.startsWith('/pixe/')) {
+    const next = cache.filter((entry) => !(entry.namespace === namespace && entry.path.startsWith('/pixe/')));
+    if (next.length !== cache.length) {
+      persistReadCache(next);
+    }
+    return;
+  }
+
   if (!path.startsWith('/api/')) return;
   const tableMatch = /^\/api\/([^/?]+)/.exec(path);
   if (!tableMatch) return;
@@ -441,6 +504,16 @@ const getBackendCandidates = () => {
   const candidates: string[] = [];
   const hostMappedCandidates = parseHostMappedCandidates(import.meta.env.VITE_BACKEND_HOST_MAP as string | undefined);
   const urbanPrimeBetaBackend = normalizeBaseUrl(import.meta.env.VITE_URBANPRIMEBETA_BACKEND_URL as string | undefined);
+  const localBrowserCandidates = isLocalBrowserHost()
+    ? [
+      'http://127.0.0.1:5050',
+      'http://localhost:5050',
+      'http://127.0.0.1:5052',
+      'http://localhost:5052',
+      'http://127.0.0.1:5051',
+      'http://localhost:5051'
+    ]
+    : [];
 
   const overrideUrl = getStorageValue(BACKEND_OVERRIDE_KEY);
   const lastHealthyUrl = getStorageValue(BACKEND_LAST_OK_KEY);
@@ -456,6 +529,7 @@ const getBackendCandidates = () => {
       // ignore storage failures
     }
   }
+  candidates.push(...localBrowserCandidates);
   if (activeBackendBaseUrl) candidates.push(activeBackendBaseUrl);
   if (lastHealthyUrl && !shouldSkipCandidate(lastHealthyUrl)) {
     candidates.push(lastHealthyUrl);
@@ -517,6 +591,10 @@ const createHeaders = (headersInput: HeadersInit | undefined, body: BodyInit | n
   }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+  const firebaseUid = getPersistedFirebaseUid();
+  if (firebaseUid && !headers.has('x-firebase-uid')) {
+    headers.set('x-firebase-uid', firebaseUid);
   }
   const backendKey = getBackendApiKey();
   if (backendKey) {
@@ -650,16 +728,52 @@ const executeRequest = async (
   token?: string
 ) => {
   const headers = createHeaders(options.headers, body, token);
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    method,
-    body,
-    headers,
-    credentials: 'include'
-  });
+  const controller = new AbortController();
+  const externalSignal = options.signal;
+  const abortFromExternal = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', abortFromExternal, { once: true });
+    }
+  }
+  const timer = setTimeout(() => controller.abort(), BACKEND_REQUEST_TIMEOUT_MS);
 
-  const payload = await parseResponsePayload(response);
-  return { response, payload };
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      method,
+      body,
+      headers,
+      credentials: 'include',
+      signal: controller.signal
+    });
+
+    const payload = await parseResponsePayload(response);
+    return { response, payload };
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', abortFromExternal);
+    }
+  }
+};
+
+const isValidBackendPayload = (response: Response, payload: any) => {
+  if (response.status === 204) return true;
+
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) return true;
+
+  const raw = typeof payload?.raw === 'string' ? payload.raw.trim().toLowerCase() : '';
+  if (!raw) return false;
+
+  if (raw.startsWith('<!doctype html') || raw.startsWith('<html')) {
+    return false;
+  }
+
+  return false;
 };
 
 const resolveBackendInternal = async (forceRefresh = false) => {
@@ -805,22 +919,23 @@ export const shouldUseBackend = () => {
 
 export const backendFetch = async (
   path: string,
-  options: RequestInit = {},
+  options: BackendFetchOptions = {},
   token?: string
 ) => {
   initializeQueueSync();
 
-  const method = String(options.method || 'GET').toUpperCase();
+  const { backendNoQueue = false, backendNoCache = false, ...requestOptions } = options;
+  const method = String(requestOptions.method || 'GET').toUpperCase();
   const isReadRequest = method === 'GET';
-  const shouldQueue = MUTATING_METHODS.has(method);
-  const initialBody = options.body ?? null;
+  const shouldQueue = MUTATING_METHODS.has(method) && !backendNoQueue;
+  const initialBody = requestOptions.body ?? null;
 
   if (shouldQueue && !isQueueSupportedBody(initialBody)) {
     throw new Error('This request type cannot be queued offline. Retry when backend is available.');
   }
 
   const contentType = (() => {
-    const normalizedHeaders = new Headers(options.headers || {});
+    const normalizedHeaders = new Headers(requestOptions.headers || {});
     if (!normalizedHeaders.has('Content-Type') && initialBody && !(initialBody instanceof FormData) && !(initialBody instanceof URLSearchParams)) {
       normalizedHeaders.set('Content-Type', 'application/json');
     }
@@ -835,7 +950,7 @@ export const backendFetch = async (
   let baseUrl = await resolveBackendBaseUrl();
 
   if (!baseUrl) {
-    if (isReadRequest) {
+    if (isReadRequest && !backendNoCache) {
       const cachedPayload = readCachedResponse(path, token);
       if (cachedPayload !== null) {
         return cachedPayload;
@@ -866,6 +981,8 @@ export const backendFetch = async (
   const candidatesToTry = activeCandidates.length > 0 ? activeCandidates : candidates;
   let lastResponsePayload: any = null;
   let lastStatus = 0;
+  let preferredResponsePayload: any = null;
+  let preferredStatus = 0;
 
   for (const candidate of candidatesToTry) {
     try {
@@ -873,19 +990,23 @@ export const backendFetch = async (
         candidate,
         path,
         method,
-        options,
+        requestOptions,
         requestBody,
         token
       );
 
       lastResponsePayload = payload;
       lastStatus = response.status;
+      if (response.status !== 404 && response.status !== 405) {
+        preferredResponsePayload = payload;
+        preferredStatus = response.status;
+      }
 
-      if (response.ok) {
+      if (response.ok && isValidBackendPayload(response, payload)) {
         activeBackendBaseUrl = candidate;
         setStorageValue(BACKEND_LAST_OK_KEY, candidate);
         clearCandidateCooldown(candidate);
-        if (isReadRequest) {
+        if (isReadRequest && !backendNoCache) {
           writeCachedResponse(path, payload, token);
         } else {
           invalidateReadCacheByApiPath(path, token);
@@ -894,6 +1015,12 @@ export const backendFetch = async (
           void flushQueuedBackendWrites(token);
         }
         return payload;
+      }
+
+      if (response.ok) {
+        activeBackendBaseUrl = '';
+        markCandidateCooldown(candidate, CANDIDATE_DEFAULT_COOLDOWN_MS);
+        continue;
       }
 
       if (response.status === 404 || response.status === 405) {
@@ -917,6 +1044,11 @@ export const backendFetch = async (
     }
   }
 
+  if (preferredStatus) {
+    lastResponsePayload = preferredResponsePayload;
+    lastStatus = preferredStatus;
+  }
+
   if (shouldQueue && shouldQueueOnFailure(lastStatus || new Error('network'))) {
     enqueueWriteRequest({
       id: createClientId(),
@@ -930,7 +1062,7 @@ export const backendFetch = async (
     return optimistic.response;
   }
 
-  if (isReadRequest) {
+  if (isReadRequest && !backendNoCache) {
     const cachedPayload = readCachedResponse(path, token);
     if (cachedPayload !== null) {
       return cachedPayload;

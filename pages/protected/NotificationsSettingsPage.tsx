@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useNotification } from '../../context/NotificationContext';
 import profileOnboardingService from '../../services/profileOnboardingService';
 import { useAuth } from '../../hooks/useAuth';
@@ -79,11 +80,19 @@ const NotificationsSettingsPage: React.FC = () => {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-soft dark:border-gray-700 dark:bg-dark-surface">
-      <div className="mb-6 border-b border-gray-200 pb-4 dark:border-gray-700">
-        <h2 className="text-xl font-bold text-light-text dark:text-dark-text">Notifications</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Chat push banners are enabled by default. You can change these controls any time.
-        </p>
+      <div className="mb-6 flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-gray-700 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-light-text dark:text-dark-text">Notifications</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Chat push banners are enabled by default. You can change these controls any time.
+          </p>
+        </div>
+        <Link
+          to="/profile/notifications"
+          className="inline-flex items-center justify-center rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700"
+        >
+          Open notification inbox
+        </Link>
       </div>
 
       <div className="space-y-4">

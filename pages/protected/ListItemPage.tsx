@@ -4,8 +4,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import { itemService } from '../../services/itemService';
+import commerceService from '../../services/commerceService';
 import brandService from '../../services/brandService';
-import type { Item, Category, Brand, BrandCatalogNode } from '../../types';
+import type { Item, Category, Brand, BrandCatalogNode, RentalBlockDraft, RentalBlockEntry } from '../../types';
 import Calendar from '../../components/Calendar';
 import { useCategories } from '../../context/CategoryContext';
 import CreateCategoryModal from '../../components/CreateCategoryModal';
@@ -104,8 +105,10 @@ const initialFormData: WizardFormData = {
     rentalPrice: 0, // Deprecated, but keeping for compatibility
     rentalRates: { hourly: 0, daily: 0, weekly: 0 },
     rentalPriceType: 'daily',
+    rentalFulfillment: { pickup: true, shipping: true, defaultMode: 'pickup' },
     // Removed non-existent 'rentalDeposit' property to fix TypeScript error.
     securityDeposit: 0,
+    isInstantBook: false,
     minRentalDuration: 24, // Default 1 day
     bookedDates: [],
     videoUrl: '',
@@ -154,6 +157,111 @@ const initialFormData: WizardFormData = {
         autoFulfill: false,
         minMarginPercent: 20
     }
+};
+
+const normalizeRentalFulfillment = (value?: Item['rentalFulfillment']) => {
+    if (!value) {
+        return {
+            pickup: true,
+            shipping: true,
+            defaultMode: 'pickup'
+        } as NonNullable<Item['rentalFulfillment']>;
+    }
+
+    const pickup = value?.pickup !== false;
+    const shipping = Boolean(value?.shipping);
+    const hasAny = pickup || shipping;
+    const defaultMode =
+        value?.defaultMode === 'shipping' && shipping
+            ? 'shipping'
+            : pickup || !hasAny
+                ? 'pickup'
+                : 'shipping';
+
+    return {
+        pickup: hasAny ? pickup : true,
+        shipping,
+        defaultMode
+    } as NonNullable<Item['rentalFulfillment']>;
+};
+
+const parseUtcDateKey = (value: string) => {
+    const [year, month, day] = String(value || '').trim().split('-').map((part) => Number(part));
+    if (!year || !month || !day) return null;
+    return new Date(Date.UTC(year, month - 1, day));
+};
+
+const addUtcDays = (date: Date, days: number) => new Date(date.getTime() + days * 86400000);
+
+const formatUtcDateKey = (date: Date) => {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const isUuidLike = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+
+const expandRentalBlockDates = (blocks: RentalBlockEntry[]) => {
+    const dates = new Set<string>();
+    blocks.forEach((block) => {
+        const start = new Date(block.start);
+        const end = new Date(block.end);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+            return;
+        }
+        let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+        while (cursor.getTime() < end.getTime()) {
+            dates.add(formatUtcDateKey(cursor));
+            cursor = addUtcDays(cursor, 1);
+        }
+    });
+    return Array.from(dates).sort((left, right) => left.localeCompare(right));
+};
+
+const buildRentalBlockDrafts = (bookedDates: string[]): RentalBlockDraft[] => {
+    const normalizedDates = Array.from(
+        new Set(
+            (bookedDates || [])
+                .map((value) => String(value || '').trim())
+                .filter((value) => Boolean(parseUtcDateKey(value)))
+        )
+    ).sort((left, right) => left.localeCompare(right));
+
+    if (normalizedDates.length === 0) return [];
+
+    const drafts: RentalBlockDraft[] = [];
+    let rangeStart = parseUtcDateKey(normalizedDates[0]);
+    let rangeEndExclusive = rangeStart ? addUtcDays(rangeStart, 1) : null;
+
+    for (let index = 1; index < normalizedDates.length; index += 1) {
+        const current = parseUtcDateKey(normalizedDates[index]);
+        if (!current || !rangeStart || !rangeEndExclusive) continue;
+        if (current.getTime() === rangeEndExclusive.getTime()) {
+            rangeEndExclusive = addUtcDays(current, 1);
+            continue;
+        }
+        drafts.push({
+            start: rangeStart.toISOString(),
+            end: rangeEndExclusive.toISOString(),
+            type: 'manual_blackout',
+            reason: 'seller_calendar_block'
+        });
+        rangeStart = current;
+        rangeEndExclusive = addUtcDays(current, 1);
+    }
+
+    if (rangeStart && rangeEndExclusive) {
+        drafts.push({
+            start: rangeStart.toISOString(),
+            end: rangeEndExclusive.toISOString(),
+            type: 'manual_blackout',
+            reason: 'seller_calendar_block'
+        });
+    }
+
+    return drafts;
 };
 
 // --- UI Components ---
@@ -212,6 +320,9 @@ const ListItemPage: React.FC = () => {
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
     const [isHydratingListing, setIsHydratingListing] = useState(false);
     const [sourceItemSnapshot, setSourceItemSnapshot] = useState<Item | null>(null);
+    const [isLoadingRentalBlocks, setIsLoadingRentalBlocks] = useState(false);
+    const [isSyncingRentalBlocks, setIsSyncingRentalBlocks] = useState(false);
+    const [rentalBlockNotice, setRentalBlockNotice] = useState<string | null>(null);
 
     // Derived state for earnings
     const currentPrice = formData.listingType === 'rent' ? formData.rentalRates.daily : formData.salePrice;
@@ -266,8 +377,10 @@ const ListItemPage: React.FC = () => {
                         daily: sourceItem.rentalRates?.daily || sourceItem.rentalPrice || 0,
                         weekly: sourceItem.rentalRates?.weekly || 0
                     },
+                    rentalFulfillment: normalizeRentalFulfillment(sourceItem.rentalFulfillment),
                     minRentalDuration: sourceItem.minRentalDuration || 24,
                     securityDeposit: sourceItem.securityDeposit || 0,
+                    isInstantBook: Boolean(sourceItem.isInstantBook),
                     whoPaysShipping: sourceItem.whoPaysShipping === 'seller' ? 'seller' : 'buyer',
                     shippingWeightClass: (
                         sourceItem.shippingWeightClass === 'small' ||
@@ -393,6 +506,54 @@ const ListItemPage: React.FC = () => {
         };
     }, [(formData as any).brandId, brandOptions, formData.brand]);
 
+    useEffect(() => {
+        let cancelled = false;
+        const sourceListingType = sourceItemSnapshot?.listingType;
+        const shouldLoadCanonicalBlocks =
+            formMode === 'edit' &&
+            Boolean(editingItemId) &&
+            Boolean(sourceItemSnapshot?.id) &&
+            commerceService.enabled() &&
+            (sourceListingType === 'rent' || sourceListingType === 'both');
+
+        if (!shouldLoadCanonicalBlocks || !editingItemId) {
+            setIsLoadingRentalBlocks(false);
+            if (formMode !== 'edit') {
+                setRentalBlockNotice('Manual blackout dates will sync to the live calendar after the listing is created.');
+            } else if (sourceListingType !== 'rent' && sourceListingType !== 'both') {
+                setRentalBlockNotice(null);
+            }
+            return;
+        }
+
+        const loadRentalBlocks = async () => {
+            setIsLoadingRentalBlocks(true);
+            try {
+                const payload = await commerceService.getRentalBlocks(editingItemId);
+                if (cancelled) return;
+                const nextBookedDates = expandRentalBlockDates(payload.blocks || []);
+                setFormData((prev) => ({ ...prev, bookedDates: nextBookedDates }));
+                setRentalBlockNotice(
+                    nextBookedDates.length > 0
+                        ? `${nextBookedDates.length} blocked day${nextBookedDates.length === 1 ? '' : 's'} synced from the live calendar.`
+                        : 'No manual blackout windows are saved in the live calendar yet.'
+                );
+            } catch (error) {
+                console.warn('Unable to load canonical rental blocks:', error);
+                if (!cancelled) {
+                    setRentalBlockNotice('Unable to load live blackout windows. Local draft dates remain editable until the next successful save.');
+                }
+            } finally {
+                if (!cancelled) setIsLoadingRentalBlocks(false);
+            }
+        };
+
+        void loadRentalBlocks();
+        return () => {
+            cancelled = true;
+        };
+    }, [editingItemId, formMode, sourceItemSnapshot]);
+
     const handlePublish = async (status: 'published' | 'draft') => {
         if (isSubmitting) return;
         if (!user) {
@@ -401,6 +562,7 @@ const ListItemPage: React.FC = () => {
             return;
         }
         const { shippingOptions, startingBid, buyNowPrice, reservePrice, auctionEndTime, rentalRates, ...restOfFormData } = formData;
+        const rentalFulfillment = normalizeRentalFulfillment(formData.rentalFulfillment);
         const existingAuction =
             formMode === 'edit' &&
             sourceItemSnapshot &&
@@ -465,6 +627,10 @@ const ListItemPage: React.FC = () => {
                      showNotification("Please set at least one rental rate (Hourly, Daily, or Weekly).");
                      return;
                  }
+                 if (!rentalFulfillment.pickup && !rentalFulfillment.shipping) {
+                    showNotification("Enable pickup, shipping, or both for rental fulfillment.");
+                    return;
+                 }
                  if (
                     rentalRates.hourly < 0 ||
                     rentalRates.daily < 0 ||
@@ -482,6 +648,10 @@ const ListItemPage: React.FC = () => {
                 }
                 if (!rentalRates.daily && !rentalRates.hourly && !rentalRates.weekly) {
                     showNotification("Please set at least one rental rate for a Sale + Rent listing.");
+                    return;
+                }
+                if (!rentalFulfillment.pickup && !rentalFulfillment.shipping) {
+                    showNotification("Enable pickup, shipping, or both for rental fulfillment.");
                     return;
                 }
                 if (
@@ -520,7 +690,8 @@ const ListItemPage: React.FC = () => {
           shippingDetails: finalShippingDetails,
           shippingWeightClass: formData.shippingWeightClass,
           whoPaysShipping: formData.whoPaysShipping,
-          automation: formData.automation
+          automation: formData.automation,
+          isInstantBook: formData.listingType === 'rent' || formData.listingType === 'both' ? Boolean(formData.isInstantBook) : false
         };
 
         // Add Rental specific fields
@@ -530,6 +701,7 @@ const ListItemPage: React.FC = () => {
             finalData.securityDeposit = formData.securityDeposit;
             finalData.minRentalDuration = formData.minRentalDuration;
             finalData.bookedDates = formData.bookedDates; // Save manually blocked dates
+            finalData.rentalFulfillment = rentalFulfillment;
         }
 
         if (formData.listingType === 'auction') {
@@ -548,6 +720,8 @@ const ListItemPage: React.FC = () => {
         try {
             setIsSubmitting(true);
             let savedItem: Item;
+            let rentalBlockSyncFailed = false;
+            let rentalBlockSyncMessage = '';
             if (formMode === 'edit' && editingItemId) {
                 await withTimeout(itemService.updateItem(editingItemId, finalData));
                 const refreshed = await withTimeout(itemService.getItemById(editingItemId));
@@ -580,6 +754,53 @@ const ListItemPage: React.FC = () => {
             } catch (classificationError) {
                 console.warn('Brand classification enqueue failed:', classificationError);
             }
+
+            const shouldSyncRentalBlocks =
+                commerceService.enabled() &&
+                isUuidLike(savedItem.id) &&
+                (
+                    formData.listingType === 'rent' ||
+                    formData.listingType === 'both' ||
+                    sourceItemSnapshot?.listingType === 'rent' ||
+                    sourceItemSnapshot?.listingType === 'both'
+                );
+
+            if (shouldSyncRentalBlocks) {
+                setIsSyncingRentalBlocks(true);
+                try {
+                    const payload =
+                        formData.listingType === 'rent' || formData.listingType === 'both'
+                            ? buildRentalBlockDrafts(formData.bookedDates || [])
+                            : [];
+                    const synced = await commerceService.replaceRentalBlocks(savedItem.id, payload);
+                    const syncedDates = expandRentalBlockDates(synced.blocks || []);
+                    setFormData((prev) => ({ ...prev, bookedDates: syncedDates }));
+                    setRentalBlockNotice(
+                        formData.listingType === 'rent' || formData.listingType === 'both'
+                            ? syncedDates.length > 0
+                                ? `Live calendar synced across ${syncedDates.length} blocked day${syncedDates.length === 1 ? '' : 's'}.`
+                                : 'Live calendar synced with no manual blackout windows.'
+                            : 'Manual blackout windows were cleared from the live rental calendar.'
+                    );
+                } catch (syncError) {
+                    console.error('Rental block sync failed:', syncError);
+                    rentalBlockSyncFailed = true;
+                    rentalBlockSyncMessage = 'Listing saved, but the live availability calendar could not sync. Review the calendar and save again.';
+                    setRentalBlockNotice(rentalBlockSyncMessage);
+                } finally {
+                    setIsSyncingRentalBlocks(false);
+                }
+            }
+
+            if (rentalBlockSyncFailed) {
+                setFormMode('edit');
+                setEditingItemId(savedItem.id);
+                setSourceItemSnapshot(savedItem);
+                showNotification(rentalBlockSyncMessage);
+                navigate(`/profile/products/new?edit=${savedItem.id}`, { replace: true });
+                return;
+            }
+
             if (formMode === 'edit') {
                 showNotification(status === 'published' ? 'Listing updated and published.' : 'Listing updated and saved to drafts.');
             } else if (formMode === 'duplicate') {
@@ -701,6 +922,39 @@ const ListItemPage: React.FC = () => {
             },
             // Update legacy field for backward compat if daily is changed
             ...(rateType === 'daily' && { rentalPrice: numVal })
+        }));
+    };
+
+    const handleRentalFulfillmentToggle = (mode: 'pickup' | 'shipping') => {
+        setFormData((prev) => {
+            const current = normalizeRentalFulfillment(prev.rentalFulfillment);
+            const next = { ...current, [mode]: !current[mode] };
+            const hasAny = next.pickup || next.shipping;
+            const defaultMode =
+                current.defaultMode === mode && !next[mode]
+                    ? next.pickup
+                        ? 'pickup'
+                        : 'shipping'
+                    : current.defaultMode;
+
+            return {
+                ...prev,
+                rentalFulfillment: {
+                    pickup: hasAny ? next.pickup : true,
+                    shipping: hasAny ? next.shipping : false,
+                    defaultMode: hasAny ? defaultMode : 'pickup'
+                }
+            };
+        });
+    };
+
+    const handleRentalDefaultModeChange = (mode: 'pickup' | 'shipping') => {
+        setFormData((prev) => ({
+            ...prev,
+            rentalFulfillment: {
+                ...normalizeRentalFulfillment(prev.rentalFulfillment),
+                defaultMode: mode
+            }
         }));
     };
     
@@ -1081,10 +1335,96 @@ const ListItemPage: React.FC = () => {
                                         </div>
                                     </div>
 
+                                    <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-dark-background/60">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-gray-900 dark:text-white">Rental fulfillment</h4>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">Choose how buyers can receive the rental and whether it can auto-confirm.</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRentalFulfillmentToggle('pickup')}
+                                                    className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                                                        formData.rentalFulfillment?.pickup
+                                                            ? 'bg-black text-white dark:bg-white dark:text-black'
+                                                            : 'bg-white text-gray-600 shadow-sm dark:bg-dark-surface dark:text-gray-300'
+                                                    }`}
+                                                >
+                                                    Pickup
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRentalFulfillmentToggle('shipping')}
+                                                    className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                                                        formData.rentalFulfillment?.shipping
+                                                            ? 'bg-black text-white dark:bg-white dark:text-black'
+                                                            : 'bg-white text-gray-600 shadow-sm dark:bg-dark-surface dark:text-gray-300'
+                                                    }`}
+                                                >
+                                                    Shipping
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="mb-1 block text-sm font-bold text-gray-700 dark:text-gray-300">Default delivery mode</label>
+                                                <Select
+                                                    value={normalizeRentalFulfillment(formData.rentalFulfillment).defaultMode}
+                                                    onChange={(event) => handleRentalDefaultModeChange(event.target.value as 'pickup' | 'shipping')}
+                                                >
+                                                    {normalizeRentalFulfillment(formData.rentalFulfillment).pickup ? <option value="pickup">Pickup</option> : null}
+                                                    {normalizeRentalFulfillment(formData.rentalFulfillment).shipping ? <option value="shipping">Shipping</option> : null}
+                                                </Select>
+                                            </div>
+                                            <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-700 dark:bg-dark-surface">
+                                                <input
+                                                    name="isInstantBook"
+                                                    type="checkbox"
+                                                    checked={Boolean(formData.isInstantBook)}
+                                                    onChange={handleChange}
+                                                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                                                />
+                                                <span>
+                                                    <span className="block font-bold text-gray-900 dark:text-white">Instant book</span>
+                                                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">If off, the seller confirms each rental before handoff. This setting only applies to rentals.</span>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+
                                     <div>
-                                        <button onClick={() => setCalendarOpen(p => !p)} className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 font-bold hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white transition-colors">
-                                            Manage Availability Calendar
-                                        </button>
+                                        <div className="rounded-2xl border border-gray-200 bg-gray-50/90 p-4 dark:border-gray-700 dark:bg-dark-background/60">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Server-enforced availability</p>
+                                                    <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                                                        {isLoadingRentalBlocks
+                                                            ? 'Loading blackout windows from the live rental calendar...'
+                                                            : isSyncingRentalBlocks
+                                                                ? 'Syncing manual blackout windows to the live rental calendar...'
+                                                                : rentalBlockNotice || 'Manual blackout dates are validated again on the backend during rental checkout.'}
+                                                    </p>
+                                                </div>
+                                                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-gray-700 shadow-sm dark:bg-dark-surface dark:text-gray-200">
+                                                    {formData.bookedDates?.length || 0} blocked days
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setCalendarOpen((prev) => !prev)}
+                                                disabled={isLoadingRentalBlocks || isSyncingRentalBlocks}
+                                                className="mt-4 w-full rounded-xl border-2 border-dashed border-gray-300 py-3 text-sm font-bold text-gray-600 transition-colors hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:text-gray-400 dark:hover:border-white dark:hover:text-white"
+                                            >
+                                                {isLoadingRentalBlocks ? 'Loading availability...' : isSyncingRentalBlocks ? 'Syncing availability...' : 'Manage Availability Calendar'}
+                                            </button>
+                                        </div>
+                                        {formMode === 'duplicate' ? (
+                                            <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                                                Duplicated listings keep their own live availability. Review blocked dates before publishing the copy.
+                                            </p>
+                                        ) : null}
                                         {isCalendarOpen && (
                                             <div className="mt-2 p-4 bg-white dark:bg-dark-surface shadow-lg rounded-lg border dark:border-gray-700 relative z-10">
                                                 <Calendar 

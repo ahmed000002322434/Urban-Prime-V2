@@ -1,396 +1,431 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../context/AuthContext';
-import { storeBuildService } from '../../services/storeBuildService';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { useNotification } from '../../context/NotificationContext';
 import { affiliateCommissionService } from '../../services/affiliateCommissionService';
+import { storeBuildService, type AffiliateProgram } from '../../services/storeBuildService';
+
+type PartnerStatus = 'new' | 'active' | 'paused' | 'suspended';
+type SupportedSurface = 'link' | 'coupon' | 'spotlight' | 'pixe' | 'seller_referral';
+
+const PLATFORM_OPTIONS = ['instagram', 'tiktok', 'youtube', 'blog', 'email'];
+const SURFACE_OPTIONS: SupportedSurface[] = ['link', 'coupon', 'spotlight', 'pixe', 'seller_referral'];
+
+const defaultForm = {
+  commissionRate: 15,
+  maxReward: 50,
+  platforms: ['instagram', 'tiktok'],
+  enableCookies: true,
+  cookieDuration: 30,
+  isActive: true,
+  minPayout: 50,
+  approvalMode: 'manual' as const,
+  supportedSurfaces: ['link', 'coupon', 'spotlight', 'pixe', 'seller_referral'] as NonNullable<AffiliateProgram['supportedSurfaces']>,
+  sellerBonusAmount: 25
+};
 
 const AffiliateOnboardingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [step, setStep] = useState(1);
+  const { showNotification } = useNotification();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    commissionRate: 15,
-    maxReward: 50,
-    platforms: ['instagram', 'tiktok'],
-    enableCookies: true,
-    cookieDuration: 30,
-  });
+  const [storeName, setStoreName] = useState<string>('Your Store');
+  const [partners, setPartners] = useState<any[]>([]);
+  const [summary, setSummary] = useState({ totalAffiliates: 0, totalConversions: 0, totalEarned: 0, totalPending: 0 });
+  const [formData, setFormData] = useState(defaultForm);
 
-  // Load existing affiliate settings
-  useEffect(() => {
-    const loadSettings = async () => {
-      if (!user) return;
-
-      try {
-        setIsLoading(true);
-        const store = await storeBuildService.getUserStore(user.uid);
-        
-        if (!store) {
-          setError('No store found. Please create a store first.');
-          setIsLoading(false);
-          return;
-        }
-
-        setStoreId(store.id || null);
-
-        // Try to load existing affiliate program
-        const existing = await affiliateCommissionService.getStoreAffiliatePerformance(store.id || '');
-        if (existing.affiliates?.length > 0) {
-          // Load first affiliate's settings as template
-          // In production, you might want to show existing program settings
-        }
-      } catch (err: any) {
-        console.error('Error loading settings:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadSettings();
-  }, [user]);
-
-  const handleNext = () => {
-    if (step < 4) setStep(step + 1);
-  };
-
-  const handleSubmit = async () => {
-    if (!user || !storeId) {
-      setError('Missing user or store information');
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
+  const loadData = async () => {
+    if (!user?.id) return;
 
     try {
-      // Save affiliate program to database
-      await affiliateCommissionService.getStoreAffiliates(storeId);
-      
-      // In a real app, you might want to save the affiliate program settings
-      // For now, we'll just navigate back to manager
-      navigate('/store/manager');
+      setIsLoading(true);
+      setError(null);
+      const store = await storeBuildService.getUserStore(user.id);
+      if (!store?.id) {
+        setError('No store found. Complete your store setup first.');
+        return;
+      }
+
+      setStoreId(store.id);
+      setStoreName(store.storeName || 'Your Store');
+
+      const [program, performance] = await Promise.all([
+        storeBuildService.getAffiliateProgram(store.id),
+        affiliateCommissionService.getStoreAffiliatePerformance(store.id)
+      ]);
+
+      if (program) {
+        setFormData({
+          commissionRate: Number(program.commissionRate || defaultForm.commissionRate),
+          maxReward: Number(program.maxReward || defaultForm.maxReward),
+          platforms: program.platforms?.length ? program.platforms : defaultForm.platforms,
+          enableCookies: program.enableCookies !== false,
+          cookieDuration: Number(program.cookieDuration || defaultForm.cookieDuration),
+          isActive: program.isActive !== false,
+          minPayout: Number(program.minPayout || defaultForm.minPayout),
+          approvalMode: program.approvalMode === 'automatic' ? 'automatic' : 'manual',
+          supportedSurfaces:
+            program.supportedSurfaces?.length ? program.supportedSurfaces : defaultForm.supportedSurfaces,
+          sellerBonusAmount: Number(program.sellerBonusAmount || defaultForm.sellerBonusAmount)
+        });
+      }
+
+      setPartners(performance.affiliates || []);
+      setSummary({
+        totalAffiliates: performance.totalAffiliates || 0,
+        totalConversions: performance.totalConversions || 0,
+        totalEarned: performance.totalEarned || 0,
+        totalPending: performance.totalPending || 0
+      });
     } catch (err: any) {
-      console.error('Error saving affiliate program:', err);
+      console.error('Affiliate program load failed:', err);
+      setError(err.message || 'Failed to load affiliate program');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, [user?.id]);
+
+  const activePartners = useMemo(() => partners.filter((partner) => partner.status === 'active').length, [partners]);
+
+  const toggleInArray = <T extends string>(field: 'platforms' | 'supportedSurfaces', value: T) => {
+    setFormData((current) => {
+      const entries = current[field] as string[];
+      return {
+        ...current,
+        [field]: entries.includes(value) ? entries.filter((entry) => entry !== value) : [...entries, value]
+      };
+    });
+  };
+
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user?.id || !storeId) return;
+
+    try {
+      setIsSaving(true);
+      setError(null);
+      await storeBuildService.saveAffiliateProgram(storeId, user.id, formData);
+      showNotification('Affiliate program saved.');
+      await loadData();
+    } catch (err: any) {
+      console.error('Affiliate program save failed:', err);
       setError(err.message || 'Failed to save affiliate program');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const renderStep = () => {
-    switch (step) {
-      case 1:
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Affiliate Program</h2>
-              <p className="text-gray-600">Grow your revenue stream with influencers and partners</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6 mt-8">
-              {[
-                { icon: '💰', title: 'Boost Sales', desc: 'Expand reach through affiliates' },
-                { icon: '🌐', title: 'Simple Tracking', desc: 'Real-time affiliate performance' },
-                { icon: '🎯', title: 'Custom Rates', desc: 'Set your own commission structure' },
-                { icon: '📊', title: 'Analytics', desc: 'Detailed reporting & insights' },
-              ].map((feature, i) => (
-                <div key={i} className="p-6 bg-blue-50 rounded-xl border border-blue-200">
-                  <div className="text-4xl mb-2">{feature.icon}</div>
-                  <h3 className="font-bold text-gray-900">{feature.title}</h3>
-                  <p className="text-sm text-gray-600">{feature.desc}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        );
-
-      case 2:
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <h2 className="text-3xl font-bold text-gray-900">Commission Structure</h2>
-            <div className="space-y-6 bg-gray-50 p-8 rounded-xl">
-              <div>
-                <label className="block text-sm font-bold text-gray-900 mb-3">
-                  Base Commission Rate (%)
-                </label>
-                <input
-                  type="range"
-                  min="5"
-                  max="50"
-                  value={formData.commissionRate}
-                  onChange={(e) => setFormData({ ...formData, commissionRate: parseInt(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between mt-2">
-                  <span className="text-sm text-gray-600">5%</span>
-                  <span className="text-2xl font-bold text-blue-600">{formData.commissionRate}%</span>
-                  <span className="text-sm text-gray-600">50%</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-3">
-                  Affiliates earn {formData.commissionRate}% commission on each sale they refer
-                </p>
-              </div>
-
-              <div className="border-t pt-6">
-                <label className="block text-sm font-bold text-gray-900 mb-3">
-                  Max Reward Per Sale ($)
-                </label>
-                <input
-                  type="number"
-                  value={formData.maxReward}
-                  onChange={(e) => setFormData({ ...formData, maxReward: parseInt(e.target.value) })}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Cap the maximum commission per sale (optional)
-                </p>
-              </div>
-
-              <div className="bg-blue-100 p-4 rounded-lg border border-blue-300">
-                <p className="text-sm font-semibold text-blue-900">
-                  💡 Example: A $100 sale would earn the affiliate ${(100 * formData.commissionRate / 100).toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        );
-
-      case 3:
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <h2 className="text-3xl font-bold text-gray-900">Affiliate Platforms</h2>
-            <p className="text-gray-600">Select which platforms can use your affiliate program</p>
-            <div className="grid md:grid-cols-2 gap-4">
-              {[
-                { id: 'instagram', name: 'Instagram', icon: '📸' },
-                { id: 'tiktok', name: 'TikTok', icon: '🎵' },
-                { id: 'youtube', name: 'YouTube', icon: '📹' },
-                { id: 'pinterest', name: 'Pinterest', icon: '📌' },
-                { id: 'twitter', name: 'Twitter/X', icon: '𝕏' },
-                { id: 'blog', name: 'Blog/Website', icon: '📝' },
-              ].map((platform) => (
-                <motion.button
-                  key={platform.id}
-                  onClick={() => {
-                    const updated = formData.platforms.includes(platform.id)
-                      ? formData.platforms.filter(p => p !== platform.id)
-                      : [...formData.platforms, platform.id];
-                    setFormData({ ...formData, platforms: updated });
-                  }}
-                  className={`p-6 rounded-xl border-2 transition-all text-center ${
-                    formData.platforms.includes(platform.id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-4xl mb-2">{platform.icon}</div>
-                  <p className="font-semibold text-gray-900">{platform.name}</p>
-                </motion.button>
-              ))}
-            </div>
-
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.enableCookies}
-                  onChange={(e) => setFormData({ ...formData, enableCookies: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <div>
-                  <p className="font-semibold text-gray-900">Enable Tracking Cookies</p>
-                  <p className="text-sm text-gray-600">
-                    Allow {formData.cookieDuration}-day tracking window for affiliate clicks
-                  </p>
-                </div>
-              </label>
-              {formData.enableCookies && (
-                <div className="mt-4">
-                  <label className="text-sm font-semibold text-gray-900 mb-2 block">
-                    Cookie Duration (days)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.cookieDuration}
-                    onChange={(e) => setFormData({ ...formData, cookieDuration: parseInt(e.target.value) })}
-                    className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              )}
-            </div>
-          </motion.div>
-        );
-
-      case 4:
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <h2 className="text-3xl font-bold text-gray-900">Review & Launch</h2>
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-700 font-semibold">Error: {error}</p>
-              </div>
-            )}
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-8 border border-green-200 space-y-4">
-              <div>
-                <p className="text-sm text-gray-600">Commission Rate</p>
-                <p className="text-3xl font-bold text-gray-900">{formData.commissionRate}%</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Max Reward Per Sale</p>
-                <p className="text-2xl font-bold text-gray-900">${formData.maxReward}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Enabled Platforms</p>
-                <div className="flex flex-wrap gap-2">
-                  {formData.platforms.map((p) => (
-                    <span key={p} className="px-3 py-1 bg-green-200 text-green-800 rounded-full text-sm font-semibold">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="border-t border-green-300 pt-4">
-                <p className="text-sm text-gray-600">Tracking Window</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {formData.enableCookies ? `${formData.cookieDuration} days` : 'Disabled'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleSubmit}
-              disabled={isSaving}
-              className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-emerald-700 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? 'Launching Affiliate Program...' : 'Launch Affiliate Program →'}
-            </button>
-          </motion.div>
-        );
-
-      default:
-        return null;
+  const handlePartnerStatus = async (partnerId: string, status: PartnerStatus) => {
+    try {
+      await affiliateCommissionService.updateAffiliateStatus(partnerId, status);
+      showNotification(`Affiliate marked ${status}.`);
+      await loadData();
+    } catch (err) {
+      console.error('Affiliate status update failed:', err);
+      showNotification('Failed to update affiliate status.');
     }
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="text-center">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full mx-auto mb-4"
-          />
-          <p className="text-gray-600 font-semibold">Loading affiliate settings...</p>
-        </div>
-      </div>
-    );
+    return <div className="p-8 text-center text-text-secondary">Loading affiliate program…</div>;
   }
 
   if (error && !storeId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
-        <motion.div
-          className="text-center max-w-md"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+      <div className="max-w-3xl mx-auto p-8 space-y-4">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+          <h1 className="text-2xl font-bold text-red-900">Affiliate Program Unavailable</h1>
+          <p className="mt-2 text-red-700">{error}</p>
+        </div>
+        <button
+          onClick={() => navigate('/store/setup')}
+          className="px-5 py-3 rounded-xl bg-black text-white font-semibold"
         >
-          <div className="text-6xl mb-4">🚨</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => navigate('/seller/setup')}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all"
-          >
-            Create Store First →
-          </button>
-        </motion.div>
+          Complete Store Setup
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* Progress */}
-      <div className="fixed top-0 left-0 right-0 h-1 bg-gray-200 z-50">
-        <motion.div
-          className="h-full bg-gradient-to-r from-blue-500 to-indigo-600"
-          initial={{ width: 0 }}
-          animate={{ width: `${(step / 4) * 100}%` }}
-          transition={{ duration: 0.3 }}
-        />
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+        <h1 className="text-3xl font-bold text-text-primary">Affiliate Program Manager</h1>
+        <p className="text-text-secondary">
+          Configure commissions, approval rules, supported traffic surfaces, and payout minimums for {storeName}.
+        </p>
+      </motion.div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        {[
+          { label: 'Affiliates', value: summary.totalAffiliates },
+          { label: 'Active Partners', value: activePartners },
+          { label: 'Conversions', value: summary.totalConversions },
+          { label: 'Pending Commissions', value: `$${summary.totalPending.toFixed(2)}` }
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-2xl border border-border bg-surface p-5">
+            <p className="text-sm text-text-secondary">{stat.label}</p>
+            <p className="mt-2 text-3xl font-bold text-text-primary">{stat.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="container mx-auto max-w-3xl px-4 py-8 pt-12">
-        {/* Stage Indicator */}
-        <motion.div
-          className="mb-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="flex justify-between mb-8">
-            {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center">
-                <motion.div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
-                    s <= step ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
-                  animate={{ scale: s === step ? 1.2 : 1 }}
-                >
-                  {s}
-                </motion.div>
-                {s < 4 && <div className={`h-1 w-12 mx-2 ${s < step ? 'bg-blue-600' : 'bg-gray-300'}`} />}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Content */}
-        <motion.div
-          className="bg-white rounded-xl shadow-lg p-8 min-h-[400px]"
-          key={step}
-          initial={{ opacity: 0, y: 20 }}
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <motion.form
+          initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
+          onSubmit={handleSave}
+          className="rounded-3xl border border-border bg-surface p-6 space-y-6"
         >
-          {renderStep()}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-text-primary">Program Settings</h2>
+              <p className="text-sm text-text-secondary">These values drive attribution, commission release, and wallet transfer eligibility.</p>
+            </div>
+            <label className="flex items-center gap-3 text-sm font-semibold text-text-primary">
+              <input
+                type="checkbox"
+                checked={formData.isActive}
+                onChange={(event) => setFormData((current) => ({ ...current, isActive: event.target.checked }))}
+              />
+              Program Active
+            </label>
+          </div>
 
-          {/* Navigation */}
-          <div className="mt-12 flex gap-4 justify-between pt-8 border-t border-gray-200">
-            <button
-              onClick={() => setStep(step - 1)}
-              disabled={step === 1}
-              className="px-6 py-3 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200 disabled:opacity-50"
-            >
-              Back
-            </button>
-            {step < 4 && (
-              <button
-                onClick={handleNext}
-                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-indigo-700"
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Commission Rate (%)</span>
+              <input
+                type="number"
+                min={5}
+                max={50}
+                value={formData.commissionRate}
+                onChange={(event) => setFormData((current) => ({ ...current, commissionRate: Number(event.target.value) }))}
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Max Reward Per Conversion ($)</span>
+              <input
+                type="number"
+                min={0}
+                value={formData.maxReward}
+                onChange={(event) => setFormData((current) => ({ ...current, maxReward: Number(event.target.value) }))}
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Cookie Window (days)</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={formData.cookieDuration}
+                onChange={(event) => setFormData((current) => ({ ...current, cookieDuration: Number(event.target.value) }))}
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Minimum Wallet Transfer ($)</span>
+              <input
+                type="number"
+                min={1}
+                value={formData.minPayout}
+                onChange={(event) => setFormData((current) => ({ ...current, minPayout: Number(event.target.value) }))}
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Seller Referral Bonus ($)</span>
+              <input
+                type="number"
+                min={0}
+                value={formData.sellerBonusAmount}
+                onChange={(event) => setFormData((current) => ({ ...current, sellerBonusAmount: Number(event.target.value) }))}
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-text-secondary">Approval Mode</span>
+              <select
+                value={formData.approvalMode}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, approvalMode: event.target.value === 'automatic' ? 'automatic' : 'manual' }))
+                }
+                className="w-full rounded-xl border border-border bg-surface-soft px-4 py-3"
               >
-                Continue
-              </button>
+                <option value="manual">Manual approval</option>
+                <option value="automatic">Automatic approval</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">Allowed Affiliate Platforms</p>
+              <div className="flex flex-wrap gap-3">
+                {PLATFORM_OPTIONS.map((platform) => (
+                  <button
+                    key={platform}
+                    type="button"
+                    onClick={() => toggleInArray('platforms', platform)}
+                    className={`px-4 py-2 rounded-full border text-sm font-semibold ${
+                      formData.platforms.includes(platform)
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-surface-soft text-text-secondary'
+                    }`}
+                  >
+                    {platform}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">Supported Attribution Surfaces</p>
+              <div className="flex flex-wrap gap-3">
+                {SURFACE_OPTIONS.map((surface) => (
+                  <button
+                    key={surface}
+                    type="button"
+                    onClick={() => toggleInArray('supportedSurfaces', surface)}
+                    className={`px-4 py-2 rounded-full border text-sm font-semibold ${
+                      formData.supportedSurfaces.includes(surface)
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-surface-soft text-text-secondary'
+                    }`}
+                  >
+                    {surface}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 rounded-2xl border border-border bg-surface-soft px-4 py-3">
+            <input
+              type="checkbox"
+              checked={formData.enableCookies}
+              onChange={(event) => setFormData((current) => ({ ...current, enableCookies: event.target.checked }))}
+            />
+            <div>
+              <p className="font-semibold text-text-primary">Enable session attribution persistence</p>
+              <p className="text-sm text-text-secondary">Referral sessions stay eligible until the cookie window expires.</p>
+            </div>
+          </label>
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-5 py-3 rounded-xl bg-black text-white font-semibold disabled:opacity-60"
+            >
+              {isSaving ? 'Saving...' : 'Save Program'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/store/manager')}
+              className="px-5 py-3 rounded-xl border border-border bg-surface-soft font-semibold text-text-primary"
+            >
+              Back to Store Manager
+            </button>
+          </div>
+        </motion.form>
+
+        <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-border bg-surface p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-text-primary">Partner Queue</h2>
+              <p className="text-sm text-text-secondary">Approve, pause, or suspend affiliates from the same workspace.</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-[0.2em] text-text-secondary">Lifetime Earned</p>
+              <p className="text-2xl font-bold text-text-primary">${summary.totalEarned.toFixed(2)}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {partners.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-text-secondary">
+                No affiliate partners yet. Approved affiliates will appear here after they generate links or coupons for your program.
+              </div>
+            ) : (
+              partners.map((partner) => (
+                <div key={partner.id} className="rounded-2xl border border-border bg-surface-soft p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-text-primary">{partner.name}</p>
+                      <p className="text-sm text-text-secondary">{partner.email || 'No email available'}</p>
+                    </div>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        partner.status === 'active'
+                          ? 'bg-green-100 text-green-700'
+                          : partner.status === 'paused'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : partner.status === 'suspended'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {partner.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-text-secondary">Clicks</p>
+                      <p className="font-semibold text-text-primary">{partner.clicks || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Conversions</p>
+                      <p className="font-semibold text-text-primary">{partner.conversions || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Pending</p>
+                      <p className="font-semibold text-text-primary">${Number(partner.pendingCommissions || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePartnerStatus(partner.id, 'active')}
+                      className="px-3 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePartnerStatus(partner.id, 'paused')}
+                      className="px-3 py-2 rounded-xl bg-yellow-500 text-white text-sm font-semibold"
+                    >
+                      Pause
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePartnerStatus(partner.id, 'suspended')}
+                      className="px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold"
+                    >
+                      Suspend
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </motion.div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTheme } from '../../hooks/useTheme';
+import useLowEndMode from '../../hooks/useLowEndMode';
 import type { Item } from '../../types';
 
 type ItemServiceModule = typeof import('../../services/itemService');
@@ -114,7 +115,7 @@ const heroSlides: HeroSlide[] = [
     primaryCta: 'Watch Pixe',
     secondaryCta: 'Open Pixe Feed',
     to: '/pixe',
-    secondaryTo: '/pixe',
+    secondaryTo: '/pixe/explore',
     visual: '/mobile-banners/pixe.png'
   },
   {
@@ -174,14 +175,14 @@ const exploreMore: ExploreCard[] = [
 const quickActions = [
   { id: 'buyables', label: 'Explore Buyables', to: '/browse', icon: 'bag' },
   { id: 'rentables', label: 'Explore Rentables', to: '/renters', icon: 'cube' },
-  { id: 'pixe', label: 'Explore Pixe', to: '/pixe', icon: 'play' },
+  { id: 'pixe', label: 'Explore Pixe', to: '/pixe/explore', icon: 'play' },
   { id: 'stores', label: 'Explore Stores', to: '/stores', icon: 'store' }
 ] as const;
 
 const headerSearchQuickLinks = [
   { id: 'search-browse', label: 'Browse', to: '/browse' },
   { id: 'search-rentables', label: 'Rentables', to: '/renters' },
-  { id: 'search-pixe', label: 'Pixe', to: '/pixe' },
+  { id: 'search-pixe', label: 'Pixe', to: '/pixe/explore' },
   { id: 'search-stores', label: 'Stores', to: '/stores' }
 ];
 
@@ -205,6 +206,7 @@ const QuickActionIcon: React.FC<{ type: 'bag' | 'cube' | 'play' | 'store' }> = (
 const HomePageMobile: React.FC = () => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
+  const isLowEndMode = useLowEndMode();
   const headerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const cachedMobileArrivals = readMobileHomeArrivalsCache();
   const [activeSlide, setActiveSlide] = useState(0);
@@ -320,12 +322,17 @@ const HomePageMobile: React.FC = () => {
   const active = useMemo(() => heroSlides[activeSlide], [activeSlide]);
   const topSpacingClass = isHeaderSearchOpen ? 'pt-[11.4rem]' : 'pt-[6.8rem]';
   const isDarkTheme = resolvedTheme === 'obsidian' || resolvedTheme === 'noir' || resolvedTheme === 'hydra';
+  const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
   const rootThemeClass = 'bg-background text-text-primary';
   const headerSurfaceClass = isDarkTheme
-    ? 'border-white/15 bg-[#121923]/92 shadow-[0_14px_34px_rgba(0,0,0,0.45)]'
+    ? prefersNoirTuning
+      ? 'border-white/12 bg-[#121923]/96 shadow-[0_12px_28px_rgba(0,0,0,0.4)]'
+      : 'border-white/15 bg-[#121923]/92 shadow-[0_14px_34px_rgba(0,0,0,0.45)]'
     : 'border-white/80 bg-white/[0.985] shadow-[0_14px_34px_rgba(15,23,42,0.14)]';
   const headerSearchPanelClass = isDarkTheme
-    ? 'mt-2 rounded-[1.25rem] border border-white/15 bg-[#141d29]/88 p-2.5 shadow-[0_20px_40px_rgba(0,0,0,0.44)] backdrop-blur-2xl'
+    ? prefersNoirTuning
+      ? 'mt-2 rounded-[1.25rem] border border-white/12 bg-[#141d29]/94 p-2.5 shadow-[0_16px_32px_rgba(0,0,0,0.42)] backdrop-blur-md'
+      : 'mt-2 rounded-[1.25rem] border border-white/15 bg-[#141d29]/88 p-2.5 shadow-[0_20px_40px_rgba(0,0,0,0.44)] backdrop-blur-2xl'
     : 'mt-2 rounded-[1.25rem] border border-white/80 bg-white/[0.9] p-2.5 shadow-[0_20px_40px_rgba(15,23,42,0.18)] backdrop-blur-2xl';
   const headerInputWrapClass = isDarkTheme
     ? 'flex items-center gap-2 rounded-full border border-white/15 bg-[#0f1722] px-3 py-2.5'
@@ -391,21 +398,23 @@ const HomePageMobile: React.FC = () => {
       style={{ fontFamily: '"SF Pro Display","Avenir Next","Segoe UI",sans-serif' }}
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className={`absolute -left-20 top-[-12rem] h-72 w-72 rounded-full blur-3xl ${isDarkTheme ? 'bg-primary/25' : 'bg-primary/15'}`} />
-        <div className={`absolute -right-24 top-[17rem] h-80 w-80 rounded-full blur-3xl ${isDarkTheme ? 'bg-slate-500/15' : 'bg-slate-200/60'}`} />
-        <div className={`absolute bottom-[-12rem] left-10 h-80 w-80 rounded-full blur-3xl ${isDarkTheme ? 'bg-primary/20' : 'bg-emerald-200/60'}`} />
+        <div className={`absolute -left-20 top-[-12rem] h-72 w-72 rounded-full ${prefersNoirTuning ? 'blur-2xl' : 'blur-3xl'} ${isDarkTheme ? 'bg-primary/25' : 'bg-primary/15'}`} />
+        <div className={`absolute -right-24 top-[17rem] h-80 w-80 rounded-full ${prefersNoirTuning ? 'blur-2xl' : 'blur-3xl'} ${isDarkTheme ? 'bg-slate-500/15' : 'bg-slate-200/60'}`} />
+        <div className={`absolute bottom-[-12rem] left-10 h-80 w-80 rounded-full ${prefersNoirTuning ? 'blur-2xl' : 'blur-3xl'} ${isDarkTheme ? 'bg-primary/20' : 'bg-emerald-200/60'}`} />
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 top-2 z-[75] mx-auto w-full max-w-[560px] px-4">
         <motion.header
           initial={{ opacity: 0, y: -14 }}
-          animate={{ opacity: 1, y: [0, -1.4, 0], scale: [1, 1.01, 1] }}
-          transition={{
-            opacity: { duration: 0.45, ease: 'easeOut' },
-            y: { duration: 4.4, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.6 },
-            scale: { duration: 5.6, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.4 }
-          }}
-          className={`pointer-events-auto grid grid-cols-3 items-center rounded-[1.2rem] border px-3 py-3 backdrop-blur-xl ${headerSurfaceClass}`}
+          animate={prefersNoirTuning ? { opacity: 1, y: 0, scale: 1 } : { opacity: 1, y: [0, -1.4, 0], scale: [1, 1.01, 1] }}
+          transition={prefersNoirTuning
+            ? { opacity: { duration: 0.32, ease: 'easeOut' } }
+            : {
+                opacity: { duration: 0.45, ease: 'easeOut' },
+                y: { duration: 4.4, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.6 },
+                scale: { duration: 5.6, ease: 'easeInOut', repeat: Infinity, repeatDelay: 0.4 }
+              }}
+          className={`pointer-events-auto grid grid-cols-3 items-center rounded-[1.2rem] border px-3 py-3 ${prefersNoirTuning ? 'backdrop-blur-md' : 'backdrop-blur-xl'} ${headerSurfaceClass}`}
         >
           <button
             type="button"
@@ -546,7 +555,7 @@ const HomePageMobile: React.FC = () => {
               >
                 <Link
                   to={action.to}
-                  className={`group relative flex min-h-[114px] flex-col items-center justify-center gap-2 overflow-hidden rounded-[1.35rem] border px-2 py-3 text-center backdrop-blur-xl transition duration-200 active:scale-95 ${isDarkTheme ? 'border-white/10 bg-white/5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]' : 'border-white/80 bg-white/75 shadow-[0_12px_28px_rgba(15,23,42,0.08)]'}`}
+                  className={`group relative flex min-h-[114px] flex-col items-center justify-center gap-2 overflow-hidden rounded-[1.35rem] border px-2 py-3 text-center ${prefersNoirTuning ? 'backdrop-blur-md' : 'backdrop-blur-xl'} transition duration-200 active:scale-95 ${isDarkTheme ? 'border-white/10 bg-white/5 shadow-[0_12px_28px_rgba(0,0,0,0.28)]' : 'border-white/80 bg-white/75 shadow-[0_12px_28px_rgba(15,23,42,0.08)]'}`}
                 >
                   <span className="absolute right-2 top-2 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-sky-600 dark:bg-sky-400/10 dark:text-sky-200">Go</span>
                   <span className={quickActionIconClass}>

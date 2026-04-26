@@ -9,6 +9,7 @@ export interface SpotlightCreator {
   firebase_uid: string;
   name: string;
   avatar_url: string;
+  username?: string;
   is_verified: boolean;
   followers_count: number;
   following_count: number;
@@ -182,8 +183,13 @@ export interface SpotlightProfile {
   firebase_uid: string;
   name: string;
   avatar_url: string;
+  banner_url?: string | null;
   bio: string;
   about?: string;
+  city?: string | null;
+  country?: string | null;
+  website_url?: string | null;
+  joined_at?: string | null;
   followers_count: number;
   following_count: number;
   posts_count: number;
@@ -192,12 +198,33 @@ export interface SpotlightProfile {
   username: string;
 }
 
+export interface SpotlightUsernameAvailability {
+  username: string;
+  available: boolean;
+  reason?: string | null;
+}
+
+export interface SpotlightProfileUpdatePayload {
+  name?: string;
+  username?: string;
+  bio?: string;
+  about?: string;
+  city?: string | null;
+  country?: string | null;
+  website_url?: string | null;
+  pinned_content_id?: string | null;
+  avatar_url?: string | null;
+  banner_url?: string | null;
+}
+
 export interface SpotlightProfileResponse {
   profile: SpotlightProfile;
   is_self: boolean;
   is_following: boolean;
+  follows_you?: boolean;
   followers_preview?: SpotlightCreator[];
   following_preview?: SpotlightCreator[];
+  pinned_item?: SpotlightItem | null;
   tab: 'posts' | 'media' | 'likes' | 'saved';
   counts: {
     posts: number;
@@ -552,6 +579,8 @@ export const spotlightService = {
     details?: string;
     content_id?: string;
     comment_id?: string;
+    target_user_id?: string;
+    target_firebase_uid?: string;
   }) {
     const token = await getToken();
     await backendFetch(
@@ -563,6 +592,15 @@ export const spotlightService = {
       },
       token
     );
+  },
+
+  async reportUser(payload: {
+    reason: string;
+    details?: string;
+    target_user_id?: string;
+    target_firebase_uid?: string;
+  }) {
+    return await spotlightService.reportContent(payload);
   },
 
   async getSuggestedUsers(viewerFirebaseUid?: string) {
@@ -619,6 +657,30 @@ export const spotlightService = {
     return payload?.data as SpotlightProfilePeopleResponse;
   },
 
+  async checkUsernameAvailability(username: string) {
+    const query = toQueryString({ username });
+    const token = await getToken();
+    const payload = await backendFetch(`/spotlight/profile/availability?${query}`, { headers: getAuthHeaders() }, token);
+    return payload?.data as SpotlightUsernameAvailability;
+  },
+
+  async updateMyProfile(profile: SpotlightProfileUpdatePayload) {
+    const token = await getToken();
+    if (!token) {
+      throw new Error('You must be signed in to edit your Spotlight profile.');
+    }
+    const payload = await backendFetch(
+      '/spotlight/profile/me',
+      {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(withFirebaseUid(profile))
+      },
+      token
+    );
+    return payload?.data as SpotlightProfile;
+  },
+
   async getCreatorAnalytics(userId: string = 'me') {
     const token = await getToken();
     if (!token) {
@@ -640,7 +702,7 @@ export const spotlightService = {
     return payload?.data as { reposted: boolean; reposts: number; content?: SpotlightItem };
   },
 
-  async uploadSpotlightAsset(file: File, ownerFirebaseUid: string, assetType: 'spotlight' | 'spotlight-thumb' = 'spotlight') {
+  async uploadSpotlightAsset(file: File, ownerFirebaseUid: string, assetType: 'spotlight' | 'spotlight-thumb' | 'spotlight-banner' = 'spotlight') {
     const token = await getToken();
     const base64Data = await fileToBase64(file);
     const payload = await backendFetch(

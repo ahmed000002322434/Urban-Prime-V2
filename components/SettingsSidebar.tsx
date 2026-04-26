@@ -42,7 +42,7 @@ const settingsItems = [
   { to: '/profile/settings/trust-and-verification', label: 'Trust & Verification', icon: VerifyIcon },
   { to: '/profile/settings/addresses', label: 'Addresses', icon: AddressIcon },
   { to: '/profile/settings/privacy', label: 'Privacy', icon: PrivacyIcon },
-  { to: '/profile/settings/notifications', label: 'Notifications', icon: NotificationIcon }
+  { to: '/profile/settings/notifications', label: 'Notification Settings', icon: NotificationIcon }
 ];
 
 const SettingsSidebar: React.FC = () => (

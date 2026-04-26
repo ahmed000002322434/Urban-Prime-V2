@@ -10,9 +10,13 @@ import fs from 'fs';
 import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import createAnalyticsEngine from './analyticsEngine.js';
 import registerSpotlightRoutes from './spotlightEngine.js';
+import registerPixeRoutes from './pixeRoutes.js';
 import registerCommerceRoutes from './commerceRoutes.js';
+import registerDigitalMarketplaceRoutes from './digitalMarketplaceRoutes.js';
+import registerPodMarketplaceRoutes from './podMarketplaceRoutes.js';
 import { createStripeWebhookHandler } from './webhooks/stripeWebhook.js';
 import { createPaypalWebhookHandler } from './webhooks/paypalWebhook.js';
+import { createMuxWebhookHandler } from './webhooks/muxWebhook.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -199,11 +203,14 @@ const ALLOWED_TABLES = new Set([
   'users', 'user_profiles', 'stores', 'store_settings', 'categories',
   'items', 'item_images', 'item_variants', 'item_collections', 'item_collection_items',
   'carts', 'cart_items', 'shipping_addresses', 'orders', 'order_items',
-  'payments', 'refunds', 'shipping_methods', 'shipments',
+  'payments', 'refunds', 'shipping_methods', 'shipments', 'pod_jobs',
+  'rental_bookings', 'rental_blocks', 'auction_bids', 'auction_sessions', 'commerce_disputes',
   'reviews', 'wishlists', 'wishlist_items', 'user_follows', 'store_follows',
   'chat_threads', 'chat_messages', 'custom_offers', 'notifications',
   'payout_methods', 'payouts', 'suppliers', 'supplier_products', 'supplier_orders',
-  'affiliate_profiles', 'affiliate_links', 'affiliate_attributions', 'affiliate_conversions', 'affiliate_payouts',
+  'stores_v2', 'store_layouts', 'store_analytics', 'affiliate_programs',
+  'affiliate_profiles', 'affiliate_users', 'affiliate_links', 'affiliate_coupons', 'affiliate_clicks',
+  'affiliate_commissions', 'affiliate_submissions', 'affiliate_attributions', 'affiliate_conversions', 'affiliate_payouts',
   'admin_users', 'site_settings', 'moderation_flags', 'audit_logs', 'mirror_documents',
   'personas', 'persona_members', 'persona_wallet_ledgers', 'persona_notifications', 'persona_capability_requests',
   'uploaded_assets', 'user_onboarding_state',
@@ -213,6 +220,7 @@ const ALLOWED_TABLES = new Set([
   'brand_price_snapshots', 'brand_catalog_price_snapshots',
   'brand_trust_signals', 'brand_catalog_trust_signals',
   'work_listings', 'work_requests', 'work_proposals', 'work_contracts', 'work_milestones',
+  'work_provider_applications',
   'work_engagements', 'work_escrow_ledger', 'work_disputes', 'work_reputation', 'work_autopilot_runs',
   'spotlight_content', 'spotlight_metrics', 'spotlight_views', 'spotlight_likes',
   'spotlight_dislikes', 'spotlight_reposts', 'spotlight_comments', 'spotlight_comment_likes',
@@ -271,6 +279,7 @@ app.use((req, res, next) => {
 });
 
 app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), createStripeWebhookHandler(supabase));
+app.post('/webhooks/mux', express.raw({ type: 'application/json' }), createMuxWebhookHandler(supabase));
 
 app.use(express.json({ limit: '25mb' }));
 
@@ -314,7 +323,8 @@ const PUBLIC_SITEMAP_PATHS = [
   '/blogs',
   '/lookbook',
   '/style-guides',
-  '/games'
+  '/games',
+  '/print-on-demand'
 ];
 
 const escapeXml = (value) => String(value)
@@ -636,13 +646,19 @@ const normalizeFulfillmentKind = (value, fallback = 'hybrid') => {
 
 const normalizeWorkListingStatus = (value, fallback = 'draft') => {
   const normalized = String(value || '').trim().toLowerCase();
-  if (['draft', 'published', 'archived', 'paused'].includes(normalized)) return normalized;
+  if (['draft', 'pending_review', 'published', 'rejected', 'archived', 'paused'].includes(normalized)) return normalized;
   return fallback;
 };
 
 const normalizeWorkRequestStatus = (value, fallback = 'open') => {
   const normalized = String(value || '').trim().toLowerCase();
   if (['open', 'in_review', 'matched', 'cancelled', 'closed'].includes(normalized)) return normalized;
+  return fallback;
+};
+
+const normalizeWorkRequestType = (value, fallback = 'quote') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['booking', 'quote'].includes(normalized)) return normalized;
   return fallback;
 };
 
@@ -656,6 +672,41 @@ const normalizeWorkContractStatus = (value, fallback = 'pending') => {
   const normalized = String(value || '').trim().toLowerCase();
   if (['draft', 'pending', 'active', 'completed', 'cancelled', 'disputed'].includes(normalized)) return normalized;
   return fallback;
+};
+
+const normalizeProviderApplicationStatus = (value, fallback = 'draft') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['draft', 'submitted', 'under_review', 'approved', 'rejected', 'resubmission_requested'].includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+};
+
+const enrichProviderApplicationsWithUserRows = async (rows = []) => {
+  const sourceRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  if (sourceRows.length === 0) return [];
+
+  const userIds = Array.from(new Set(sourceRows.map((row) => String(row?.user_id || '').trim()).filter(Boolean)));
+  if (userIds.length === 0) return sourceRows;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id,firebase_uid,name,email,avatar_url')
+    .in('id', userIds);
+  if (error) throw error;
+
+  const userMap = new Map((data || []).map((row) => [String(row.id), row]));
+  return sourceRows.map((row) => {
+    const userRow = userMap.get(String(row?.user_id || '').trim());
+    return {
+      ...row,
+      user_supabase_id: row?.user_id || null,
+      user_firebase_uid: userRow?.firebase_uid || null,
+      user_name: userRow?.name || null,
+      user_email: userRow?.email || null,
+      user_avatar_url: userRow?.avatar_url || null
+    };
+  });
 };
 
 const normalizeMilestoneStatus = (value, fallback = 'pending') => {
@@ -704,6 +755,7 @@ const writeAuditLog = async ({ actorUserId, action, entityType, entityId, detail
 const mapWorkListingToLegacyServiceRecord = (row) => {
   const providerSnapshot = normalizeJsonObject(row?.provider_snapshot);
   const packages = Array.isArray(row?.packages) ? row.packages : [];
+  const details = normalizeJsonObject(row?.details);
   const pricingModels = packages.length > 0
     ? packages.map((pkg) => ({
         type: pkg?.type || 'fixed',
@@ -741,9 +793,29 @@ const mapWorkListingToLegacyServiceRecord = (row) => {
     riskScore: Number(row?.risk_score || 0),
     currency: row?.currency || 'USD',
     timezone: row?.timezone || null,
+    availability: normalizeJsonObject(row?.availability),
+    details,
+    status: row?.status || 'draft',
     providerPersonaId: row?.seller_persona_id || null,
     listingSource: 'omniwork'
   };
+};
+
+const mirrorWorkCollectionRecord = async (collectionName, docId, data) => {
+  if (!collectionName || !docId) return;
+  try {
+    await supabase.from('mirror_documents').upsert({
+      collection: collectionName,
+      doc_id: docId,
+      data,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'collection,doc_id',
+      ignoreDuplicates: false
+    });
+  } catch (error) {
+    console.warn(`Failed to mirror ${collectionName}:`, error?.message || error);
+  }
 };
 
 const mirrorWorkListingForLegacy = async (row) => {
@@ -770,6 +842,26 @@ const mirrorWorkListingForLegacy = async (row) => {
     console.warn('Failed to mirror work listing:', error?.message || error);
   }
 };
+
+const createPendingProviderCapabilities = () => ({
+  buy: 'inactive',
+  rent: 'inactive',
+  sell: 'inactive',
+  provide_service: 'pending',
+  affiliate: 'inactive',
+  ship: 'inactive',
+  admin: 'inactive'
+});
+
+const createActiveProviderCapabilities = () => ({
+  buy: 'inactive',
+  rent: 'inactive',
+  sell: 'inactive',
+  provide_service: 'active',
+  affiliate: 'inactive',
+  ship: 'inactive',
+  admin: 'inactive'
+});
 
 const deepMergeDraft = (base, patch) => {
   const baseObject = normalizeJsonObject(base);
@@ -884,7 +976,12 @@ const completionToResponse = (completion) => ({
 });
 
 const getRequestFirebaseUid = (req) => {
-  if (hasText(req.user?.uid)) return req.user.uid;
+  const tokenUid =
+    req.user?.uid ||
+    req.user?.user_id ||
+    req.user?.sub ||
+    req.user?.firebase_uid;
+  if (hasText(tokenUid)) return tokenUid;
 
   const headerUid = req.headers['x-firebase-uid'];
   if (Array.isArray(headerUid) && hasText(headerUid[0])) return headerUid[0];
@@ -898,6 +995,18 @@ const getRequestFirebaseUid = (req) => {
   if (hasText(queryUid)) return queryUid;
 
   return null;
+};
+
+const hydrateRequestUserFromFirebaseUid = (req) => {
+  const firebaseUid = getRequestFirebaseUid(req);
+  if (!hasText(firebaseUid)) return null;
+
+  const currentUser = normalizeJsonObject(req.user);
+  if (!hasText(currentUser.uid)) currentUser.uid = firebaseUid;
+  if (!hasText(currentUser.firebase_uid)) currentUser.firebase_uid = firebaseUid;
+  if (!hasText(currentUser.sub)) currentUser.sub = firebaseUid;
+  req.user = currentUser;
+  return firebaseUid;
 };
 
 const isUniqueViolation = (error) => error?.code === '23505' || /duplicate key/i.test(error?.message || '');
@@ -1493,6 +1602,40 @@ const resolveAdminContext = async (req) => {
   return { ...context, isAdmin: true };
 };
 
+const upsertProviderPersonaForUser = async (userRow, status = 'pending', extra = {}) => {
+  if (!userRow?.id) return null;
+  const personaId = `provider-${userRow.id}`;
+  const capabilities = status === 'active'
+    ? createActiveProviderCapabilities()
+    : createPendingProviderCapabilities();
+  const now = new Date().toISOString();
+
+  const payload = {
+    id: personaId,
+    user_id: userRow.id,
+    firebase_uid: userRow.firebase_uid || null,
+    type: 'provider',
+    status,
+    display_name: extra.displayName || userRow.name || 'Provider',
+    avatar_url: extra.avatarUrl || userRow.avatar_url || '/icons/urbanprime.svg',
+    handle: extra.handle || null,
+    bio: extra.bio || null,
+    settings: normalizeJsonObject(extra.settings),
+    verification: normalizeJsonObject(extra.verification),
+    capabilities,
+    created_at: now,
+    updated_at: now
+  };
+
+  const { data, error } = await supabase
+    .from('personas')
+    .upsert(payload, { onConflict: 'id' })
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
 const ensureItemOwnedByUser = async (itemId, userId) => {
   if (!itemId || !userId) return { allowed: false, item: null };
   const { data, error } = await supabase
@@ -1953,6 +2096,16 @@ const loadCallDocument = async (callId) => {
   return { row: data || null, error: error || null };
 };
 
+const isLocalDevelopmentRequest = (req) => {
+  const clientIp = String(req.ip || req.socket?.remoteAddress || '').trim().toLowerCase();
+  const origin = normalizeOrigin(req.headers.origin || req.headers.referer || '');
+  const hostOrigin = getRequestOrigin(req);
+
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'].some((value) =>
+    clientIp.includes(value) || origin.includes(value) || hostOrigin.includes(value)
+  );
+};
+
 const createRateLimiter = ({ windowMs, maxRequests, namespace, skip }) => {
   const hitMap = new Map();
 
@@ -1974,7 +2127,8 @@ const createRateLimiter = ({ windowMs, maxRequests, namespace, skip }) => {
 
     const now = Date.now();
     const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    const key = `${namespace}:${clientIp}`;
+    const hintedFirebaseUid = String(req.headers['x-firebase-uid'] || '').trim();
+    const key = `${namespace}:${hintedFirebaseUid || clientIp}`;
     const current = hitMap.get(key);
 
     if (!current || current.resetAt <= now) {
@@ -2007,18 +2161,21 @@ const globalRateLimiter = createRateLimiter({
   windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,
   maxRequests: GLOBAL_RATE_LIMIT_MAX,
   namespace: 'global',
-  skip: (req) => req.path === '/health' || req.path.startsWith('/uploads/')
+  skip: (req) => isLocalDevelopmentRequest(req) || req.path === '/health' || req.path.startsWith('/uploads/')
 });
 
 const strictAuthRateLimiter = createRateLimiter({
   windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,
   maxRequests: AUTH_RATE_LIMIT_MAX_REQUESTS,
-  namespace: 'auth'
+  namespace: 'auth',
+  skip: isLocalDevelopmentRequest
 });
 
 app.use(globalRateLimiter);
 
 const requireAuth = async (req, res, next) => {
+  const hintedFirebaseUid = hydrateRequestUserFromFirebaseUid(req);
+
   if (!BACKEND_API_KEY && !firebaseApp) {
     if (!IS_PRODUCTION) {
       return next();
@@ -2027,6 +2184,7 @@ const requireAuth = async (req, res, next) => {
   }
 
   if (BACKEND_API_KEY && secureCompare(req.headers['x-backend-key'], BACKEND_API_KEY)) {
+    hydrateRequestUserFromFirebaseUid(req);
     return next();
   }
 
@@ -2042,6 +2200,11 @@ const requireAuth = async (req, res, next) => {
         console.warn('Firebase token verify failed:', error?.message || error);
       }
     }
+  }
+
+  if (!IS_PRODUCTION && hintedFirebaseUid) {
+    hydrateRequestUserFromFirebaseUid(req);
+    return next();
   }
 
   return res.status(401).json({ error: 'Unauthorized' });
@@ -2061,6 +2224,7 @@ const analyticsEngine = createAnalyticsEngine({
   requireAuth,
   userCanAccessPersona,
   resolveUserIdFromFirebaseUid,
+  resolveAdminContext,
   writeAuditLog
 });
 
@@ -2074,11 +2238,44 @@ registerSpotlightRoutes({
   resolveUserIdFromFirebaseUid
 });
 
+registerPixeRoutes({
+  app,
+  supabase,
+  requireAuth,
+  getUserContext,
+  resolveAdminContext,
+  createRateLimiter,
+  writeAuditLog,
+  uploadsRoot
+});
+
 registerCommerceRoutes({
   app,
   supabase,
   requireAuth,
-  getUserContext
+  getUserContext,
+  createRateLimiter,
+  resolveAdminContext,
+  writeAuditLog,
+  firebaseApp
+});
+
+registerDigitalMarketplaceRoutes({
+  app,
+  supabase,
+  requireAuth,
+  getUserContext,
+  writeAuditLog,
+  uploadsRoot
+});
+
+registerPodMarketplaceRoutes({
+  app,
+  supabase,
+  requireAuth,
+  getUserContext,
+  writeAuditLog,
+  uploadsRoot
 });
 
 app.get('/health', async (_req, res) => {
@@ -4048,6 +4245,7 @@ app.post('/work/listings', requireAuth, async (req, res) => {
     }
 
     const providerSnapshotInput = normalizeJsonObject(body.providerSnapshot || body.provider_snapshot);
+    const normalizedStatus = normalizeWorkListingStatus(body.status, 'draft');
     const providerSnapshot = {
       id: context.user.id,
       name: providerSnapshotInput.name || context.user.name || 'Provider',
@@ -4072,13 +4270,15 @@ app.post('/work/listings', requireAuth, async (req, res) => {
       skills: Array.isArray(body.skills) ? body.skills : [],
       media: Array.isArray(body.media) ? body.media : (Array.isArray(body.imageUrls) ? body.imageUrls : []),
       availability: normalizeJsonObject(body.availability),
+      details: normalizeJsonObject(body.details),
       provider_snapshot: providerSnapshot,
       risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, 0),
-      status: normalizeWorkListingStatus(body.status, 'draft'),
+      status: normalizedStatus,
       visibility: toNullableText(body.visibility) || 'public',
-      published_at: normalizeWorkListingStatus(body.status, 'draft') === 'published'
-        ? new Date().toISOString()
-        : null
+      review_notes: toNullableText(body.reviewNotes || body.review_notes),
+      submitted_at: normalizedStatus === 'pending_review' ? new Date().toISOString() : null,
+      reviewed_at: ['published', 'rejected'].includes(normalizedStatus) ? new Date().toISOString() : null,
+      published_at: normalizedStatus === 'published' ? new Date().toISOString() : null
     };
 
     const { data, error } = await supabase
@@ -4159,6 +4359,523 @@ app.get('/work/listings/:id', async (req, res) => {
   }
 });
 
+app.patch('/work/listings/:id', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const existingLookup = await supabase
+      .from('work_listings')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (existingLookup.error) throw existingLookup.error;
+    if (!existingLookup.data) return res.status(404).json({ error: 'Work listing not found' });
+    if (String(existingLookup.data.seller_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to update this listing.' });
+    }
+
+    const updates = {};
+    if (body.title !== undefined) updates.title = toNullableText(body.title) || existingLookup.data.title;
+    if (body.description !== undefined) updates.description = toNullableText(body.description) || '';
+    if (body.category !== undefined) updates.category = toNullableText(body.category) || 'general';
+    if (body.mode !== undefined) updates.mode = normalizeWorkMode(body.mode, existingLookup.data.mode || 'hybrid');
+    if (body.fulfillmentKind !== undefined || body.fulfillment_kind !== undefined) {
+      updates.fulfillment_kind = normalizeFulfillmentKind(body.fulfillmentKind || body.fulfillment_kind, existingLookup.data.fulfillment_kind || 'hybrid');
+    }
+    if (body.pricingType !== undefined || body.pricing_type !== undefined) {
+      updates.pricing_type = toNullableText(body.pricingType || body.pricing_type) || 'fixed';
+    }
+    if (body.basePrice !== undefined || body.base_price !== undefined) {
+      updates.base_price = parsePositiveNumber(body.basePrice ?? body.base_price, 0);
+    }
+    if (body.currency !== undefined) updates.currency = normalizeCurrencyCode(body.currency, existingLookup.data.currency || 'USD');
+    if (body.timezone !== undefined) updates.timezone = toNullableText(body.timezone) || existingLookup.data.timezone || 'UTC';
+    if (body.packages !== undefined) updates.packages = Array.isArray(body.packages) ? body.packages : [];
+    if (body.skills !== undefined) updates.skills = Array.isArray(body.skills) ? body.skills : [];
+    if (body.media !== undefined || body.imageUrls !== undefined) {
+      updates.media = Array.isArray(body.media) ? body.media : (Array.isArray(body.imageUrls) ? body.imageUrls : []);
+    }
+    if (body.availability !== undefined) updates.availability = normalizeJsonObject(body.availability);
+    if (body.details !== undefined) updates.details = normalizeJsonObject(body.details);
+    if (body.providerSnapshot !== undefined || body.provider_snapshot !== undefined) {
+      updates.provider_snapshot = {
+        ...normalizeJsonObject(existingLookup.data.provider_snapshot),
+        ...normalizeJsonObject(body.providerSnapshot || body.provider_snapshot)
+      };
+    }
+    if (body.riskScore !== undefined || body.risk_score !== undefined) {
+      updates.risk_score = parsePositiveNumber(body.riskScore ?? body.risk_score, 0);
+    }
+    if (body.visibility !== undefined) updates.visibility = toNullableText(body.visibility) || 'public';
+    if (body.reviewNotes !== undefined || body.review_notes !== undefined) {
+      updates.review_notes = toNullableText(body.reviewNotes || body.review_notes);
+    }
+    if (body.status !== undefined) {
+      updates.status = normalizeWorkListingStatus(body.status, existingLookup.data.status || 'draft');
+      if (updates.status === 'pending_review') updates.submitted_at = new Date().toISOString();
+      if (updates.status === 'published') updates.published_at = new Date().toISOString();
+      if (['published', 'rejected'].includes(updates.status)) updates.reviewed_at = new Date().toISOString();
+    }
+    updates.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('work_listings')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    await mirrorWorkListingForLegacy(data);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_listing_updated',
+      entityType: 'work_listing',
+      entityId: id,
+      details: updates
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to update work listing.' });
+  }
+});
+
+app.post('/work/listings/:id/submit', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const lookup = await supabase
+      .from('work_listings')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (lookup.error) throw lookup.error;
+    if (!lookup.data) return res.status(404).json({ error: 'Work listing not found' });
+    if (String(lookup.data.seller_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to submit this listing.' });
+    }
+
+    const updates = {
+      status: 'pending_review',
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('work_listings')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    await mirrorWorkListingForLegacy(data);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_listing_submitted',
+      entityType: 'work_listing',
+      entityId: id,
+      details: { status: 'pending_review' }
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to submit work listing.' });
+  }
+});
+
+app.post('/work/listings/:id/approve', requireAuth, async (req, res) => {
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) {
+      return res.status(403).json({ error: context.error.message || 'Admin access is required.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const updates = {
+      status: 'published',
+      review_notes: toNullableText(body.reviewNotes || body.review_notes),
+      reviewed_at: new Date().toISOString(),
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('work_listings')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Work listing not found' });
+
+    await mirrorWorkListingForLegacy(data);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_listing_approved',
+      entityType: 'work_listing',
+      entityId: id,
+      details: updates
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to approve work listing.' });
+  }
+});
+
+app.post('/work/listings/:id/reject', requireAuth, async (req, res) => {
+  try {
+    const context = await resolveAdminContext(req);
+    if (context.error) {
+      return res.status(403).json({ error: context.error.message || 'Admin access is required.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const updates = {
+      status: 'rejected',
+      review_notes: toNullableText(body.reviewNotes || body.review_notes),
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('work_listings')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Work listing not found' });
+
+    await mirrorWorkListingForLegacy(data);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_listing_rejected',
+      entityType: 'work_listing',
+      entityId: id,
+      details: updates
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to reject work listing.' });
+  }
+});
+
+app.post('/work/provider-applications', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const requestedStatus = normalizeProviderApplicationStatus(
+      body.status,
+      body.submit ? 'submitted' : 'draft'
+    );
+    const payload = {
+      user_id: context.user.id,
+      provider_persona_id: toNullableText(body.providerPersonaId || body.provider_persona_id),
+      business_name: toNullableText(body.businessName || body.business_name),
+      business_type: toNullableText(body.businessType || body.business_type),
+      bio: toNullableText(body.bio) || '',
+      service_categories: Array.isArray(body.serviceCategories || body.service_categories)
+        ? (body.serviceCategories || body.service_categories).map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      languages: Array.isArray(body.languages) ? body.languages.map((entry) => String(entry).trim()).filter(Boolean) : [],
+      years_experience: parsePositiveNumber(body.yearsExperience ?? body.years_experience, 0),
+      service_area: Array.isArray(body.serviceArea || body.service_area) ? (body.serviceArea || body.service_area) : [],
+      response_sla_hours: parsePositiveNumber(body.responseSlaHours ?? body.response_sla_hours, 24),
+      payout_ready: Boolean(body.payoutReady ?? body.payout_ready),
+      website: toNullableText(body.website),
+      documents: Array.isArray(body.documents) ? body.documents : [],
+      portfolio: Array.isArray(body.portfolio) ? body.portfolio : [],
+      onboarding_progress: parsePositiveNumber(body.onboardingProgress ?? body.onboarding_progress, 0),
+      status: requestedStatus,
+      notes: toNullableText(body.notes),
+      reviewer_notes: toNullableText(body.reviewerNotes || body.reviewer_notes),
+      submitted_at: ['submitted', 'under_review'].includes(requestedStatus) ? new Date().toISOString() : null,
+      reviewed_at: ['approved', 'rejected'].includes(requestedStatus) ? new Date().toISOString() : null
+    };
+
+    const existingLookup = await supabase
+      .from('work_provider_applications')
+      .select('*')
+      .eq('user_id', context.user.id)
+      .maybeSingle();
+    if (existingLookup.error) throw existingLookup.error;
+
+    const operation = existingLookup.data
+      ? supabase
+          .from('work_provider_applications')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', existingLookup.data.id)
+          .select('*')
+          .maybeSingle()
+      : supabase
+          .from('work_provider_applications')
+          .insert(payload)
+          .select('*')
+          .maybeSingle();
+
+    const { data, error } = await operation;
+    if (error) throw error;
+
+    await upsertProviderPersonaForUser(context.user, requestedStatus === 'approved' ? 'active' : 'pending', {
+      bio: payload.bio,
+      displayName: payload.business_name || context.user.name || 'Provider',
+      settings: {
+        applicationStatus: requestedStatus,
+        serviceCategories: payload.service_categories,
+        serviceArea: payload.service_area,
+        payoutReady: payload.payout_ready,
+        onboardingProgress: payload.onboarding_progress
+      },
+      verification: {
+        level: requestedStatus === 'approved' ? 'verified' : 'pending'
+      }
+    });
+
+    await supabase
+      .from('user_profiles')
+      .upsert({
+        user_id: context.user.id,
+        about: payload.bio || null,
+        business_name: payload.business_name || null,
+        business_description: payload.business_type || null,
+        is_provider: requestedStatus === 'approved'
+      }, { onConflict: 'user_id' })
+      .throwOnError();
+
+    const [enrichedApplication] = await enrichProviderApplicationsWithUserRows([data]);
+
+    await mirrorWorkCollectionRecord('work_provider_applications', data.id, enrichedApplication);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: existingLookup.data ? 'provider_application_updated' : 'provider_application_created',
+      entityType: 'work_provider_application',
+      entityId: data.id,
+      details: { status: data.status }
+    });
+
+    return res.status(existingLookup.data ? 200 : 201).json({ data: enrichedApplication });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to save provider application.' });
+  }
+});
+
+app.get('/work/provider-applications', requireAuth, async (req, res) => {
+  try {
+    const context = await resolveAdminContext(req);
+    const isAdmin = !context.error;
+    const safeContext = isAdmin ? context : await getUserContext(req);
+    if (safeContext.error) {
+      return res.status(400).json({ error: safeContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { userId, status, limit = '100', offset = '0' } = req.query;
+    let query = supabase
+      .from('work_provider_applications')
+      .select('*', { count: 'exact' })
+      .order('updated_at', { ascending: false });
+
+    if (status) query = query.eq('status', normalizeProviderApplicationStatus(status, 'submitted'));
+    if (isAdmin) {
+      if (userId) query = query.eq('user_id', userId);
+    } else {
+      query = query.eq('user_id', safeContext.user.id);
+    }
+
+    const limitNum = Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 200);
+    const offsetNum = Math.max(parseInt(String(offset), 10) || 0, 0);
+    query = query.range(offsetNum, offsetNum + limitNum - 1);
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+    const enrichedRows = await enrichProviderApplicationsWithUserRows(data || []);
+    return res.json({ data: enrichedRows, count: count || 0 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load provider applications.' });
+  }
+});
+
+app.get('/work/provider-applications/:id', requireAuth, async (req, res) => {
+  try {
+    const adminContext = await resolveAdminContext(req);
+    const isAdmin = !adminContext.error;
+    const userContext = isAdmin ? adminContext : await getUserContext(req);
+    if (userContext.error) {
+      return res.status(400).json({ error: userContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('work_provider_applications')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Provider application not found' });
+    if (!isAdmin && String(data.user_id || '') !== String(userContext.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to this application.' });
+    }
+    const [enrichedApplication] = await enrichProviderApplicationsWithUserRows([data]);
+    return res.json({ data: enrichedApplication });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load provider application.' });
+  }
+});
+
+app.patch('/work/provider-applications/:id', requireAuth, async (req, res) => {
+  try {
+    const adminContext = await resolveAdminContext(req);
+    const isAdmin = !adminContext.error;
+    const userContext = isAdmin ? adminContext : await getUserContext(req);
+    if (userContext.error) {
+      return res.status(400).json({ error: userContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const existingLookup = await supabase
+      .from('work_provider_applications')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (existingLookup.error) throw existingLookup.error;
+    if (!existingLookup.data) return res.status(404).json({ error: 'Provider application not found' });
+
+    const isOwner = String(existingLookup.data.user_id || '') === String(userContext.user.id || '');
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have access to update this application.' });
+    }
+
+    const nextStatus = body.status !== undefined
+      ? normalizeProviderApplicationStatus(body.status, existingLookup.data.status || 'draft')
+      : existingLookup.data.status || 'draft';
+    if (!isAdmin && body.status !== undefined && !['draft', 'submitted'].includes(nextStatus)) {
+      return res.status(403).json({ error: 'Only admins can set this application status.' });
+    }
+
+    const updates = {
+      business_name: body.businessName !== undefined || body.business_name !== undefined
+        ? toNullableText(body.businessName || body.business_name)
+        : existingLookup.data.business_name,
+      business_type: body.businessType !== undefined || body.business_type !== undefined
+        ? toNullableText(body.businessType || body.business_type)
+        : existingLookup.data.business_type,
+      bio: body.bio !== undefined ? toNullableText(body.bio) || '' : existingLookup.data.bio,
+      service_categories: body.serviceCategories !== undefined || body.service_categories !== undefined
+        ? (Array.isArray(body.serviceCategories || body.service_categories) ? (body.serviceCategories || body.service_categories) : [])
+        : existingLookup.data.service_categories,
+      languages: body.languages !== undefined
+        ? (Array.isArray(body.languages) ? body.languages : [])
+        : existingLookup.data.languages,
+      years_experience: body.yearsExperience !== undefined || body.years_experience !== undefined
+        ? parsePositiveNumber(body.yearsExperience ?? body.years_experience, 0)
+        : existingLookup.data.years_experience,
+      service_area: body.serviceArea !== undefined || body.service_area !== undefined
+        ? (Array.isArray(body.serviceArea || body.service_area) ? (body.serviceArea || body.service_area) : [])
+        : existingLookup.data.service_area,
+      response_sla_hours: body.responseSlaHours !== undefined || body.response_sla_hours !== undefined
+        ? parsePositiveNumber(body.responseSlaHours ?? body.response_sla_hours, 24)
+        : existingLookup.data.response_sla_hours,
+      payout_ready: body.payoutReady !== undefined || body.payout_ready !== undefined
+        ? Boolean(body.payoutReady ?? body.payout_ready)
+        : existingLookup.data.payout_ready,
+      website: body.website !== undefined ? toNullableText(body.website) : existingLookup.data.website,
+      documents: body.documents !== undefined ? (Array.isArray(body.documents) ? body.documents : []) : existingLookup.data.documents,
+      portfolio: body.portfolio !== undefined ? (Array.isArray(body.portfolio) ? body.portfolio : []) : existingLookup.data.portfolio,
+      onboarding_progress: body.onboardingProgress !== undefined || body.onboarding_progress !== undefined
+        ? parsePositiveNumber(body.onboardingProgress ?? body.onboarding_progress, 0)
+        : existingLookup.data.onboarding_progress,
+      status: nextStatus,
+      notes: body.notes !== undefined ? toNullableText(body.notes) : existingLookup.data.notes,
+      reviewer_notes: body.reviewerNotes !== undefined || body.reviewer_notes !== undefined
+        ? toNullableText(body.reviewerNotes || body.reviewer_notes)
+        : existingLookup.data.reviewer_notes,
+      submitted_at: nextStatus === 'submitted'
+        ? (existingLookup.data.submitted_at || new Date().toISOString())
+        : existingLookup.data.submitted_at,
+      reviewed_at: ['approved', 'rejected'].includes(nextStatus)
+        ? new Date().toISOString()
+        : existingLookup.data.reviewed_at,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('work_provider_applications')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    const applicantLookup = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', data.user_id)
+      .maybeSingle();
+    if (applicantLookup.error) throw applicantLookup.error;
+
+    if (applicantLookup.data) {
+      await upsertProviderPersonaForUser(applicantLookup.data, nextStatus === 'approved' ? 'active' : 'pending', {
+        bio: data.bio,
+        displayName: data.business_name || applicantLookup.data.name || 'Provider',
+        settings: {
+          applicationStatus: nextStatus,
+          serviceCategories: data.service_categories,
+          serviceArea: data.service_area,
+          payoutReady: data.payout_ready,
+          onboardingProgress: data.onboarding_progress
+        },
+        verification: {
+          level: nextStatus === 'approved' ? 'verified' : 'pending'
+        }
+      });
+
+      await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: applicantLookup.data.id,
+          about: data.bio || null,
+          business_name: data.business_name || null,
+          business_description: data.business_type || null,
+          is_provider: nextStatus === 'approved'
+        }, { onConflict: 'user_id' })
+        .throwOnError();
+    }
+
+    const [enrichedApplication] = await enrichProviderApplicationsWithUserRows([data]);
+
+    await mirrorWorkCollectionRecord('work_provider_applications', data.id, enrichedApplication);
+    await writeAuditLog({
+      actorUserId: userContext.user.id,
+      action: 'provider_application_status_updated',
+      entityType: 'work_provider_application',
+      entityId: data.id,
+      details: { status: data.status }
+    });
+
+    return res.json({ data: enrichedApplication });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to update provider application.' });
+  }
+});
+
 app.post('/work/requests', requireAuth, async (req, res) => {
   try {
     const context = await getUserContext(req);
@@ -4173,12 +4890,14 @@ app.post('/work/requests', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'title and brief are required' });
     }
 
+    const listingId = body.listingId || body.listing_id || null;
+    const requestType = normalizeWorkRequestType(body.requestType || body.request_type || body?.details?.requestType, 'quote');
     let targetProviderId = body.targetProviderId || body.target_provider_id || null;
-    if (!targetProviderId && body.listingId) {
+    if (!targetProviderId && listingId) {
       const listingLookup = await supabase
         .from('work_listings')
         .select('seller_id')
-        .eq('id', body.listingId)
+        .eq('id', listingId)
         .maybeSingle();
       if (listingLookup.error) throw listingLookup.error;
       targetProviderId = listingLookup.data?.seller_id || null;
@@ -4194,7 +4913,7 @@ app.post('/work/requests', requireAuth, async (req, res) => {
       },
       title,
       brief,
-      listing_id: body.listingId || body.listing_id || null,
+      listing_id: listingId,
       target_provider_id: targetProviderId,
       category: toNullableText(body.category) || 'general',
       mode: normalizeWorkMode(body.mode, 'hybrid'),
@@ -4206,8 +4925,11 @@ app.post('/work/requests', requireAuth, async (req, res) => {
       location: normalizeJsonObject(body.location),
       requirements: Array.isArray(body.requirements) ? body.requirements : [],
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      request_type: requestType,
+      details: normalizeJsonObject(body.details),
       risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, 0),
-      status: normalizeWorkRequestStatus(body.status, 'open')
+      status: normalizeWorkRequestStatus(body.status, 'open'),
+      scheduled_at: body.scheduledAt || body.scheduled_at || null
     };
 
     const { data, error } = await supabase
@@ -4217,15 +4939,7 @@ app.post('/work/requests', requireAuth, async (req, res) => {
       .maybeSingle();
     if (error) throw error;
 
-    await supabase.from('mirror_documents').upsert({
-      collection: 'work_requests',
-      doc_id: data.id,
-      data,
-      updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'collection,doc_id',
-      ignoreDuplicates: false
-    });
+    await mirrorWorkCollectionRecord('work_requests', data.id, data);
 
     await writeAuditLog({
       actorUserId: context.user.id,
@@ -4280,6 +4994,500 @@ app.get('/work/requests', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/work/bookings', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const listingId = body.listingId || body.listing_id;
+    if (!listingId) {
+      return res.status(400).json({ error: 'listingId is required' });
+    }
+
+    const listingLookup = await supabase
+      .from('work_listings')
+      .select('*')
+      .eq('id', listingId)
+      .maybeSingle();
+    if (listingLookup.error) throw listingLookup.error;
+    const listing = listingLookup.data;
+    if (!listing) return res.status(404).json({ error: 'Work listing not found' });
+
+    const packages = Array.isArray(listing.packages) ? listing.packages : [];
+    const packageId = body.packageId || body.package_id || null;
+    const selectedPackage = packages.find((entry) => String(entry?.id || '') === String(packageId || '')) || packages[0] || null;
+    const amount = parsePositiveNumber(
+      body.amount ?? body.totalAmount ?? body.total_amount ?? selectedPackage?.price ?? listing.base_price,
+      0
+    );
+    if (amount <= 0) {
+      return res.status(400).json({ error: 'A positive booking amount is required.' });
+    }
+
+    const scheduledAt = body.scheduledAt || body.scheduled_at || null;
+    const timezone = toNullableText(body.timezone) || listing.timezone || 'UTC';
+    const currency = normalizeCurrencyCode(body.currency, listing.currency || 'USD');
+    const brief = toNullableText(body.brief) || toNullableText(body.description) || toNullableText(body.notes) || `Booking for ${listing.title}`;
+    const requestDetails = {
+      ...normalizeJsonObject(body.details),
+      requestType: 'booking',
+      packageId: selectedPackage?.id || packageId || null,
+      packageName: selectedPackage?.name || null,
+      packageType: selectedPackage?.type || null,
+      desiredDate: body.desiredDate || null,
+      desiredTime: body.desiredTime || null,
+      schedulingNotes: toNullableText(body.notes),
+      serviceAddress: normalizeJsonObject(body.serviceAddress || body.service_address)
+    };
+
+    const requestInsert = await supabase
+      .from('work_requests')
+      .insert({
+        requester_id: context.user.id,
+        requester_persona_id: body.requesterPersonaId || body.requester_persona_id || null,
+        requester_snapshot: {
+          id: context.user.id,
+          name: context.user.name || 'Client',
+          avatar: context.user.avatar_url || '/icons/urbanprime.svg'
+        },
+        title: toNullableText(body.title) || `${listing.title} booking`,
+        brief,
+        listing_id: listing.id,
+        target_provider_id: listing.seller_id,
+        category: listing.category || 'general',
+        mode: normalizeWorkMode(listing.mode, 'hybrid'),
+        fulfillment_kind: normalizeFulfillmentKind(listing.fulfillment_kind, 'hybrid'),
+        budget_min: amount,
+        budget_max: amount,
+        currency,
+        timezone,
+        location: normalizeJsonObject(body.location || body.serviceAddress || body.service_address),
+        requirements: Array.isArray(body.requirements) ? body.requirements : [],
+        attachments: Array.isArray(body.attachments) ? body.attachments : [],
+        request_type: 'booking',
+        details: requestDetails,
+        risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, listing.risk_score || 0),
+        status: 'open',
+        scheduled_at: scheduledAt
+      })
+      .select('*')
+      .maybeSingle();
+    if (requestInsert.error) throw requestInsert.error;
+
+    const engagementInsert = await supabase
+      .from('work_engagements')
+      .insert({
+        source_type: 'booking',
+        source_id: 'pending',
+        mode: normalizeWorkMode(listing.mode, 'hybrid'),
+        fulfillment_kind: normalizeFulfillmentKind(listing.fulfillment_kind, 'hybrid'),
+        buyer_id: context.user.id,
+        buyer_persona_id: body.requesterPersonaId || body.requester_persona_id || null,
+        provider_id: listing.seller_id,
+        provider_persona_id: listing.seller_persona_id || null,
+        currency,
+        timezone,
+        gross_amount: amount,
+        escrow_status: 'none',
+        risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, listing.risk_score || 0),
+        status: 'created',
+        metadata: {
+          listingId: listing.id,
+          requestId: requestInsert.data.id,
+          packageId: selectedPackage?.id || null
+        }
+      })
+      .select('*')
+      .maybeSingle();
+    if (engagementInsert.error) throw engagementInsert.error;
+
+    const contractInsert = await supabase
+      .from('work_contracts')
+      .insert({
+        request_id: requestInsert.data.id,
+        listing_id: listing.id,
+        engagement_id: engagementInsert.data.id,
+        client_id: context.user.id,
+        client_persona_id: body.requesterPersonaId || body.requester_persona_id || null,
+        client_snapshot: {
+          id: context.user.id,
+          name: context.user.name || 'Client',
+          avatar: context.user.avatar_url || '/icons/urbanprime.svg'
+        },
+        provider_id: listing.seller_id,
+        provider_persona_id: listing.seller_persona_id || null,
+        provider_snapshot: normalizeJsonObject(listing.provider_snapshot),
+        scope: brief,
+        mode: normalizeWorkMode(listing.mode, 'hybrid'),
+        fulfillment_kind: normalizeFulfillmentKind(listing.fulfillment_kind, 'hybrid'),
+        currency,
+        timezone,
+        total_amount: amount,
+        escrow_held: 0,
+        risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, listing.risk_score || 0),
+        status: 'pending',
+        terms: normalizeJsonObject(body.terms),
+        start_at: scheduledAt,
+        due_at: scheduledAt
+      })
+      .select('*')
+      .maybeSingle();
+    if (contractInsert.error) throw contractInsert.error;
+
+    await supabase
+      .from('work_engagements')
+      .update({
+        source_id: contractInsert.data.id,
+        escrow_status: 'held',
+        status: 'active',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', engagementInsert.data.id);
+
+    const escrowInsert = await supabase
+      .from('work_escrow_ledger')
+      .insert({
+        engagement_id: engagementInsert.data.id,
+        contract_id: contractInsert.data.id,
+        payer_id: context.user.id,
+        payee_id: listing.seller_id,
+        action: 'hold',
+        amount,
+        currency,
+        status: 'succeeded',
+        metadata: {
+          listingId: listing.id,
+          requestId: requestInsert.data.id,
+          packageId: selectedPackage?.id || null
+        }
+      })
+      .select('*')
+      .maybeSingle();
+    if (escrowInsert.error) throw escrowInsert.error;
+
+    await supabase
+      .from('work_contracts')
+      .update({
+        escrow_held: amount,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', contractInsert.data.id);
+
+    await mirrorWorkCollectionRecord('work_requests', requestInsert.data.id, requestInsert.data);
+    await mirrorWorkCollectionRecord('work_contracts', contractInsert.data.id, {
+      ...contractInsert.data,
+      escrow_held: amount
+    });
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_booking_created',
+      entityType: 'work_contract',
+      entityId: contractInsert.data.id,
+      details: {
+        requestId: requestInsert.data.id,
+        listingId: listing.id,
+        amount
+      }
+    });
+
+    return res.status(201).json({
+      data: {
+        request: requestInsert.data,
+        engagement: { ...engagementInsert.data, source_id: contractInsert.data.id, escrow_status: 'held', status: 'active' },
+        contract: { ...contractInsert.data, escrow_held: amount },
+        escrow: escrowInsert.data
+      }
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to create booking workflow.' });
+  }
+});
+
+app.post('/work/requests/:id/accept', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const requestLookup = await supabase
+      .from('work_requests')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (requestLookup.error) throw requestLookup.error;
+    const requestRow = requestLookup.data;
+    if (!requestRow) return res.status(404).json({ error: 'Work request not found' });
+    if (String(requestRow.target_provider_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to accept this request.' });
+    }
+
+    const acceptedAt = new Date().toISOString();
+    const requestUpdate = await supabase
+      .from('work_requests')
+      .update({
+        status: 'matched',
+        accepted_at: acceptedAt,
+        updated_at: acceptedAt
+      })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (requestUpdate.error) throw requestUpdate.error;
+
+    let contract = null;
+    const contractLookup = await supabase
+      .from('work_contracts')
+      .select('*')
+      .eq('request_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (contractLookup.error) throw contractLookup.error;
+
+    if (contractLookup.data) {
+      const contractUpdate = await supabase
+        .from('work_contracts')
+        .update({
+          status: 'active',
+          start_at: contractLookup.data.start_at || acceptedAt,
+          updated_at: acceptedAt
+        })
+        .eq('id', contractLookup.data.id)
+        .select('*')
+        .maybeSingle();
+      if (contractUpdate.error) throw contractUpdate.error;
+      contract = contractUpdate.data;
+
+      if (contract.engagement_id) {
+        await supabase
+          .from('work_engagements')
+          .update({
+            status: 'active',
+            updated_at: acceptedAt
+          })
+          .eq('id', contract.engagement_id);
+      }
+    } else {
+      const listingLookup = requestRow.listing_id
+        ? await supabase.from('work_listings').select('*').eq('id', requestRow.listing_id).maybeSingle()
+        : { data: null, error: null };
+      if (listingLookup.error) throw listingLookup.error;
+      const listing = listingLookup.data || null;
+
+      const engagementInsert = await supabase
+        .from('work_engagements')
+        .insert({
+          source_type: requestRow.request_type === 'booking' ? 'booking' : 'service_request',
+          source_id: 'pending',
+          mode: requestRow.mode || 'hybrid',
+          fulfillment_kind: requestRow.fulfillment_kind || 'hybrid',
+          buyer_id: requestRow.requester_id,
+          buyer_persona_id: requestRow.requester_persona_id || null,
+          provider_id: requestRow.target_provider_id,
+          provider_persona_id: listing?.seller_persona_id || null,
+          currency: requestRow.currency || 'USD',
+          timezone: requestRow.timezone || 'UTC',
+          gross_amount: Number(requestRow.budget_max || requestRow.budget_min || 0),
+          escrow_status: 'none',
+          risk_score: Number(requestRow.risk_score || 0),
+          status: 'active',
+          metadata: {
+            requestId: requestRow.id,
+            listingId: requestRow.listing_id || null
+          }
+        })
+        .select('*')
+        .maybeSingle();
+      if (engagementInsert.error) throw engagementInsert.error;
+
+      const providerLookup = await supabase
+        .from('users')
+        .select('id,name,avatar_url')
+        .eq('id', requestRow.target_provider_id)
+        .maybeSingle();
+      if (providerLookup.error) throw providerLookup.error;
+
+      const contractInsert = await supabase
+        .from('work_contracts')
+        .insert({
+          request_id: requestRow.id,
+          listing_id: requestRow.listing_id || null,
+          engagement_id: engagementInsert.data.id,
+          client_id: requestRow.requester_id,
+          client_persona_id: requestRow.requester_persona_id || null,
+          client_snapshot: normalizeJsonObject(requestRow.requester_snapshot),
+          provider_id: requestRow.target_provider_id,
+          provider_persona_id: listing?.seller_persona_id || null,
+          provider_snapshot: providerLookup.data ? {
+            id: providerLookup.data.id,
+            name: providerLookup.data.name || 'Provider',
+            avatar: providerLookup.data.avatar_url || '/icons/urbanprime.svg'
+          } : {},
+          scope: requestRow.brief || requestRow.title || 'Service request',
+          mode: requestRow.mode || 'hybrid',
+          fulfillment_kind: requestRow.fulfillment_kind || 'hybrid',
+          currency: requestRow.currency || 'USD',
+          timezone: requestRow.timezone || 'UTC',
+          total_amount: Number(requestRow.budget_max || requestRow.budget_min || 0),
+          escrow_held: 0,
+          risk_score: Number(requestRow.risk_score || 0),
+          status: 'active',
+          terms: {},
+          start_at: acceptedAt,
+          due_at: requestRow.scheduled_at || null
+        })
+        .select('*')
+        .maybeSingle();
+      if (contractInsert.error) throw contractInsert.error;
+
+      await supabase
+        .from('work_engagements')
+        .update({
+          source_id: contractInsert.data.id,
+          updated_at: acceptedAt
+        })
+        .eq('id', engagementInsert.data.id);
+
+      contract = contractInsert.data;
+    }
+
+    await mirrorWorkCollectionRecord('work_requests', requestUpdate.data.id, requestUpdate.data);
+    if (contract?.id) {
+      await mirrorWorkCollectionRecord('work_contracts', contract.id, contract);
+    }
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_request_accepted',
+      entityType: 'work_request',
+      entityId: id,
+      details: { contractId: contract?.id || null }
+    });
+
+    return res.json({ data: { request: requestUpdate.data, contract } });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to accept work request.' });
+  }
+});
+
+app.post('/work/requests/:id/decline', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const requestLookup = await supabase
+      .from('work_requests')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (requestLookup.error) throw requestLookup.error;
+    const requestRow = requestLookup.data;
+    if (!requestRow) return res.status(404).json({ error: 'Work request not found' });
+    if (String(requestRow.target_provider_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to decline this request.' });
+    }
+
+    const body = normalizeJsonObject(req.body);
+    const declinedAt = new Date().toISOString();
+    const requestUpdate = await supabase
+      .from('work_requests')
+      .update({
+        status: 'cancelled',
+        declined_at: declinedAt,
+        updated_at: declinedAt,
+        details: {
+          ...normalizeJsonObject(requestRow.details),
+          declineReason: toNullableText(body.reason)
+        }
+      })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (requestUpdate.error) throw requestUpdate.error;
+
+    const contractLookup = await supabase
+      .from('work_contracts')
+      .select('*')
+      .eq('request_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (contractLookup.error) throw contractLookup.error;
+
+    let contract = contractLookup.data || null;
+    if (contract?.id) {
+      await supabase
+        .from('work_contracts')
+        .update({
+          status: 'cancelled',
+          updated_at: declinedAt
+        })
+        .eq('id', contract.id);
+
+      if (contract.engagement_id) {
+        const heldAmount = parsePositiveNumber(contract.escrow_held, 0);
+        if (heldAmount > 0) {
+          await supabase.from('work_escrow_ledger').insert({
+            engagement_id: contract.engagement_id,
+            contract_id: contract.id,
+            payer_id: contract.provider_id || context.user.id,
+            payee_id: contract.client_id || null,
+            action: 'refund',
+            amount: heldAmount,
+            currency: contract.currency || 'USD',
+            status: 'succeeded',
+            metadata: {
+              reason: toNullableText(body.reason) || 'Provider declined request'
+            }
+          });
+        }
+
+        await supabase
+          .from('work_engagements')
+          .update({
+            escrow_status: heldAmount > 0 ? 'refunded' : 'none',
+            status: 'cancelled',
+            updated_at: declinedAt
+          })
+          .eq('id', contract.engagement_id);
+      }
+
+      contract = {
+        ...contract,
+        status: 'cancelled',
+        escrow_held: 0,
+        updated_at: declinedAt
+      };
+    }
+
+    await mirrorWorkCollectionRecord('work_requests', requestUpdate.data.id, requestUpdate.data);
+    if (contract?.id) {
+      await mirrorWorkCollectionRecord('work_contracts', contract.id, contract);
+    }
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_request_declined',
+      entityType: 'work_request',
+      entityId: id,
+      details: { reason: toNullableText(body.reason) }
+    });
+
+    return res.json({ data: { request: requestUpdate.data, contract } });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to decline work request.' });
+  }
+});
+
 app.post('/work/proposals', requireAuth, async (req, res) => {
   try {
     const context = await getUserContext(req);
@@ -4324,6 +5532,8 @@ app.post('/work/proposals', requireAuth, async (req, res) => {
       .select('*')
       .maybeSingle();
     if (error) throw error;
+
+    await mirrorWorkCollectionRecord('work_proposals', data.id, data);
 
     await writeAuditLog({
       actorUserId: context.user.id,
@@ -4376,6 +5586,8 @@ app.patch('/work/proposals/:id', requireAuth, async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Proposal not found' });
 
+    await mirrorWorkCollectionRecord('work_proposals', data.id, data);
+
     await writeAuditLog({
       actorUserId: req.user?.uid ? (await resolveSupabaseUserId(req.user.uid)) : null,
       action: 'work_proposal_updated',
@@ -4387,6 +5599,245 @@ app.patch('/work/proposals/:id', requireAuth, async (req, res) => {
     return res.json({ data });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to update proposal.' });
+  }
+});
+
+app.post('/work/proposals/:id/accept', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const proposalLookup = await supabase
+      .from('work_proposals')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (proposalLookup.error) throw proposalLookup.error;
+    const proposal = proposalLookup.data;
+    if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
+    if (String(proposal.client_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to accept this proposal.' });
+    }
+
+    const now = new Date().toISOString();
+    const proposalUpdate = await supabase
+      .from('work_proposals')
+      .update({
+        status: 'accepted',
+        responded_at: now,
+        updated_at: now
+      })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (proposalUpdate.error) throw proposalUpdate.error;
+
+    let contractLookup = await supabase
+      .from('work_contracts')
+      .select('*')
+      .eq('proposal_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (contractLookup.error) throw contractLookup.error;
+
+    let contract = contractLookup.data || null;
+    if (!contract) {
+      const engagementInsert = await supabase
+        .from('work_engagements')
+        .insert({
+          source_type: 'contract',
+          source_id: 'pending',
+          mode: proposal.mode || 'hybrid',
+          fulfillment_kind: proposal.fulfillment_kind || 'hybrid',
+          buyer_id: proposal.client_id,
+          buyer_persona_id: proposal.client_persona_id || null,
+          provider_id: proposal.provider_id,
+          provider_persona_id: proposal.provider_persona_id || null,
+          currency: proposal.currency || 'USD',
+          timezone: 'UTC',
+          gross_amount: Number(proposal.price_total || 0),
+          escrow_status: 'none',
+          risk_score: Number(proposal.risk_score || 0),
+          status: 'active',
+          metadata: {
+            proposalId: proposal.id,
+            requestId: proposal.request_id || null,
+            listingId: proposal.listing_id || null
+          }
+        })
+        .select('*')
+        .maybeSingle();
+      if (engagementInsert.error) throw engagementInsert.error;
+
+      const contractInsert = await supabase
+        .from('work_contracts')
+        .insert({
+          proposal_id: proposal.id,
+          request_id: proposal.request_id || null,
+          listing_id: proposal.listing_id || null,
+          engagement_id: engagementInsert.data.id,
+          client_id: proposal.client_id,
+          client_persona_id: proposal.client_persona_id || null,
+          client_snapshot: normalizeJsonObject(proposal.client_snapshot),
+          provider_id: proposal.provider_id,
+          provider_persona_id: proposal.provider_persona_id || null,
+          provider_snapshot: normalizeJsonObject(proposal.provider_snapshot),
+          scope: toNullableText(proposal.cover_letter) || toNullableText(proposal.title) || 'Accepted proposal',
+          mode: normalizeWorkMode(proposal.mode, 'hybrid'),
+          fulfillment_kind: normalizeFulfillmentKind(proposal.fulfillment_kind, 'hybrid'),
+          currency: normalizeCurrencyCode(proposal.currency, 'USD'),
+          timezone: 'UTC',
+          total_amount: Number(proposal.price_total || 0),
+          escrow_held: 0,
+          risk_score: Number(proposal.risk_score || 0),
+          status: 'active',
+          terms: normalizeJsonObject(proposal.terms),
+          due_at: proposal.delivery_days ? new Date(Date.now() + Number(proposal.delivery_days || 0) * 86400000).toISOString() : null
+        })
+        .select('*')
+        .maybeSingle();
+      if (contractInsert.error) throw contractInsert.error;
+
+      await supabase
+        .from('work_engagements')
+        .update({
+          source_id: contractInsert.data.id,
+          updated_at: now
+        })
+        .eq('id', engagementInsert.data.id);
+
+      contract = contractInsert.data;
+    }
+
+    const heldAmount = parsePositiveNumber(contract.escrow_held, 0);
+    const amountToHold = heldAmount > 0 ? 0 : parsePositiveNumber(proposal.price_total, 0);
+    if (contract.engagement_id && amountToHold > 0) {
+      const escrowInsert = await supabase
+        .from('work_escrow_ledger')
+        .insert({
+          engagement_id: contract.engagement_id,
+          contract_id: contract.id,
+          payer_id: proposal.client_id,
+          payee_id: proposal.provider_id,
+          action: 'hold',
+          amount: amountToHold,
+          currency: proposal.currency || 'USD',
+          status: 'succeeded',
+          metadata: {
+            proposalId: proposal.id
+          }
+        })
+        .select('*')
+        .maybeSingle();
+      if (escrowInsert.error) throw escrowInsert.error;
+
+      const contractUpdate = await supabase
+        .from('work_contracts')
+        .update({
+          status: 'active',
+          escrow_held: amountToHold,
+          updated_at: now
+        })
+        .eq('id', contract.id)
+        .select('*')
+        .maybeSingle();
+      if (contractUpdate.error) throw contractUpdate.error;
+      contract = contractUpdate.data;
+
+      await supabase
+        .from('work_engagements')
+        .update({
+          escrow_status: 'held',
+          status: 'active',
+          updated_at: now
+        })
+        .eq('id', contract.engagement_id);
+    }
+
+    if (proposal.request_id) {
+      await supabase
+        .from('work_requests')
+        .update({
+          status: 'matched',
+          accepted_at: now,
+          updated_at: now
+        })
+        .eq('id', proposal.request_id);
+    }
+
+    await mirrorWorkCollectionRecord('work_proposals', proposalUpdate.data.id, proposalUpdate.data);
+    if (contract?.id) {
+      await mirrorWorkCollectionRecord('work_contracts', contract.id, contract);
+    }
+
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_proposal_accepted',
+      entityType: 'work_proposal',
+      entityId: id,
+      details: { contractId: contract?.id || null }
+    });
+
+    return res.json({ data: { proposal: proposalUpdate.data, contract } });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to accept proposal.' });
+  }
+});
+
+app.post('/work/proposals/:id/decline', requireAuth, async (req, res) => {
+  try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const proposalLookup = await supabase
+      .from('work_proposals')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (proposalLookup.error) throw proposalLookup.error;
+    const proposal = proposalLookup.data;
+    if (!proposal) return res.status(404).json({ error: 'Proposal not found' });
+    if (String(proposal.client_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to decline this proposal.' });
+    }
+
+    const now = new Date().toISOString();
+    const body = normalizeJsonObject(req.body);
+    const { data, error } = await supabase
+      .from('work_proposals')
+      .update({
+        status: 'declined',
+        responded_at: now,
+        terms: {
+          ...normalizeJsonObject(proposal.terms),
+          declineReason: toNullableText(body.reason)
+        },
+        updated_at: now
+      })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    await mirrorWorkCollectionRecord('work_proposals', data.id, data);
+    await writeAuditLog({
+      actorUserId: context.user.id,
+      action: 'work_proposal_declined',
+      entityType: 'work_proposal',
+      entityId: id,
+      details: { reason: toNullableText(body.reason) }
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to decline proposal.' });
   }
 });
 
@@ -4486,6 +5937,8 @@ app.post('/work/contracts', requireAuth, async (req, res) => {
       .maybeSingle();
     if (contractInsert.error) throw contractInsert.error;
 
+    await mirrorWorkCollectionRecord('work_contracts', contractInsert.data.id, contractInsert.data);
+
     await supabase
       .from('work_engagements')
       .update({
@@ -4555,6 +6008,8 @@ app.patch('/work/contracts/:id', requireAuth, async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Contract not found' });
 
+    await mirrorWorkCollectionRecord('work_contracts', data.id, data);
+
     if (data.engagement_id) {
       const nextEngagementStatus = data.status === 'completed'
         ? 'completed'
@@ -4585,6 +6040,181 @@ app.patch('/work/contracts/:id', requireAuth, async (req, res) => {
     return res.json({ data });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to update contract.' });
+  }
+});
+
+app.post('/work/contracts/:id/complete', requireAuth, async (req, res) => {
+  try {
+    const adminContext = await resolveAdminContext(req);
+    const isAdmin = !adminContext.error;
+    const userContext = isAdmin ? adminContext : await getUserContext(req);
+    if (userContext.error) {
+      return res.status(400).json({ error: userContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const contractLookup = await supabase
+      .from('work_contracts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (contractLookup.error) throw contractLookup.error;
+    const contract = contractLookup.data;
+    if (!contract) return res.status(404).json({ error: 'Contract not found' });
+
+    const isParticipant = [contract.client_id, contract.provider_id].some((entry) => String(entry || '') === String(userContext.user.id || ''));
+    if (!isParticipant && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have access to complete this contract.' });
+    }
+
+    const now = new Date().toISOString();
+    let nextEscrow = parsePositiveNumber(contract.escrow_held, 0);
+    const shouldReleaseEscrow = Boolean(body.releaseEscrow ?? body.release_escrow);
+    const releaseAmount = shouldReleaseEscrow
+      ? Math.min(nextEscrow, parsePositiveNumber(body.amount ?? body.releaseAmount ?? body.release_amount, nextEscrow))
+      : 0;
+
+    if (contract.engagement_id && releaseAmount > 0) {
+      const releaseInsert = await supabase
+        .from('work_escrow_ledger')
+        .insert({
+          engagement_id: contract.engagement_id,
+          contract_id: contract.id,
+          payer_id: contract.client_id,
+          payee_id: contract.provider_id,
+          action: 'release',
+          amount: releaseAmount,
+          currency: contract.currency || 'USD',
+          status: 'succeeded',
+          metadata: normalizeJsonObject(body.metadata)
+        })
+        .select('*')
+        .maybeSingle();
+      if (releaseInsert.error) throw releaseInsert.error;
+      nextEscrow = Math.max(0, nextEscrow - releaseAmount);
+    }
+
+    const updates = {
+      status: 'completed',
+      completed_at: now,
+      escrow_held: nextEscrow,
+      updated_at: now
+    };
+    const { data, error } = await supabase
+      .from('work_contracts')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+
+    if (contract.engagement_id) {
+      await supabase
+        .from('work_engagements')
+        .update({
+          escrow_status: nextEscrow > 0 ? 'partial' : releaseAmount > 0 ? 'released' : contract.escrow_held > 0 ? 'held' : 'none',
+          status: 'completed',
+          updated_at: now
+        })
+        .eq('id', contract.engagement_id);
+    }
+
+    await mirrorWorkCollectionRecord('work_contracts', data.id, data);
+    await writeAuditLog({
+      actorUserId: userContext.user.id,
+      action: 'work_contract_completed',
+      entityType: 'work_contract',
+      entityId: id,
+      details: {
+        releaseAmount
+      }
+    });
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to complete contract.' });
+  }
+});
+
+app.post('/work/contracts/:id/dispute', requireAuth, async (req, res) => {
+  try {
+    const adminContext = await resolveAdminContext(req);
+    const isAdmin = !adminContext.error;
+    const userContext = isAdmin ? adminContext : await getUserContext(req);
+    if (userContext.error) {
+      return res.status(400).json({ error: userContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const { id } = req.params;
+    const body = normalizeJsonObject(req.body);
+    const contractLookup = await supabase
+      .from('work_contracts')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (contractLookup.error) throw contractLookup.error;
+    const contract = contractLookup.data;
+    if (!contract) return res.status(404).json({ error: 'Contract not found' });
+
+    const isParticipant = [contract.client_id, contract.provider_id].some((entry) => String(entry || '') === String(userContext.user.id || ''));
+    if (!isParticipant && !isAdmin) {
+      return res.status(403).json({ error: 'You do not have access to dispute this contract.' });
+    }
+
+    const reason = toNullableText(body.reason);
+    if (!reason) {
+      return res.status(400).json({ error: 'reason is required' });
+    }
+
+    const now = new Date().toISOString();
+    const disputeInsert = await supabase
+      .from('work_disputes')
+      .insert({
+        engagement_id: contract.engagement_id,
+        contract_id: contract.id,
+        opened_by: userContext.user.id,
+        against_user_id: String(contract.client_id || '') === String(userContext.user.id || '') ? contract.provider_id : contract.client_id,
+        reason,
+        summary: toNullableText(body.summary),
+        evidence: Array.isArray(body.evidence) ? body.evidence : [],
+        ai_summary: null,
+        status: 'open',
+        resolution: {}
+      })
+      .select('*')
+      .maybeSingle();
+    if (disputeInsert.error) throw disputeInsert.error;
+
+    await supabase
+      .from('work_contracts')
+      .update({
+        status: 'disputed',
+        updated_at: now
+      })
+      .eq('id', id);
+
+    if (contract.engagement_id) {
+      await supabase
+        .from('work_engagements')
+        .update({
+          status: 'disputed',
+          updated_at: now
+        })
+        .eq('id', contract.engagement_id);
+    }
+
+    await writeAuditLog({
+      actorUserId: userContext.user.id,
+      action: 'work_contract_disputed',
+      entityType: 'work_contract',
+      entityId: id,
+      details: { disputeId: disputeInsert.data.id, reason }
+    });
+
+    return res.status(201).json({ data: disputeInsert.data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to dispute contract.' });
   }
 });
 
@@ -4912,6 +6542,95 @@ app.post('/work/escrow/refund', requireAuth, async (req, res) => {
     return res.status(201).json({ data: insert.data });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to refund escrow.' });
+  }
+});
+
+app.get('/work/provider/summary', requireAuth, async (req, res) => {
+  try {
+    const adminContext = await resolveAdminContext(req);
+    const isAdmin = !adminContext.error;
+    const userContext = isAdmin ? adminContext : await getUserContext(req);
+    if (userContext.error) {
+      return res.status(400).json({ error: userContext.error.message || 'Unable to resolve user context.' });
+    }
+
+    const providerId = isAdmin && req.query.providerId ? req.query.providerId : userContext.user.id;
+    const [contractsRes, requestsRes, proposalsRes, listingsRes, applicationsRes, ledgerRes] = await Promise.all([
+      supabase.from('work_contracts').select('*').eq('provider_id', providerId),
+      supabase.from('work_requests').select('*').eq('target_provider_id', providerId),
+      supabase.from('work_proposals').select('*').eq('provider_id', providerId),
+      supabase.from('work_listings').select('*').eq('seller_id', providerId),
+      supabase.from('work_provider_applications').select('*').eq('user_id', providerId).limit(1),
+      supabase.from('work_escrow_ledger').select('*').eq('payee_id', providerId)
+    ]);
+
+    if (contractsRes.error) throw contractsRes.error;
+    if (requestsRes.error) throw requestsRes.error;
+    if (proposalsRes.error) throw proposalsRes.error;
+    if (listingsRes.error) throw listingsRes.error;
+    if (applicationsRes.error) throw applicationsRes.error;
+    if (ledgerRes.error) throw ledgerRes.error;
+
+    const contracts = contractsRes.data || [];
+    const requests = requestsRes.data || [];
+    const proposals = proposalsRes.data || [];
+    const listings = listingsRes.data || [];
+    const applications = applicationsRes.data || [];
+    const ledger = ledgerRes.data || [];
+    const completedContracts = contracts.filter((entry) => entry.status === 'completed');
+    const activeContracts = contracts.filter((entry) => ['pending', 'active', 'disputed'].includes(String(entry.status || '')));
+    const nextBooking = activeContracts
+      .map((entry) => entry.start_at || entry.due_at || entry.created_at)
+      .filter(Boolean)
+      .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())[0];
+
+    const held = contracts.reduce((sum, entry) => sum + parsePositiveNumber(entry.escrow_held, 0), 0);
+    const released = ledger
+      .filter((entry) => String(entry.action || '') === 'release')
+      .reduce((sum, entry) => sum + parsePositiveNumber(entry.amount, 0), 0);
+    const refunded = ledger
+      .filter((entry) => String(entry.action || '') === 'refund')
+      .reduce((sum, entry) => sum + parsePositiveNumber(entry.amount, 0), 0);
+    const totalEarned = completedContracts.reduce((sum, entry) => sum + parsePositiveNumber(entry.total_amount, 0), 0);
+
+    const data = {
+      stats: {
+        earnings: totalEarned,
+        activeJobs: activeContracts.length,
+        jobsCompleted: completedContracts.length,
+        averageRating: Number(Math.max(3.5, 5 - Math.min((contracts.length ? contracts.reduce((sum, entry) => sum + parsePositiveNumber(entry.risk_score, 0), 0) / contracts.length : 0) / 20, 1.2)).toFixed(2)),
+        responseRate: requests.length > 0
+          ? Number(((requests.filter((entry) => entry.status !== 'open').length / requests.length) * 100).toFixed(1))
+          : 100
+      },
+      queues: {
+        leads: requests.filter((entry) => entry.status === 'open').length,
+        proposals: proposals.filter((entry) => entry.status === 'pending').length,
+        activeContracts: activeContracts.length,
+        pendingListings: listings.filter((entry) => ['draft', 'pending_review', 'rejected'].includes(String(entry.status || ''))).length,
+        pendingApplication: applications.some((entry) => entry.status !== 'approved') ? 1 : 0
+      },
+      calendar: {
+        upcomingBookings: activeContracts.length,
+        nextBookingAt: nextBooking || null,
+        timezone: listings[0]?.timezone || requests[0]?.timezone || 'UTC'
+      },
+      escrow: {
+        held,
+        released,
+        refunded
+      },
+      payouts: {
+        available: totalEarned,
+        processing: 0,
+        pendingRequests: 0,
+        totalPaidOut: released
+      }
+    };
+
+    return res.json({ data });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to load provider summary.' });
   }
 });
 
@@ -6666,6 +8385,31 @@ app.delete('/api/:table/:id', requireAuth, requireTable, async (req, res) => {
   return res.status(204).send();
 });
 
+const resolveUploadContext = async (req, requestedOwnerFirebaseUid = null) => {
+  const context = await getUserContext(req);
+  if (context?.error || !context?.user?.id) {
+    return { error: context?.error || new Error('Unable to resolve upload owner.') };
+  }
+
+  const requestedOwnerUid = hasText(requestedOwnerFirebaseUid)
+    ? String(requestedOwnerFirebaseUid).trim()
+    : null;
+  if (requestedOwnerUid && requestedOwnerUid !== context.firebaseUid) {
+    return { error: new Error('Cannot access uploads for another user.') };
+  }
+
+  return context;
+};
+
+const canAccessUploadedAsset = async (asset, context) => {
+  if (!asset || !context?.user?.id) return false;
+  if (String(asset.owner_user_id || '') === String(context.user.id || '')) return true;
+  if (asset.owner_persona_id) {
+    return userCanAccessPersona(asset.owner_persona_id, context.firebaseUid);
+  }
+  return false;
+};
+
 
 app.post('/uploads', requireAuth, async (req, res) => {
   const {
@@ -6702,11 +8446,18 @@ app.post('/uploads', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'File size must be between 1 byte and 15MB' });
   }
 
-  const firebaseUid = owner_firebase_uid || req.user?.uid;
-  const userId = await resolveUserIdFromFirebaseUid(firebaseUid);
-  if (!userId) {
-    return res.status(400).json({ error: 'Unable to resolve owner user id from firebase uid' });
+  const uploadContext = await resolveUploadContext(req, owner_firebase_uid);
+  if (uploadContext.error) {
+    return res.status(400).json({ error: uploadContext.error.message || 'Unable to resolve upload owner.' });
   }
+
+  if (owner_persona_id) {
+    const canAccessPersona = await userCanAccessPersona(owner_persona_id, uploadContext.firebaseUid);
+    if (!canAccessPersona) {
+      return res.status(403).json({ error: 'You do not have access to upload for this persona.' });
+    }
+  }
+  const userId = uploadContext.user.id;
 
   const safeType = sanitizeBaseName(asset_type || 'generic');
   const safeBase = sanitizeBaseName(fileName || 'asset');
@@ -6784,11 +8535,11 @@ app.post('/uploads', requireAuth, async (req, res) => {
 
 app.get('/uploads', requireAuth, async (req, res) => {
   const { owner_firebase_uid, asset_type, resource_id, limit = '100' } = req.query;
-  const ownerFirebaseUid = owner_firebase_uid || req.user?.uid;
-  const ownerUserId = await resolveUserIdFromFirebaseUid(ownerFirebaseUid);
-  if (!ownerUserId) {
-    return res.status(400).json({ error: 'Unable to resolve owner user id' });
+  const uploadContext = await resolveUploadContext(req, owner_firebase_uid);
+  if (uploadContext.error) {
+    return res.status(400).json({ error: uploadContext.error.message || 'Unable to resolve upload owner.' });
   }
+  const ownerUserId = uploadContext.user.id;
 
   const limitNum = Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 1000);
 
@@ -6815,6 +8566,11 @@ app.get('/uploads', requireAuth, async (req, res) => {
 });
 
 app.get('/uploads/:id', requireAuth, async (req, res) => {
+  const uploadContext = await resolveUploadContext(req);
+  if (uploadContext.error) {
+    return res.status(400).json({ error: uploadContext.error.message || 'Unable to resolve upload owner.' });
+  }
+
   const { id } = req.params;
   const { data, error } = await supabase.from('uploaded_assets').select('*').eq('id', id).maybeSingle();
   if (error) {
@@ -6822,11 +8578,19 @@ app.get('/uploads/:id', requireAuth, async (req, res) => {
   }
   if (!data) {
     return res.status(404).json({ error: 'Upload not found' });
+  }
+  if (!(await canAccessUploadedAsset(data, uploadContext))) {
+    return res.status(403).json({ error: 'You cannot access this upload.' });
   }
   return res.json({ data: { ...data, public_url: resolveUploadPublicUrl(data) } });
 });
 
 app.delete('/uploads/:id', requireAuth, async (req, res) => {
+  const uploadContext = await resolveUploadContext(req);
+  if (uploadContext.error) {
+    return res.status(400).json({ error: uploadContext.error.message || 'Unable to resolve upload owner.' });
+  }
+
   const { id } = req.params;
   const { data, error } = await supabase.from('uploaded_assets').select('*').eq('id', id).maybeSingle();
   if (error) {
@@ -6834,6 +8598,9 @@ app.delete('/uploads/:id', requireAuth, async (req, res) => {
   }
   if (!data) {
     return res.status(404).json({ error: 'Upload not found' });
+  }
+  if (!(await canAccessUploadedAsset(data, uploadContext))) {
+    return res.status(403).json({ error: 'You cannot delete this upload.' });
   }
 
   const fullPath = data.storage_driver === 'local_disk'

@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../hooks/useTranslation';
-import { itemService, listerService, userService } from '../../services/itemService';
-import type { Affiliate, AffiliateEarning, AffiliateLink, AffiliateCoupon, CreativeAsset, Item, AffiliateCampaign, ExternalProductSubmission, ContentReviewSubmission, AffiliateProfile } from '../../types';
+import { itemService, listerService } from '../../services/itemService';
+import type { Affiliate, AffiliateEarning, AffiliateLink, AffiliateCoupon, CreativeAsset, Item, AffiliateCampaign, ExternalProductSubmission, ContentReviewSubmission, AffiliateProfile, User } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useNotification } from '../../context/NotificationContext';
 import AffiliateOnboarding from '../../components/AffiliateOnboarding';
 import ItemCard from '../../components/ItemCard';
 import QuickViewModal from '../../components/QuickViewModal';
+import { useCategories } from '../../context/CategoryContext';
 
 // Icons
 const DollarSignIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
@@ -191,11 +192,100 @@ const TierProgress: React.FC<{ affiliate: Affiliate }> = ({ affiliate }) => {
     );
 };
 
+const GOAL_BLUEPRINTS: Record<AffiliateProfile['primaryGoal'], { title: string; description: string; focus: string; momentumLabel: string }> = {
+    income: {
+        title: 'Fastest path to earnings',
+        description: 'Your dashboard is optimized around high-intent links, payout visibility, and quick conversion actions.',
+        focus: 'Prioritize direct-response links, coupons, and payout-ready offers.',
+        momentumLabel: 'Income mode'
+    },
+    business: {
+        title: 'Build a repeatable affiliate business',
+        description: 'You are set up for channel growth, recurring campaigns, and deeper performance tracking instead of one-off shares.',
+        focus: 'Stack campaigns, refine your best channels, and grow lifetime commission value.',
+        momentumLabel: 'Business mode'
+    },
+    sharing: {
+        title: 'Share what you genuinely recommend',
+        description: 'This workspace is tuned for curated picks, easier sharing, and creator-friendly surfaces that feel natural to recommend.',
+        focus: 'Use curated products, lifestyle content, and clean links people can trust.',
+        momentumLabel: 'Creator mode'
+    },
+    exploring: {
+        title: 'Learn the system and get your first win',
+        description: 'The dashboard starts with guided actions so you can test the workflow before committing to a bigger strategy.',
+        focus: 'Launch one link, test one coupon, and watch the first tracked activity come in.',
+        momentumLabel: 'Starter mode'
+    }
+};
+
+const PROMOTION_PLAYBOOKS: Record<AffiliateProfile['promotionMethods'][number], { title: string; description: string; action: string }> = {
+    blog: {
+        title: 'Blog and website stack',
+        description: 'Lead with review-style links, evergreen category pages, and conversion-friendly deep links.',
+        action: 'Generate deep links for your top focus categories and place them in long-form content.'
+    },
+    social: {
+        title: 'Social commerce stack',
+        description: 'Use Spotlight, Pixe, short links, and shareable codes built for faster creator-led promotion.',
+        action: 'Start with Spotlight and Pixe starter links, then pair them with one clean coupon.'
+    },
+    email: {
+        title: 'Newsletter stack',
+        description: 'Promote a single offer clearly and give subscribers a simple code or direct link to act on.',
+        action: 'Use your starter coupon in one focused email and track which offer gets the best click-through.'
+    },
+    youtube: {
+        title: 'Video commerce stack',
+        description: 'Feature a few strong products, then push viewers into tracked links that match the content they just watched.',
+        action: 'Pair product demos with deep links and Spotlight placements in your descriptions and pinned comments.'
+    },
+    word_of_mouth: {
+        title: 'Referral-first stack',
+        description: 'Keep the experience simple: one memorable link, one easy code, and one clear reason to share.',
+        action: 'Share your main referral link and a simple coupon you can repeat in direct conversations.'
+    }
+};
+
+const PROMOTION_METHOD_LABELS: Record<AffiliateProfile['promotionMethods'][number], string> = {
+    blog: 'Blog or website',
+    social: 'Social media',
+    email: 'Email newsletters',
+    youtube: 'YouTube',
+    word_of_mouth: 'Word of mouth'
+};
+
+const SUPPORT_PLAYBOOKS: Record<AffiliateProfile['supportNeeded'][number], { title: string; description: string }> = {
+    assets: {
+        title: 'Creative-first support',
+        description: 'The asset library and starter links are highlighted so you can publish faster without designing from scratch.'
+    },
+    trends: {
+        title: 'Trend-first support',
+        description: 'Your trending products and category focus blocks are emphasized so you can react quickly to what is moving.'
+    },
+    analytics: {
+        title: 'Analytics-first support',
+        description: 'Performance, conversion history, and payout readiness stay at the center so you can iterate with data.'
+    },
+    guides: {
+        title: 'Guide-first support',
+        description: 'Your quick-start lane is structured as a playbook so you always know the next best action.'
+    }
+};
+
+const EXPERIENCE_LABELS: Record<AffiliateProfile['experienceLevel'], string> = {
+    beginner: 'Beginner',
+    intermediate: 'Intermediate',
+    pro: 'Pro'
+};
+
 
 const AffiliateProgramPage: React.FC = () => {
     const { user, ...auth } = useAuth();
     const { currency } = useTranslation();
     const { showNotification } = useNotification();
+    const { flatCategories } = useCategories();
 
     const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
     const [earnings, setEarnings] = useState<AffiliateEarning[]>([]);
@@ -210,46 +300,52 @@ const AffiliateProgramPage: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newLinkUrl, setNewLinkUrl] = useState('');
     const [newCoupon, setNewCoupon] = useState({ code: '', percentage: 10 });
+    const [selectedCouponStoreId, setSelectedCouponStoreId] = useState('');
     const [submission, setSubmission] = useState({ url: '', type: 'product' });
     const [isOnboarding, setIsOnboarding] = useState(false);
     const [campaigns, setCampaigns] = useState<AffiliateCampaign[]>([]);
 
-    const fetchData = useCallback(async () => {
-        if (!user || !user.isAffiliate) {
+    const fetchData = useCallback(async (targetUser: User | null = user) => {
+        if (!targetUser || !targetUser.isAffiliate) {
             setIsLoading(false);
             return;
         }
         
-        if (!user.affiliateOnboardingCompleted) {
+        if (!targetUser.affiliateOnboardingCompleted) {
             setIsOnboarding(true);
             setIsLoading(false);
             return;
         }
 
+        setIsOnboarding(false);
         setIsLoading(true);
         try {
-            const [affiliateData, linkData, couponData, assetData, leaderboardData, trendingData] = await Promise.all([
-                listerService.getAffiliateData(user.id),
-                listerService.getAffiliateLinks(user.id),
-                listerService.getAffiliateCoupons(user.id),
-                listerService.getCreativeAssets(),
-                listerService.getAffiliateLeaderboard(),
-                itemService.getTrendingItems(user.affiliateProfile?.interestedCategories || [])
+            const [dashboardResult, trendingResult] = await Promise.allSettled([
+                listerService.getAffiliateDashboard(targetUser.id),
+                itemService.getTrendingItems(targetUser.affiliateProfile?.interestedCategories || [])
             ]);
-            setAffiliate(affiliateData.affiliate);
-            setEarnings(affiliateData.earnings);
-            setLinks(linkData);
-            setCoupons(couponData);
-            setAssets(assetData);
-            setLeaderboard(leaderboardData);
-            setTrendingItems(trendingData);
-            setCampaigns([
-                { id: 'camp-1', title: 'Spring Drop', description: 'Highlight top verified listings', commissionRate: 0.12 },
-                { id: 'camp-2', title: 'Creator Week', description: 'Boost creator content + reels', commissionRate: 0.15 }
-            ]);
+
+            if (dashboardResult.status !== 'fulfilled') {
+                throw dashboardResult.reason;
+            }
+
+            setAffiliate(dashboardResult.value.affiliate);
+            setEarnings(dashboardResult.value.earnings);
+            setLinks(dashboardResult.value.links || []);
+            setCoupons(dashboardResult.value.coupons || []);
+            setAssets(dashboardResult.value.assets || []);
+            setLeaderboard(dashboardResult.value.leaderboard || []);
+            setCampaigns(dashboardResult.value.campaigns || []);
+
+            if (trendingResult.status === 'fulfilled') {
+                setTrendingItems(trendingResult.value);
+            } else {
+                console.warn('Affiliate trending items load failed:', trendingResult.reason);
+                setTrendingItems([]);
+            }
         } catch (error) {
             console.error(error);
-            showNotification("Failed to load affiliate data.");
+            showNotification(error instanceof Error ? error.message : "Failed to load affiliate data.");
         } finally {
             setIsLoading(false);
         }
@@ -262,26 +358,41 @@ const AffiliateProgramPage: React.FC = () => {
     const handleJoinProgram = async () => {
         if (!user) return;
         setIsLoading(true);
-        const updatedUser = await listerService.joinAffiliateProgram(user.id);
-        auth.updateUser(updatedUser);
-        await fetchData(); 
-        setIsLoading(false);
-    }
+        try {
+            const updatedUser = await listerService.joinAffiliateProgram(user.id);
+            auth.updateUser(updatedUser);
+            await fetchData(updatedUser);
+        } catch (error) {
+            console.error(error);
+            showNotification(error instanceof Error ? error.message : "Could not start affiliate onboarding.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
     
     const handleGenerateLink = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !newLinkUrl) return;
-        const newLink = await listerService.generateAffiliateLink(user.id, newLinkUrl);
-        setLinks(prev => [newLink, ...prev]);
-        setNewLinkUrl('');
-        showNotification("Affiliate link generated!");
+        try {
+            const newLink = await listerService.generateAffiliateLink(user.id, newLinkUrl);
+            setLinks(prev => [newLink, ...prev.filter(link => link.id !== newLink.id)]);
+            setNewLinkUrl('');
+            showNotification("Affiliate link generated!");
+        } catch (error) {
+            showNotification(error instanceof Error ? error.message : "Failed to generate affiliate link");
+        }
     };
 
     const handleCreateCoupon = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !newCoupon.code || newCoupon.percentage <= 0) return;
         try {
-            const createdCoupon = await listerService.createAffiliateCoupon(user.id, newCoupon.code, newCoupon.percentage);
+            const createdCoupon = await listerService.createAffiliateCoupon(
+                user.id,
+                newCoupon.code,
+                newCoupon.percentage,
+                selectedCouponStoreId || undefined
+            );
             setCoupons(prev => [createdCoupon, ...prev]);
             setNewCoupon({ code: '', percentage: 10 });
             showNotification("Coupon created!");
@@ -291,23 +402,109 @@ const AffiliateProgramPage: React.FC = () => {
     };
     
     const handleCopy = (text: string) => {
+        if (!text) {
+            showNotification("Tracked link is not ready yet. Run the latest affiliate SQL migration, then refresh.");
+            return;
+        }
         navigator.clipboard.writeText(text);
         showNotification("Copied to clipboard!");
     }
 
-    const handleOnboardingComplete = async () => {
-        if(!user) return;
-        const updatedUser = await userService.getUserById(user.id);
-        if(updatedUser) {
-           auth.updateUser(updatedUser);
-        }
+    const handleOnboardingComplete = async (updatedUser: User) => {
+        auth.updateUser(updatedUser);
         setIsOnboarding(false);
-        fetchData();
+        await fetchData(updatedUser);
     };
     
     const availableForPayout = useMemo(() => {
         return earnings.filter(e => e.status === 'approved').reduce((sum, e) => sum + e.amount, 0);
     }, [earnings]);
+
+    const affiliateProfile = user?.affiliateProfile;
+
+    const categoryNameMap = useMemo(() => {
+        return flatCategories.reduce<Record<string, string>>((acc, category) => {
+            acc[category.id] = category.name;
+            return acc;
+        }, {});
+    }, [flatCategories]);
+
+    const focusCategories = useMemo(() => {
+        return (affiliateProfile?.interestedCategories || []).map((categoryId) => categoryNameMap[categoryId] || categoryId);
+    }, [affiliateProfile, categoryNameMap]);
+
+    const goalBlueprint = affiliateProfile ? GOAL_BLUEPRINTS[affiliateProfile.primaryGoal] : GOAL_BLUEPRINTS.exploring;
+
+    const promotionPlans = useMemo(() => {
+        return (affiliateProfile?.promotionMethods || []).map((method) => ({
+            key: method,
+            ...PROMOTION_PLAYBOOKS[method]
+        }));
+    }, [affiliateProfile]);
+
+    const promotionMethodLabels = useMemo(() => {
+        return (affiliateProfile?.promotionMethods || []).map((method) => PROMOTION_METHOD_LABELS[method] || method);
+    }, [affiliateProfile]);
+
+    const supportPlans = useMemo(() => {
+        return (affiliateProfile?.supportNeeded || []).map((support) => ({
+            key: support,
+            ...SUPPORT_PLAYBOOKS[support]
+        }));
+    }, [affiliateProfile]);
+
+    const personalizedQuickWins = useMemo(() => {
+        const quickWins: string[] = [];
+
+        if (affiliateProfile?.primaryGoal === 'income') {
+            quickWins.push('Share your main referral link first and move approved commissions into wallet as soon as they unlock.');
+        }
+        if (affiliateProfile?.primaryGoal === 'business') {
+            quickWins.push('Build one repeatable campaign per channel instead of spreading effort across too many offers.');
+        }
+        if (affiliateProfile?.primaryGoal === 'sharing') {
+            quickWins.push('Lead with a curated shortlist from your favorite categories so every recommendation feels intentional.');
+        }
+        if (affiliateProfile?.primaryGoal === 'exploring') {
+            quickWins.push('Start with one link, one coupon, and one focused test so you can learn the workflow quickly.');
+        }
+        if (affiliateProfile?.wantsShopTheLook) {
+            quickWins.push('Use your category picks to create a shop-the-look style promotion block with related items.');
+        }
+        if (affiliateProfile?.wantsSellerReferrals) {
+            quickWins.push('Keep a seller-referral link ready for business owners who want to open a store and earn you a bonus.');
+        }
+        if ((affiliateProfile?.supportNeeded || []).includes('analytics')) {
+            quickWins.push('Watch your commission history and payout-ready balance to see which channels deserve more effort.');
+        }
+
+        return quickWins.slice(0, 4);
+    }, [affiliateProfile]);
+
+    const featuredStarterLinks = useMemo(() => {
+        return links.slice(0, 4);
+    }, [links]);
+
+    const couponEligibleCampaigns = useMemo(() => {
+        return campaigns.filter((campaign) =>
+            Boolean(campaign.storeId) &&
+            campaign.status === 'active' &&
+            Boolean(campaign.supportedSurfaces?.includes('coupon'))
+        );
+    }, [campaigns]);
+
+    useEffect(() => {
+        if (couponEligibleCampaigns.length === 0) {
+            setSelectedCouponStoreId('');
+            return;
+        }
+
+        setSelectedCouponStoreId((current) =>
+            current && couponEligibleCampaigns.some((campaign) => campaign.storeId === current)
+                ? current
+                : String(couponEligibleCampaigns[0].storeId || '')
+        );
+    }, [couponEligibleCampaigns]);
 
     const handlePayout = async () => {
         if (!user || availableForPayout <= 0) return;
@@ -338,7 +535,7 @@ const AffiliateProgramPage: React.FC = () => {
             setSubmission({ url: '', type: 'product' });
             await fetchData();
         } catch(error) {
-             showNotification("Submission failed.");
+             showNotification(error instanceof Error ? error.message : "Submission failed.");
         } finally {
             setIsSubmitting(false);
         }
@@ -352,7 +549,7 @@ const AffiliateProgramPage: React.FC = () => {
             <div className="bg-surface p-8 rounded-xl shadow-soft border border-border text-center animate-fade-in-up">
                 <h1 className="text-3xl font-bold font-display text-text-primary">Join the Urban Prime Affiliate Program</h1>
                 <p className="text-text-secondary mt-2 max-w-xl mx-auto">Earn commissions by referring new users and driving sales. It's free to join and easy to get started.</p>
-                <button onClick={handleJoinProgram} className="mt-6 px-8 py-3 bg-primary text-white font-bold rounded-lg hover:opacity-90">Become an Affiliate</button>
+                <button onClick={handleJoinProgram} disabled={isLoading} className="mt-6 px-8 py-3 bg-primary text-white font-bold rounded-lg hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed">Become an Affiliate</button>
             </div>
         );
     }
@@ -366,6 +563,7 @@ const AffiliateProgramPage: React.FC = () => {
     }
 
     const totalEarnings = earnings.reduce((sum, e) => sum + e.amount, 0);
+    const mainReferralUrl = affiliate.referralCode ? `${window.location.origin}/?ref=${affiliate.referralCode}` : '';
 
     return (
         <>
@@ -374,8 +572,112 @@ const AffiliateProgramPage: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-3xl font-bold font-display text-text-primary">Affiliate Dashboard</h1>
                 <div className="flex gap-2">
-                    <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-bold rounded-full">Active</span>
+                    <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-bold rounded-full capitalize">{affiliate.status || 'active'}</span>
                     <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-bold rounded-full">{affiliate.signups} Conversions</span>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[1.6fr,1fr] gap-6">
+                <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-[0.18em]">{goalBlueprint.momentumLabel}</span>
+                        {affiliateProfile?.experienceLevel ? (
+                            <span className="px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 text-text-secondary text-xs font-semibold uppercase tracking-[0.14em]">
+                                {EXPERIENCE_LABELS[affiliateProfile.experienceLevel]}
+                            </span>
+                        ) : null}
+                        {affiliateProfile?.wantsSellerReferrals ? (
+                            <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold uppercase tracking-[0.14em]">Seller bonuses on</span>
+                        ) : null}
+                    </div>
+                    <h2 className="text-2xl font-bold text-text-primary">{goalBlueprint.title}</h2>
+                    <p className="mt-2 text-text-secondary max-w-3xl">{goalBlueprint.description}</p>
+                    <p className="mt-3 text-sm font-semibold text-text-primary">{goalBlueprint.focus}</p>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                        {focusCategories.length > 0 ? focusCategories.map(category => (
+                            <span key={category} className="px-3 py-2 rounded-full bg-surface-soft border border-border text-xs font-semibold text-text-secondary">
+                                Focus: {category}
+                            </span>
+                        )) : (
+                            <span className="px-3 py-2 rounded-full bg-surface-soft border border-border text-xs font-semibold text-text-secondary">
+                                Add focus categories in onboarding to tailor your campaigns further.
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                    <h2 className="text-lg font-bold text-text-primary">Your Setup Snapshot</h2>
+                    <div className="mt-4 space-y-3">
+                        <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-surface-soft border border-border">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-text-secondary font-bold">Channels</p>
+                                <p className="text-sm font-semibold text-text-primary">{promotionMethodLabels.length > 0 ? promotionMethodLabels.join(', ') : 'Not selected yet'}</p>
+                            </div>
+                            <MousePointerIcon />
+                        </div>
+                        <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-surface-soft border border-border">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-text-secondary font-bold">Support Style</p>
+                                <p className="text-sm font-semibold text-text-primary">{supportPlans.length > 0 ? supportPlans.map(plan => plan.title).join(' / ') : 'General support'}</p>
+                            </div>
+                            <ClipboardIcon />
+                        </div>
+                        <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-surface-soft border border-border">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-text-secondary font-bold">Payout Readiness</p>
+                                <p className="text-sm font-semibold text-text-primary">{availableForPayout > 0 ? `${currency.symbol}${availableForPayout.toFixed(2)} ready to transfer` : 'No approved commissions yet'}</p>
+                            </div>
+                            <WalletIcon />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                    <h2 className="text-xl font-bold font-display text-text-primary">Built Around Your Choices</h2>
+                    <div className="mt-4 grid grid-cols-1 gap-3">
+                        {promotionPlans.length > 0 ? promotionPlans.map(plan => (
+                            <div key={plan.key} className="p-4 rounded-xl border border-border bg-surface-soft">
+                                <p className="text-sm font-bold text-text-primary">{plan.title}</p>
+                                <p className="mt-1 text-sm text-text-secondary">{plan.description}</p>
+                                <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">{plan.action}</p>
+                            </div>
+                        )) : (
+                            <div className="p-4 rounded-xl border border-dashed border-border text-sm text-text-secondary">
+                                Choose promotion channels in onboarding to unlock a custom channel playbook here.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                    <h2 className="text-xl font-bold font-display text-text-primary">Your Next Best Moves</h2>
+                    <div className="mt-4 space-y-3">
+                        {personalizedQuickWins.length > 0 ? personalizedQuickWins.map(step => (
+                            <div key={step} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-surface-soft">
+                                <span className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">+</span>
+                                <p className="text-sm text-text-primary">{step}</p>
+                            </div>
+                        )) : (
+                            <div className="p-4 rounded-xl border border-dashed border-border text-sm text-text-secondary">
+                                Complete your preference profile to generate a more opinionated affiliate action plan.
+                            </div>
+                        )}
+                    </div>
+
+                    {supportPlans.length > 0 ? (
+                        <div className="mt-5 pt-5 border-t border-border space-y-3">
+                            {supportPlans.map(plan => (
+                                <div key={plan.key} className="rounded-lg bg-black/5 dark:bg-white/5 px-4 py-3">
+                                    <p className="text-sm font-bold text-text-primary">{plan.title}</p>
+                                    <p className="text-xs mt-1 text-text-secondary">{plan.description}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
                 </div>
             </div>
 
@@ -396,36 +698,83 @@ const AffiliateProgramPage: React.FC = () => {
             <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-text-primary">Campaigns</h3>
-                    <button
-                        onClick={() => {
-                            const newCamp = { id: `camp-${Date.now()}`, title: 'New Campaign', description: 'Custom promotion', commissionRate: affiliate.commissionRate };
-                            setCampaigns(prev => [newCamp, ...prev]);
-                            showNotification('Campaign created.');
-                        }}
-                        className="px-4 py-2 text-sm bg-black dark:bg-white text-white dark:text-black font-bold rounded-lg"
-                    >
-                        + New Campaign
-                    </button>
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">Live Program Data</span>
                 </div>
                 <div className="space-y-3">
-                    {campaigns.map(c => (
+                    {campaigns.length > 0 ? campaigns.map(c => (
                         <div key={c.id} className="p-4 border border-border rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                             <div>
                                 <p className="font-semibold text-text-primary">{c.title}</p>
                                 <p className="text-sm text-text-secondary">{c.description}</p>
+                                {c.supportedSurfaces?.length ? (
+                                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                                        {c.supportedSurfaces.join(' · ')}
+                                    </p>
+                                ) : null}
                             </div>
                             <div className="flex items-center gap-3">
                                 <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-1 rounded-full">{Math.round((c.commissionRate || 0) * 100)}% Comm</span>
+                                {c.status ? (
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                        c.status === 'active'
+                                            ? 'bg-green-100 text-green-700'
+                                            : c.status === 'new'
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-slate-100 text-slate-700'
+                                    }`}>
+                                        {c.status}
+                                    </span>
+                                ) : null}
                                 <button className="text-xs font-bold text-primary hover:underline">View Assets</button>
                             </div>
                         </div>
-                    ))}
+                    )) : <div className="p-4 border border-dashed border-border rounded-lg text-sm text-text-secondary">Campaigns will appear here once you have an active partner or a tracked platform referral link.</div>}
                 </div>
             </div>
+
+            {(affiliateProfile?.wantsShopTheLook || affiliateProfile?.wantsSellerReferrals) && (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    {affiliateProfile?.wantsShopTheLook && (
+                        <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                            <h2 className="text-xl font-bold font-display text-text-primary">Shop-The-Look Focus</h2>
+                            <p className="mt-2 text-sm text-text-secondary">
+                                Your dashboard is prioritizing visually cohesive products from your selected categories so you can promote themed bundles instead of random items.
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {focusCategories.length > 0 ? focusCategories.map(category => (
+                                    <span key={category} className="px-3 py-2 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                                        {category}
+                                    </span>
+                                )) : (
+                                    <span className="px-3 py-2 rounded-full bg-surface-soft border border-border text-xs font-semibold text-text-secondary">
+                                        Add visual-interest categories to unlock stronger bundle ideas.
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {affiliateProfile?.wantsSellerReferrals && (
+                        <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
+                            <h2 className="text-xl font-bold font-display text-text-primary">Seller Bonus Lane</h2>
+                            <p className="mt-2 text-sm text-text-secondary">
+                                Seller referrals are enabled in your plan, so your starter link set includes a dedicated seller-resource route for store-owner outreach.
+                            </p>
+                            <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-500/20">
+                                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                                    Best use case: send this when someone wants to launch a store, not when they only want to browse.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             
             {trendingItems.length > 0 && (
                  <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
-                    <h2 className="text-xl font-bold font-display mb-4 text-text-primary">Personalized For You: Trending Products</h2>
+                    <h2 className="text-xl font-bold font-display mb-4 text-text-primary">
+                        {focusCategories.length > 0 ? `Trending In ${focusCategories.slice(0, 2).join(' & ')}` : 'Personalized For You: Trending Products'}
+                    </h2>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         {trendingItems.map(item => <ItemCard key={item.id} item={item} onQuickView={setQuickViewItem} />)}
                     </div>
@@ -437,23 +786,40 @@ const AffiliateProgramPage: React.FC = () => {
                     <div className="bg-surface p-6 rounded-xl shadow-soft border border-border space-y-6">
                         <div>
                             <h2 className="text-lg font-bold text-text-primary">Your Main Referral Link</h2>
-                            <div className="flex mt-2">
-                                <input type="text" readOnly value={`https://urbanprime.com/?ref=${affiliate.referralCode}`} className="w-full p-2 bg-surface-soft border border-border rounded-l-md text-text-primary" />
-                                <button onClick={() => handleCopy(`https://urbanprime.com/?ref=${affiliate.referralCode}`)} className="p-2 bg-black dark:bg-white text-white dark:text-black rounded-r-md hover:opacity-90"><ClipboardIcon/></button>
-                            </div>
+                            <p className="mt-1 text-sm text-text-secondary">
+                                This is your always-on link. Use it when you want the simplest path for new clicks, seller referrals, and broad discovery traffic.
+                            </p>
+                            {mainReferralUrl ? (
+                                <div className="flex mt-2">
+                                    <input type="text" readOnly value={mainReferralUrl} className="w-full p-2 bg-surface-soft border border-border rounded-l-md text-text-primary" />
+                                    <button onClick={() => handleCopy(mainReferralUrl)} className="p-2 bg-black dark:bg-white text-white dark:text-black rounded-r-md hover:opacity-90"><ClipboardIcon/></button>
+                                </div>
+                            ) : (
+                                <div className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900">
+                                    {coupons.length > 0
+                                        ? 'Your coupon is live, but tracked links are waiting on the updated affiliate SQL migration. Run it once, then refresh to unlock saved referral links.'
+                                        : 'Tracked links are waiting on the updated affiliate SQL migration. Run it once, then refresh to unlock your saved referral links.'}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-text-primary">Product Link Generator</h2>
+                            <p className="mt-1 text-sm text-text-secondary">
+                                Paste any product URL and the dashboard will create a tracked version that matches your promotion style.
+                            </p>
                             <form onSubmit={handleGenerateLink} className="flex mt-2">
                                 <input type="url" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} placeholder="Paste product URL here..." required className="w-full p-2 border border-border bg-surface-soft rounded-l-md text-text-primary" />
                                 <button type="submit" className="px-4 py-2 bg-primary text-white font-semibold rounded-r-md text-sm hover:bg-primary/90">Generate</button>
                             </form>
-                            {links.length > 0 && (
+                            {featuredStarterLinks.length > 0 && (
                                 <ul className="text-sm mt-2 space-y-1 max-h-40 overflow-y-auto pr-2">
-                                    {links.map(link => (
+                                    {featuredStarterLinks.map(link => (
                                         <li key={link.id} className="text-xs flex justify-between items-center bg-surface-soft p-2 rounded text-text-secondary">
-                                            <span className="truncate max-w-[200px]">{link.originalUrl} &rarr; {link.shortCode}</span> 
-                                            <span>{link.clicks} clicks</span>
+                                            <span className="truncate max-w-[220px]">{link.originalUrl} &rarr; {link.shortCode}</span> 
+                                            <span className="flex items-center gap-2">
+                                                <span className="uppercase tracking-[0.16em] text-[10px]">{link.sourceSurface || 'link'}</span>
+                                                <span>{link.clicks} clicks</span>
+                                            </span>
                                         </li>
                                     ))}
                                 </ul>
@@ -495,6 +861,9 @@ const AffiliateProgramPage: React.FC = () => {
                         </div>
                         <div className="mt-4 border-t border-border pt-4">
                              <h3 className="font-semibold text-sm mb-2 text-text-secondary">Submissions for Rewards</h3>
+                             <p className="text-xs text-text-secondary mb-3">
+                                Product and content submissions now stay in a review queue instead of disappearing into a placeholder flow.
+                             </p>
                              <form onSubmit={handleSubmission} className="space-y-2">
                                 <select value={submission.type} onChange={e => setSubmission({url: '', type: e.target.value})} className="w-full p-2 border rounded-md text-sm bg-surface-soft border-border text-text-primary">
                                     <option value="product">Submit External Product</option>
@@ -509,18 +878,44 @@ const AffiliateProgramPage: React.FC = () => {
                     </div>
                     <div className="bg-surface p-6 rounded-xl shadow-soft border border-border">
                         <h2 className="text-lg font-bold text-text-primary">Custom Coupon Codes</h2>
+                        <p className="mt-1 text-sm text-text-secondary">
+                            {affiliateProfile?.promotionMethods?.includes('email') || affiliateProfile?.promotionMethods?.includes('word_of_mouth')
+                                ? 'Coupons are especially useful for the channels you selected, so this block stays pinned as a primary tool.'
+                                : 'Create a code when you want a cleaner conversion path than sharing a raw link.'}
+                        </p>
+                        {couponEligibleCampaigns.length === 0 ? (
+                            <div className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-900">
+                                Coupons stay locked until a seller approves you for at least one active store program that allows coupon attribution.
+                            </div>
+                        ) : null}
                         <form onSubmit={handleCreateCoupon} className="flex gap-2 mt-2 items-end">
+                            {couponEligibleCampaigns.length > 0 ? (
+                                <div className="min-w-[180px]">
+                                    <label className="text-xs font-semibold text-text-secondary">Store Program</label>
+                                    <select
+                                        value={selectedCouponStoreId}
+                                        onChange={e => setSelectedCouponStoreId(e.target.value)}
+                                        className="w-full p-2 border rounded-md bg-surface-soft border-border text-text-primary"
+                                    >
+                                        {couponEligibleCampaigns.map(campaign => (
+                                            <option key={campaign.id} value={campaign.storeId || ''}>
+                                                {campaign.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : null}
                             <div className="flex-1">
                                 <label className="text-xs font-semibold text-text-secondary">Code</label>
-                                <input type="text" value={newCoupon.code} onChange={e=>setNewCoupon(p=>({...p, code:e.target.value.toUpperCase()}))} required placeholder="SARA10" className="w-full p-2 border rounded-md bg-surface-soft border-border text-text-primary"/>
+                                <input type="text" value={newCoupon.code} onChange={e=>setNewCoupon(p=>({...p, code:e.target.value.toUpperCase()}))} required placeholder="SARA10" disabled={couponEligibleCampaigns.length === 0} className="w-full p-2 border rounded-md bg-surface-soft border-border text-text-primary disabled:opacity-60"/>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-text-secondary">% Off</label>
-                                <input type="number" min="1" max="90" value={newCoupon.percentage} onChange={e=>setNewCoupon(p=>({...p, percentage:Number(e.target.value)}))} required className="w-20 p-2 border rounded-md bg-surface-soft border-border text-text-primary"/>
+                                <input type="number" min="1" max="90" value={newCoupon.percentage} onChange={e=>setNewCoupon(p=>({...p, percentage:Number(e.target.value)}))} required disabled={couponEligibleCampaigns.length === 0} className="w-20 p-2 border rounded-md bg-surface-soft border-border text-text-primary disabled:opacity-60"/>
                             </div>
-                            <button type="submit" className="px-4 py-2 bg-primary text-white font-semibold rounded-md text-sm hover:opacity-90">Create</button>
+                            <button type="submit" disabled={couponEligibleCampaigns.length === 0} className="px-4 py-2 bg-primary text-white font-semibold rounded-md text-sm hover:opacity-90 disabled:bg-primary/70 disabled:cursor-not-allowed">Create</button>
                         </form>
-                        {coupons.length > 0 && (
+                        {coupons.length > 0 ? (
                             <ul className="text-sm mt-2 space-y-1 max-h-40 overflow-y-auto pr-2">
                                 {coupons.map(c => (
                                     <li key={c.id} className="text-xs flex justify-between items-center bg-surface-soft p-2 rounded text-text-secondary">
@@ -529,6 +924,10 @@ const AffiliateProgramPage: React.FC = () => {
                                     </li>
                                 ))}
                             </ul>
+                        ) : (
+                            <div className="mt-3 rounded-lg border border-dashed border-border p-3 text-xs text-text-secondary">
+                                No coupon created yet. For your selected channels, a simple code can outperform a long pasted URL.
+                            </div>
                         )}
                     </div>
                 </div>

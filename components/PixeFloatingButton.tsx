@@ -28,7 +28,7 @@ const PixeFloatingButton: React.FC = () => {
 
   return (
     <Link
-      to="/reels"
+      to="/pixe"
       className={`pixe-floating-btn ${isVisible ? 'is-visible' : ''}`}
       aria-label="Go to Pixe feed"
     >

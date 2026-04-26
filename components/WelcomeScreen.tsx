@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface WelcomeScreenProps {
     onComplete?: () => void;
@@ -47,9 +47,27 @@ const UrbanPrimeLogo: React.FC = () => (
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     const tagline = "Experience Luxury On Demand";
+    const completedRef = useRef(false);
+
+    const finish = () => {
+        if (completedRef.current) return;
+        completedRef.current = true;
+        onComplete?.();
+    };
+
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            finish();
+        }, 5200);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, []);
+
     const handleAnimationEnd = (event: React.AnimationEvent<HTMLDivElement>) => {
         if (event.target !== event.currentTarget) return;
-        onComplete?.();
+        finish();
     };
 
     return (

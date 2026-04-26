@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import { useAuth } from '../../hooks/useAuth';
 import { useCart } from '../../hooks/useCart';
@@ -21,7 +21,6 @@ import BackgroundRemovalModal from '../../components/BackgroundRemovalModal';
 import BlueTickBadge from '../../components/spotlight/BlueTickBadge';
 import SpotlightMessageDrawer from '../../components/spotlight/SpotlightMessageDrawer';
 import SpotlightCommerceBridge from '../../components/spotlight/SpotlightCommerceBridge';
-import SpotlightProfileCardModal from '../../components/spotlight/SpotlightProfileCardModal';
 import SpotlightTextCard from '../../components/spotlight/SpotlightTextCard';
 import SpotlightUtilitySheet from '../../components/spotlight/SpotlightUtilitySheet';
 import type { Item } from '../../types';
@@ -1142,6 +1141,7 @@ const PrimeSpotlightPage: React.FC = () => {
   const { addItemToCart } = useCart();
   const { showNotification, unreadNotificationCount } = useNotification();
   const { preferences } = useSpotlightPreferences();
+  const location = useLocation();
   const spotlightSurfaceStyle = {
     '--spotlight-surface-alpha': preferences.surfaceOpacity.toFixed(3),
     '--spotlight-surface-soft-alpha': Math.max(0.04, Math.min(0.18, preferences.surfaceOpacity * 0.42)).toFixed(3),
@@ -1177,8 +1177,6 @@ const PrimeSpotlightPage: React.FC = () => {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [messageTarget, setMessageTarget] = useState<SpotlightCreator | null>(null);
   const [messageDrawerOpen, setMessageDrawerOpen] = useState(false);
-  const [profileCardUsername, setProfileCardUsername] = useState<string | null>(null);
-  const [profileCardOpen, setProfileCardOpen] = useState(false);
   const [utilitySheet, setUtilitySheet] = useState<'notifications' | 'more' | null>(null);
   const [followPrompt, setFollowPrompt] = useState<SpotlightCreator | null>(null);
   const [composerText, setComposerText] = useState('');
@@ -1934,34 +1932,29 @@ const PrimeSpotlightPage: React.FC = () => {
       return;
     }
     setUtilitySheet(null);
-    setProfileCardOpen(false);
-    setProfileCardUsername(null);
     setMessageTarget(creator);
     setMessageDrawerOpen(true);
   };
 
-  const openProfileCard = useCallback((creator: SpotlightCreator | null) => {
-    if (!creator?.name && !creator?.firebase_uid) return;
+  const openProfilePage = useCallback((creator: SpotlightCreator | null) => {
+    const profileKey = String(creator?.id || creator?.firebase_uid || creator?.name || '').trim();
+    if (!profileKey) return;
     setUtilitySheet(null);
     setMessageDrawerOpen(false);
     setMessageTarget(null);
-    setProfileCardUsername(creator?.firebase_uid || creator?.name || null);
-    setProfileCardOpen(true);
-  }, []);
+    navigate(`/profile/${encodeURIComponent(profileKey)}`);
+  }, [navigate]);
 
-  const openViewerProfileCard = useCallback(() => {
+  const openViewerProfilePage = useCallback(() => {
     if (!user) {
       openAuthModal('login');
       return;
     }
-    const viewerName = String((user as any)?.firebase_uid || user.id || (user as any)?.name || '').trim();
-    if (!viewerName) return;
     setUtilitySheet(null);
     setMessageDrawerOpen(false);
     setMessageTarget(null);
-    setProfileCardUsername(viewerName);
-    setProfileCardOpen(true);
-  }, [openAuthModal, user]);
+    navigate('/profile/me');
+  }, [navigate, openAuthModal, user]);
 
   const openMessagesPanel = () => {
     const target = suggestedCreators[0] || visibleCreators[0] || null;
@@ -1970,24 +1963,18 @@ const PrimeSpotlightPage: React.FC = () => {
       return;
     }
     setUtilitySheet(null);
-    setProfileCardOpen(false);
-    setProfileCardUsername(null);
     openMessageDrawerFor(target);
   };
 
   const openNotificationsCard = () => {
     setMessageDrawerOpen(false);
     setMessageTarget(null);
-    setProfileCardOpen(false);
-    setProfileCardUsername(null);
     setUtilitySheet((current) => (current === 'notifications' ? null : 'notifications'));
   };
 
   const openMoreCard = () => {
     setMessageDrawerOpen(false);
     setMessageTarget(null);
-    setProfileCardOpen(false);
-    setProfileCardUsername(null);
     setUtilitySheet((current) => (current === 'more' ? null : 'more'));
   };
 
@@ -2299,19 +2286,19 @@ const PrimeSpotlightPage: React.FC = () => {
   const composerCanEditImage = Boolean(composerAttachment?.mediaType === 'image' && composerAttachment?.previewUrl);
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-background text-primary">
+    <div className="dark pixe-noir-shell h-[100dvh] overflow-hidden bg-transparent text-white [color-scheme:dark]">
       <motion.div
         className="fixed left-0 top-0 z-[60] h-[2px] w-full origin-left bg-[linear-gradient(90deg,rgba(15,23,42,0.95),rgba(29,78,216,0.95),rgba(56,189,248,0.95))] dark:bg-[linear-gradient(90deg,rgba(255,255,255,0.85),rgba(56,189,248,0.95),rgba(99,102,241,0.95))]"
         style={{ scaleX: scrollYProgress, opacity: heroGlow }}
       />
 
       <div
-        className="spotlight-theme-root mx-auto grid h-full min-h-0 max-w-[1440px] lg:grid-cols-[240px_minmax(0,1fr)_360px]"
+        className="spotlight-theme-root spotlight-midnight-feed mx-auto grid h-full min-h-0 max-w-[1440px] lg:grid-cols-[240px_minmax(0,1fr)_360px]"
         style={spotlightSurfaceStyle}
         data-spotlight-density={preferences.compactDensity ? 'compact' : 'regular'}
         data-spotlight-reduced-motion={preferences.reducedMotion ? 'true' : 'false'}
       >
-          <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col border-r border-slate-200 bg-white px-5 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
+          <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col border-r border-white/10 bg-black/52 px-5 py-4 backdrop-blur-xl lg:flex">
           <div className="flex items-center gap-3 px-1 py-2">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_55%,#38bdf8_100%)] text-sm font-black text-white shadow-lg">UP</div>
             <div>
@@ -2323,7 +2310,7 @@ const PrimeSpotlightPage: React.FC = () => {
           <nav className="mt-4 space-y-1">
             {NAV_ITEMS.map((item) => {
               const active = item.to === '/spotlight'
-                || (item.to === '/profile/me' && profileCardOpen)
+                || (item.to === '/profile/me' && location.pathname.startsWith('/profile/'))
                 || (item.to === '/messages' && messageDrawerOpen)
                 || (item.to === '/notifications' && utilitySheet === 'notifications')
                 || (item.to === '/more' && utilitySheet === 'more');
@@ -2337,10 +2324,10 @@ const PrimeSpotlightPage: React.FC = () => {
                     key={item.to}
                     type="button"
                     onClick={openMessagesPanel}
-                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                    className={`flex w-full items-center gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-white/[0.08] ${
                       active
-                        ? 'font-semibold text-slate-950 dark:text-white'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-semibold text-white'
+                        : 'text-slate-200'
                     }`}
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
@@ -2351,10 +2338,10 @@ const PrimeSpotlightPage: React.FC = () => {
                     key={item.to}
                     type="button"
                     onClick={openNotificationsCard}
-                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                    className={`flex w-full items-center gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-white/[0.08] ${
                       active
-                        ? 'font-semibold text-slate-950 dark:text-white'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-semibold text-white'
+                        : 'text-slate-200'
                     }`}
                   >
                     <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
@@ -2372,10 +2359,10 @@ const PrimeSpotlightPage: React.FC = () => {
                     key={item.to}
                     type="button"
                     onClick={openMoreCard}
-                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                    className={`flex w-full items-center gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-white/[0.08] ${
                       active
-                        ? 'font-semibold text-slate-950 dark:text-white'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-semibold text-white'
+                        : 'text-slate-200'
                     }`}
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
@@ -2385,11 +2372,11 @@ const PrimeSpotlightPage: React.FC = () => {
                   <button
                     key={item.to}
                     type="button"
-                    onClick={openViewerProfileCard}
-                    className={`flex w-full items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                    onClick={openViewerProfilePage}
+                    className={`flex w-full items-center gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-white/[0.08] ${
                       active
-                        ? 'font-semibold text-slate-950 dark:text-white'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-semibold text-white'
+                        : 'text-slate-200'
                     }`}
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
@@ -2399,10 +2386,10 @@ const PrimeSpotlightPage: React.FC = () => {
                   <Link
                     key={item.to}
                     to={item.to}
-                    className={`flex items-center gap-4 rounded-full px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-slate-100 dark:hover:bg-white/6 ${
+                    className={`flex items-center gap-4 rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-[17px] font-medium transition duration-200 hover:bg-white/[0.08] ${
                       active
-                        ? 'font-semibold text-slate-950 dark:text-white'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-semibold text-white'
+                        : 'text-slate-200'
                     }`}
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-7 w-7 shrink-0">{item.icon()}</svg>
@@ -2416,14 +2403,14 @@ const PrimeSpotlightPage: React.FC = () => {
           <div className="mt-5 px-2">
             <button
               onClick={() => openComposer()}
-              className="flex w-full items-center justify-center rounded-full bg-[#0f1419] px-6 py-4 text-[17px] font-bold text-white shadow-[0_10px_30px_rgba(15,20,25,0.2)] transition hover:brightness-110 dark:bg-white dark:text-slate-950"
+              className="flex w-full items-center justify-center rounded-full border border-sky-400/30 bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(29,78,216,0.94),rgba(56,189,248,0.88))] px-6 py-4 text-[17px] font-bold text-white shadow-[0_10px_30px_rgba(15,20,25,0.28)] transition hover:brightness-110"
             >
               Post
             </button>
           </div>
 
           <div className="mt-auto px-2 pb-2">
-            <button onClick={openViewerProfileCard} className="flex w-full items-center gap-3 rounded-[1.5rem] px-3 py-3 text-left transition hover:bg-slate-100 dark:hover:bg-white/6">
+            <button onClick={openViewerProfilePage} className="flex w-full items-center gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-left transition hover:bg-white/[0.06]">
               <img src={safeAvatar(userAvatar)} alt={user?.name || 'Profile'} className="h-11 w-11 rounded-full object-cover bg-slate-200" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{user?.name || 'Ahmed'}</p>
@@ -2434,26 +2421,31 @@ const PrimeSpotlightPage: React.FC = () => {
           </div>
         </aside>
 
-          <main ref={mainScrollRef} className="spotlight-feed-main h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain border-x border-slate-200 bg-white scroll-smooth pb-[calc(8rem+env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#0a1018] lg:pb-0">
-          <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0a1018]/95">
-            <div className="grid grid-cols-2">
+          <main ref={mainScrollRef} className="spotlight-feed-main h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain border-x border-white/10 bg-black/40 scroll-smooth backdrop-blur-xl pb-[calc(8rem+env(safe-area-inset-bottom))] lg:pb-0">
+          <div className="sticky top-0 z-30 border-b border-white/10 bg-black/72 px-3 py-3 backdrop-blur-xl sm:px-4">
+            <div className="mx-auto flex w-full justify-center">
+              <div className="inline-flex min-w-[18rem] max-w-[28rem] items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
               {TABS.map((item) => {
                 const active = tab === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => setTab(item.id)}
-                    className="relative py-3 text-center text-[14px] font-semibold text-slate-500 transition hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-white/5 sm:py-4 sm:text-[15px]"
+                    className={`relative flex-1 rounded-full px-6 py-3 text-center text-[14px] font-semibold transition duration-200 sm:text-[15px] ${
+                      active
+                        ? 'bg-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_24px_rgba(0,0,0,0.2)]'
+                        : 'text-slate-400 hover:bg-white/[0.05] hover:text-slate-200'
+                    }`}
                   >
-                    <span className={active ? 'text-slate-950 dark:text-white' : ''}>{item.label}</span>
-                    <span className={`absolute inset-x-1/2 bottom-0 h-1 w-12 -translate-x-1/2 rounded-full bg-sky-500 transition ${active ? 'opacity-100' : 'opacity-0'}`} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
 
-          <div className="border-b border-slate-200 px-3 py-3 sm:px-4 sm:py-4 dark:border-white/10">
+          <div className="border-b border-white/10 px-3 py-3 sm:px-4 sm:py-4">
             <div className="flex gap-3">
               <img src={safeAvatar(userAvatar)} alt={user?.name || 'You'} className="mt-1 h-10 w-10 rounded-full object-cover bg-slate-200 sm:h-11 sm:w-11" />
               <div className="min-w-0 flex-1">
@@ -2463,11 +2455,11 @@ const PrimeSpotlightPage: React.FC = () => {
                   onChange={(event) => setComposerText(event.target.value.slice(0, 2200))}
                   placeholder="What&apos;s happening?"
                   rows={3}
-                  className="w-full cursor-text resize-none rounded-3xl border border-slate-200 bg-white px-4 py-3 text-[16px] leading-7 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-200 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-sky-500/50 sm:text-[18px]"
+                  className="w-full cursor-text resize-none rounded-3xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[16px] leading-7 text-white outline-none transition placeholder:text-slate-500 focus:border-sky-500/50 focus:bg-white/[0.06] sm:text-[18px]"
                 />
 
                 {composerAttachment ? (
-                  <div className="mt-3 overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <div className="mt-3 overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.04] shadow-sm">
                     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-white/10">
                       <div>
                         <p className="text-sm font-semibold text-slate-950 dark:text-white">Attached {composerAttachment.mediaType}</p>
@@ -2504,27 +2496,27 @@ const PrimeSpotlightPage: React.FC = () => {
                 ) : null}
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sky-500 sm:flex sm:flex-wrap sm:items-center">
-                  <button type="button" onClick={() => composerFileInputRef.current?.click()} className="flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-100 dark:border-white/10 dark:bg-white/5 dark:text-sky-200" aria-label="Upload media">
+                  <button type="button" onClick={() => composerFileInputRef.current?.click()} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-sky-200 transition hover:-translate-y-0.5 hover:bg-white/[0.08]" aria-label="Upload media">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M4 5h16v14H4z" /><path d="m8 13 2-2 3 3 3-4 4 5" /></svg>
                     Media
                   </button>
-                  <button type="button" onClick={openGifPicker} className="flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-100 dark:border-white/10 dark:bg-white/5 dark:text-sky-200" aria-label="Insert GIF">
+                  <button type="button" onClick={openGifPicker} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-sky-200 transition hover:-translate-y-0.5 hover:bg-white/[0.08]" aria-label="Insert GIF">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M4 8h16v8H4z" /><path d="M7 11h2m1-1v2" /></svg>
                     GIF
                   </button>
-                  <button type="button" onClick={openEmojiPicker} className="flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-100 dark:border-white/10 dark:bg-white/5 dark:text-sky-200" aria-label="Add emoji">
+                  <button type="button" onClick={openEmojiPicker} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-sky-200 transition hover:-translate-y-0.5 hover:bg-white/[0.08]" aria-label="Add emoji">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><circle cx="12" cy="12" r="9" /><path d="M9 10h.01M15 10h.01M9.5 15c1.2 1 3.8 1 5 0" /></svg>
                     Emoji
                   </button>
-                    <button type="button" onClick={openSchedulePicker} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition hover:-translate-y-0.5 ${composerScheduledFor ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200' : 'border-slate-200 bg-white text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200'}`} aria-label="Schedule post">
+                    <button type="button" onClick={openSchedulePicker} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition hover:-translate-y-0.5 ${composerScheduledFor ? 'border-emerald-400/25 bg-emerald-400/12 text-emerald-200' : 'border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'}`} aria-label="Schedule post">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><rect x="4" y="5" width="16" height="15" rx="3" /><path d="M8 3v4M16 3v4M4 10h16" /></svg>
                     Schedule
                   </button>
-                  <button type="button" onClick={() => saveComposerDraft('Draft saved.')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10" aria-label="Save draft">
+                  <button type="button" onClick={() => saveComposerDraft('Draft saved.')} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-200 transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:shadow-sm" aria-label="Save draft">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M7 3h10a1 1 0 0 1 1 1v17l-6-3-6 3V4a1 1 0 0 1 1-1z" /></svg>
                     Draft
                   </button>
-                  <button type="button" onClick={() => { setComposerText(''); clearComposerAttachment(); setComposerScheduledFor(''); setComposerGifUrl(''); setComposerAiPrompt(''); showNotification('Composer cleared.'); }} className="flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:-translate-y-0.5 hover:border-rose-200 dark:border-white/10 dark:bg-white/5 dark:text-rose-200" aria-label="Clear composer">
+                  <button type="button" onClick={() => { setComposerText(''); clearComposerAttachment(); setComposerScheduledFor(''); setComposerGifUrl(''); setComposerAiPrompt(''); showNotification('Composer cleared.'); }} className="flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:-translate-y-0.5 hover:bg-rose-400/16" aria-label="Clear composer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path d="M6 6l12 12M18 6 6 18" /></svg>
                     Clear
                   </button>
@@ -2534,21 +2526,21 @@ const PrimeSpotlightPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={openEmojiPicker}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'emoji' ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-200' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white'}`}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'emoji' ? 'border-violet-400/25 bg-violet-400/12 text-violet-200' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white'}`}
                   >
                     {composerTool === 'emoji' ? 'Hide emojis' : 'Open emoji library'}
                   </button>
                   <button
                     type="button"
                     onClick={openGifPicker}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'gif' ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white'}`}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'gif' ? 'border-sky-400/25 bg-sky-400/12 text-sky-200' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white'}`}
                   >
                     {composerTool === 'gif' ? 'Hide GIFs' : 'Open GIF library'}
                   </button>
                   <button
                     type="button"
                     onClick={openSchedulePicker}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'schedule' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white'}`}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${composerTool === 'schedule' ? 'border-emerald-400/25 bg-emerald-400/12 text-emerald-200' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white'}`}
                   >
                     {composerTool === 'schedule' ? 'Hide schedule' : 'Open schedule'}
                   </button>
@@ -2601,7 +2593,7 @@ const PrimeSpotlightPage: React.FC = () => {
                   onShare={handleShare}
                   onOpenComment={handleOpenComments}
                 onFollow={handleFollow}
-                onOpenProfile={openProfileCard}
+                onOpenProfile={openProfilePage}
                 onOpenContext={openContextMode}
                 onOpenImage={handleOpenImage}
                 onOpenVideo={handleOpenVideo}
@@ -2617,10 +2609,10 @@ const PrimeSpotlightPage: React.FC = () => {
           </div>
         </main>
 
-        <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col gap-4 border-l border-slate-200 bg-white px-4 py-4 dark:border-white/10 dark:bg-[#0b1220] lg:flex">
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <aside className="spotlight-feed-rail sticky top-0 hidden h-full min-h-0 overflow-y-auto flex-col gap-4 border-l border-white/10 bg-black/52 px-4 py-4 backdrop-blur-xl lg:flex">
+          <div className="rounded-[1.75rem] border border-white/10 bg-black/52 p-5 shadow-[0_24px_64px_rgba(0,0,0,0.32)] backdrop-blur-xl">
             <div className="relative mb-4">
-              <div className="rounded-[1.4rem] border border-slate-200/80 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] px-4 py-3">
                 <div className="flex items-center gap-3">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-slate-400"><SearchIcon /></svg>
                   <input
@@ -2637,7 +2629,7 @@ const PrimeSpotlightPage: React.FC = () => {
                       }
                     }}
                     placeholder="Search Spotlight"
-                    className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
+                    className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
                   />
                 </div>
               </div>
@@ -2647,7 +2639,7 @@ const PrimeSpotlightPage: React.FC = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.18, ease: 'easeOut' }}
-                  className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/96 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#09111d]/96"
+                  className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#09111d]/96 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.28)] backdrop-blur-2xl"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Recent searches</p>
@@ -2666,7 +2658,7 @@ const PrimeSpotlightPage: React.FC = () => {
                     {recentSearches.length > 0 ? recentSearches.map((term) => (
                       <div
                         key={term}
-                        className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                        className="inline-flex items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.04] text-xs font-semibold text-slate-200 transition hover:-translate-y-0.5 hover:bg-white/[0.08]"
                       >
                         <button
                           type="button"
@@ -2701,7 +2693,7 @@ const PrimeSpotlightPage: React.FC = () => {
                             type="button"
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => commitSearch(`#${trend.label}`)}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:-translate-y-0.5 hover:bg-white/[0.08]"
                           >
                             #{trend.label}
                           </button>
@@ -2747,19 +2739,19 @@ const PrimeSpotlightPage: React.FC = () => {
               <div className="mt-3 space-y-3">
                 {(suggestedCreators.length > 0 ? suggestedCreators : visibleCreators).slice(0, 2).map((creator) => (
                   <div key={creator.id} className="flex items-center gap-3">
-                    <button type="button" onClick={() => openProfileCard(creator)} className="shrink-0">
+                    <button type="button" onClick={() => openProfilePage(creator)} className="shrink-0">
                       <img src={safeAvatar(creator.avatar_url)} alt={creator.name} className="h-10 w-10 rounded-full object-cover transition duration-200 hover:scale-[1.04]" />
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => openProfileCard(creator)} className="truncate text-sm font-semibold text-slate-950 transition hover:underline dark:text-white">{creator.name}</button>
+                        <button type="button" onClick={() => openProfilePage(creator)} className="truncate text-sm font-semibold text-slate-950 transition hover:underline dark:text-white">{creator.name}</button>
                         {creator.is_verified ? <BlueTickBadge className="h-4 w-4" /> : null}
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{compact(creator.followers_count)} followers</p>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <button onClick={() => handleFollow(creator)} className="rounded-full bg-[#0f1419] px-3 py-2 text-xs font-bold text-white dark:bg-white dark:text-slate-950">{creator.is_following ? 'Following' : 'Follow'}</button>
-                      <button onClick={() => openMessageDrawerFor(creator)} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white">Message</button>
+                      <button onClick={() => handleFollow(creator)} className="rounded-full border border-sky-400/30 bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(29,78,216,0.94),rgba(56,189,248,0.88))] px-3 py-2 text-xs font-bold text-white">{creator.is_following ? 'Following' : 'Follow'}</button>
+                      <button onClick={() => openMessageDrawerFor(creator)} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">Message</button>
                     </div>
                   </div>
                 ))}
@@ -2770,10 +2762,10 @@ const PrimeSpotlightPage: React.FC = () => {
       </div>
 
       <div className="fixed bottom-20 right-5 z-40 hidden lg:flex flex-col gap-3">
-        <button onClick={() => openComposer()} className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition hover:scale-105 dark:border-white/10 dark:bg-[#0b1220] dark:text-white">
+        <button onClick={() => openComposer()} className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0b1220]/92 text-white shadow-[0_14px_35px_rgba(15,23,42,0.28)] transition hover:scale-105 hover:bg-[#0f172a]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-7 w-7"><path d="M12 5v14M5 12h14" /></svg>
         </button>
-        <button onClick={openMessagesPanel} className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition hover:scale-105 dark:border-white/10 dark:bg-[#0b1220] dark:text-white">
+        <button onClick={openMessagesPanel} className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0b1220]/92 text-white shadow-[0_14px_35px_rgba(15,23,42,0.28)] transition hover:scale-105 hover:bg-[#0f172a]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-7 w-7"><path d="M4 5h16v11H8l-4 3z" /></svg>
         </button>
       </div>
@@ -2784,7 +2776,7 @@ const PrimeSpotlightPage: React.FC = () => {
         transition={{ duration: 0.26, ease: 'easeOut' }}
         className="fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 px-2.5 lg:hidden"
       >
-        <div className="spotlight-mobile-dock mx-auto max-w-[34rem] rounded-full border border-white/72 bg-white/88 p-1.5 shadow-[0_20px_60px_rgba(15,23,42,0.24)] backdrop-blur-3xl dark:border-white/10 dark:bg-[#09111d]/96">
+        <div className="spotlight-mobile-dock mx-auto max-w-[34rem] rounded-full border border-white/10 bg-[#09111d]/96 p-1.5 shadow-[0_20px_60px_rgba(15,23,42,0.34)] backdrop-blur-3xl">
           <div className="grid grid-cols-6 gap-1">
             {NAV_ITEMS.map((item) => {
               const shortLabel =
@@ -2801,14 +2793,14 @@ const PrimeSpotlightPage: React.FC = () => {
                         : 'More';
             const active =
               item.to === '/spotlight'
-                || (item.to === '/profile/me' && profileCardOpen)
+                || (item.to === '/profile/me' && location.pathname.startsWith('/profile/'))
                 || (item.to === '/messages' && messageDrawerOpen)
                 || (item.to === '/notifications' && utilitySheet === 'notifications')
                 || (item.to === '/more' && utilitySheet === 'more');
               const mobileClass = `flex h-full min-h-[54px] flex-col items-center justify-center gap-0.5 rounded-full px-1.5 py-2 text-center text-[9px] font-semibold transition duration-200 hover:-translate-y-0.5 active:scale-95 ${
                 active
-                  ? 'bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(14,165,233,0.98))] text-white shadow-[0_16px_38px_rgba(15,23,42,0.24)] ring-1 ring-white/30 dark:bg-white dark:text-slate-950 dark:ring-slate-950/10'
-                  : 'bg-white/62 text-slate-500 shadow-[0_8px_20px_rgba(15,23,42,0.06)] dark:bg-white/5 dark:text-slate-300'
+                  ? 'bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(14,165,233,0.98))] text-white shadow-[0_16px_38px_rgba(15,23,42,0.24)] ring-1 ring-white/20'
+                  : 'bg-white/[0.04] text-slate-300 shadow-[0_8px_20px_rgba(15,23,42,0.12)]'
               }`;
 
             if (item.to === '/messages') {
@@ -2836,7 +2828,7 @@ const PrimeSpotlightPage: React.FC = () => {
             }
             if (item.to === '/profile/me') {
               return (
-                <button key={item.to} onClick={openViewerProfileCard} className={mobileClass} aria-pressed={active}>
+                <button key={item.to} onClick={openViewerProfilePage} className={mobileClass} aria-pressed={active}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-[18px] w-[18px]">{item.icon()}</svg>
                   <span className="leading-none">{shortLabel}</span>
                 </button>
@@ -3069,7 +3061,7 @@ const PrimeSpotlightPage: React.FC = () => {
         onLikeComment={(id) => void handleLikeComment(id)}
         onReplyTo={setReplyTo}
         onDeleteComment={(id) => void handleDeleteComment(id)}
-        onOpenProfile={() => { if (!activeItem?.creator) return; openProfileCard(activeItem.creator); }}
+        onOpenProfile={() => { if (!activeItem?.creator) return; openProfilePage(activeItem.creator); }}
       />
 
       <SpotlightMessageDrawer
@@ -3110,31 +3102,8 @@ const PrimeSpotlightPage: React.FC = () => {
         onBuyProduct={handleBuyProduct}
       />
 
-      <SpotlightProfileCardModal
-        open={profileCardOpen}
-        username={profileCardUsername}
-        onClose={() => {
-          setProfileCardOpen(false);
-          setProfileCardUsername(null);
-        }}
-        onOpenItem={(item) => {
-          void openItem(item);
-        }}
-        onOpenMessage={(creator) => {
-          setProfileCardOpen(false);
-          setProfileCardUsername(null);
-          openMessageDrawerFor(creator);
-        }}
-        onBlocked={() => {
-          setProfileCardOpen(false);
-          setProfileCardUsername(null);
-          void loadFeed(true);
-        }}
-      />
     </div>
   );
 };
 
 export default PrimeSpotlightPage;
-
-

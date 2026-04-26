@@ -28,10 +28,10 @@ import AutoDraftPersistence from './components/AutoDraftPersistence';
 import GlobalNavigationEnhancer from './components/GlobalNavigationEnhancer';
 import RouteSkeletonFallback from './components/RouteSkeletonFallback';
 import { schedulePrefetchRoutes } from './utils/routePrefetch';
-import HomePage from './pages/public/HomePage';
 
 // Layouts
 const DashboardLayout = lazy(() => import('./layouts/DashboardLayout'));
+const HomePage = lazy(() => import('./pages/public/HomePage'));
 
 // Public Pages
 const StoreFront = lazy(() => import('./pages/public/StoreFront'));
@@ -67,11 +67,17 @@ const ExploreHubPage = lazy(() => import('./pages/public/ExploreHubPage'));
 const BrowsePage = lazy(() => import('./pages/public/BrowsePage'));
 const BrowseServicesPage = lazy(() => import('./pages/public/BrowseServicesPage'));
 const ServicesMarketplacePage = lazy(() => import('./pages/public/ServicesMarketplacePage'));
+const RentalsPage = lazy(() => import('./pages/public/RentalsPage'));
+const AuctionsPage = lazy(() => import('./pages/public/AuctionsPage'));
 const ItemDetailPage = lazy(() => import('./pages/public/ItemDetailPage'));
 const ServiceDetailPage = lazy(() => import('./pages/public/ServiceDetailPage'));
 const ReelsPage = lazy(() => import('./pages/public/ReelsPage'));
 const LiveShoppingPage = lazy(() => import('./pages/public/LiveShoppingPage'));
-const PixePage = lazy(() => import('./pages/public/PixePage'));
+const PixeFeedPage = lazy(() => import('./pages/public/PixeFeedPage'));
+const PixeExplorePage = lazy(() => import('./pages/public/PixeExplorePage'));
+const PixeCreatorsPage = lazy(() => import('./pages/public/PixeCreatorsPage'));
+const PixeWatchPage = lazy(() => import('./pages/public/PixeWatchPage'));
+const PixeChannelPage = lazy(() => import('./pages/public/PixeChannelPage'));
 const SpotlightPage = lazy(() => import('./pages/public/PrimeSpotlightPage'));
 const ProductBattlePage = lazy(() => import('./pages/public/ProductBattlePage'));
 const MysteryBoxPage = lazy(() => import('./pages/public/MysteryBoxPage'));
@@ -181,12 +187,14 @@ const SmartWatchesPage = lazy(() => import('./pages/public/SmartWatchesPage'));
 const LookbookPage = lazy(() => import('./pages/public/LookbookPage'));
 const StyleGuidesPage = lazy(() => import('./pages/public/StyleGuidesPage'));
 const GamesHubPage = lazy(() => import('./pages/public/GamesHubPage'));
+const PrintOnDemandPage = lazy(() => import('./pages/public/PrintOnDemandPage'));
 
 // Protected Pages
 const DashboardOverview = lazy(() => import('./pages/protected/DashboardOverview'));
 const ActivityPage = lazy(() => import('./pages/protected/ActivityPage'));
 const OwnerControlsPage = lazy(() => import('./pages/protected/OwnerControlsPage'));
 const MyOrdersPage = lazy(() => import('./pages/protected/MyOrdersPage'));
+const MyBidsPage = lazy(() => import('./pages/protected/MyBidsPage'));
 const OrderDetailsPage = lazy(() => import('./pages/protected/OrderDetailsPage'));
 const MessagesPage = lazy(() => import('./pages/protected/MessagesPage'));
 const WishlistPage = lazy(() => import('./pages/protected/WishlistPage'));
@@ -201,8 +209,10 @@ const PaymentOptionsPage = lazy(() => import('./pages/protected/PaymentOptionsPa
 const TrustAndVerificationPage = lazy(() => import('./pages/protected/TrustAndVerificationPage'));
 const PermissionsPage = lazy(() => import('./pages/protected/PermissionsPage'));
 const NotificationsSettingsPage = lazy(() => import('./pages/protected/NotificationsSettingsPage'));
+const ProfileNotificationsPage = lazy(() => import('./pages/protected/ProfileNotificationsPage'));
 const PrivacySettingsPage = lazy(() => import('./pages/protected/PrivacySettingsPage'));
 const SwitchAccountsPage = lazy(() => import('./pages/protected/SwitchAccountsPage'));
+const SwitchGoogleAccountPage = lazy(() => import('./pages/protected/SwitchGoogleAccountPage'));
 const MyStorePage = lazy(() => import('./pages/protected/MyStorePage'));
 const MyListingsPage = lazy(() => import('./pages/protected/MyListingsPage'));
 const ListItemPage = lazy(() => import('./pages/protected/ListItemPage'));
@@ -216,13 +226,45 @@ const PromotionsManagerPage = lazy(() => import('./pages/protected/PromotionsMan
 const ProviderDashboardPage = lazy(() => import('./pages/protected/ProviderDashboardPage'));
 const ListServicePage = lazy(() => import('./pages/protected/ListServicePage'));
 const BecomeProviderPage = lazy(() => import('./pages/protected/BecomeProviderPage'));
-const PixeStudio = lazy(() => import('./pages/protected/PixeStudio'));
+const ProviderWorkspaceLayout = lazy(() => import('./pages/protected/provider/ProviderWorkspaceLayout'));
+const ProviderOnboardingPage = lazy(() => import('./pages/protected/provider/ProviderOnboardingPage'));
+const ProviderWorkspaceOverviewPage = lazy(() => import('./pages/protected/provider/ProviderWorkspaceOverviewPage'));
+const ProviderHubProfilePage = lazy(() => import('./pages/protected/provider/ProviderHubProfilePage'));
+const ProviderServicesPage = lazy(() => import('./pages/protected/provider/ProviderServicesPage'));
+const ProviderServiceEditorPage = lazy(() => import('./pages/protected/provider/ProviderServiceEditorPage'));
+const ProviderLeadsPage = lazy(() => import('./pages/protected/provider/ProviderLeadsPage'));
+const ProviderProposalsPage = lazy(() => import('./pages/protected/provider/ProviderProposalsPage'));
+const ProviderJobsPage = lazy(() => import('./pages/protected/provider/ProviderJobsPage'));
+const ProviderCalendarPage = lazy(() => import('./pages/protected/provider/ProviderCalendarPage'));
+const ProviderEarningsPage = lazy(() => import('./pages/protected/provider/ProviderEarningsPage'));
+const ProviderPayoutsPage = lazy(() => import('./pages/protected/provider/ProviderPayoutsPage'));
+const ProviderReviewsPage = lazy(() => import('./pages/protected/provider/ProviderReviewsPage'));
+const ProviderSettingsPage = lazy(() => import('./pages/protected/provider/ProviderSettingsPage'));
+const PixeStudioShell = lazy(() => import('./components/pixe/PixeStudioShell'));
+const PixeStudioDashboardPage = lazy(() => import('./pages/protected/pixe/PixeStudioDashboardPage'));
+const PixeStudioUploadPage = lazy(() => import('./pages/protected/pixe/PixeStudioUploadPage'));
+const PixeStudioContentPage = lazy(() => import('./pages/protected/pixe/PixeStudioContentPage'));
+const PixeStudioVideoDetailsPage = lazy(() => import('./pages/protected/pixe/PixeStudioVideoDetailsPage'));
+const PixeStudioCommentsPage = lazy(() => import('./pages/protected/pixe/PixeStudioCommentsPage'));
+const PixeStudioAnalyticsPage = lazy(() => import('./pages/protected/pixe/PixeStudioAnalyticsPage'));
+const PixeStudioVideoAnalyticsPage = lazy(() => import('./pages/protected/pixe/PixeStudioVideoAnalyticsPage'));
+const PixeStudioChannelPage = lazy(() => import('./pages/protected/pixe/PixeStudioChannelPage'));
+const PixeStudioSettingsPage = lazy(() => import('./pages/protected/pixe/PixeStudioSettingsPage'));
+const PixeSavedPage = lazy(() => import('./pages/protected/pixe/PixeSavedPage'));
+const PixeActivityPage = lazy(() => import('./pages/protected/pixe/PixeActivityPage'));
+const PixeHelpPage = lazy(() => import('./pages/public/PixeHelpPage'));
+const PixeGuidelinesPage = lazy(() => import('./pages/public/PixeGuidelinesPage'));
+const PixePoliciesPage = lazy(() => import('./pages/public/PixePoliciesPage'));
+const PixeTermsPage = lazy(() => import('./pages/public/PixeTermsPage'));
 const CreateLiveStreamPage = lazy(() => import('./pages/protected/CreateLiveStreamPage'));
 const CreatePostPage = lazy(() => import('./pages/protected/CreatePostPage'));
 const CreateSpotlightPage = lazy(() => import('./pages/protected/CreateSpotlightPage'));
 const WalletPage = lazy(() => import('./pages/protected/WalletPage'));
 const EarningsPage = lazy(() => import('./pages/protected/EarningsPage'));
 const PackagesPage = lazy(() => import('./pages/protected/PackagesPage'));
+const ProfileAnalyticsRedirectPage = lazy(() => import('./pages/protected/ProfileAnalyticsRedirectPage'));
+const PersonaAnalyticsPage = lazy(() => import('./pages/protected/PersonaAnalyticsPage'));
+const PersonaAnalyticsWidgetPage = lazy(() => import('./pages/protected/PersonaAnalyticsWidgetPage'));
 const AdvancedAnalyticsPage = lazy(() => import('./pages/protected/AdvancedAnalyticsPage'));
 const TrafficAnalyticsPage = lazy(() => import('./pages/protected/TrafficAnalyticsPage'));
 const RevenueAnalyticsPage = lazy(() => import('./pages/protected/RevenueAnalyticsPage'));
@@ -241,15 +283,30 @@ const DisputeCenterPage = lazy(() => import('./pages/protected/DisputeCenterPage
 const HelpPage = lazy(() => import('./pages/protected/HelpPage'));
 const WorkflowHubPage = lazy(() => import('./pages/protected/WorkflowHubPage'));
 const ShipperDashboardPage = lazy(() => import('./pages/protected/ShipperDashboardPage'));
+const ShipperDeliveryQueuePage = lazy(() => import('./pages/protected/ShipperDeliveryQueuePage'));
+const PODStudioDashboardPage = lazy(() => import('./pages/protected/pod/PODStudioDashboardPage'));
+const PODCatalogPage = lazy(() => import('./pages/protected/pod/PODCatalogPage'));
+const PODDesignLibraryPage = lazy(() => import('./pages/protected/pod/PODDesignLibraryPage'));
+const PODProductsPage = lazy(() => import('./pages/protected/pod/PODProductsPage'));
+const PODOrdersPage = lazy(() => import('./pages/protected/pod/PODOrdersPage'));
+const PODProductEditorPage = lazy(() => import('./pages/protected/pod/PODProductEditorPage'));
+const GameStudioPage = lazy(() => import('./pages/protected/GameStudioPage'));
+const DigitalLibraryPage = lazy(() => import('./pages/protected/DigitalLibraryPage'));
 
 // Admin Pages
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
+const AdminAnalyticsPage = lazy(() => import('./pages/admin/AdminAnalyticsPage'));
+const AdminAnalyticsWidgetPage = lazy(() => import('./pages/admin/AdminAnalyticsWidgetPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'));
 const AdminListingsPage = lazy(() => import('./pages/admin/AdminListingsPage'));
 const AdminBookingsPage = lazy(() => import('./pages/admin/AdminBookingsPage'));
 const AdminPayoutsPage = lazy(() => import('./pages/admin/AdminPayoutsPage'));
 const AdminCustomerQueriesPage = lazy(() => import('./pages/admin/AdminCustomerQueriesPage'));
 const AdminSettingsPage = lazy(() => import('./pages/admin/AdminSettingsPage'));
+const AdminProvidersPage = lazy(() => import('./pages/admin/AdminProvidersPage'));
+const AdminDropshippingPage = lazy(() => import('./pages/admin/AdminDropshippingPage'));
+const AdminPixePage = lazy(() => import('./pages/admin/AdminPixePage'));
+const ProviderPublicProfilePage = lazy(() => import('./pages/public/ProviderPublicProfilePage'));
 
 
 // Auth Pages
@@ -311,7 +368,13 @@ const AppContent: React.FC = () => {
           <Route path="/admin" element={<AdminRoute />}>
             <Route element={<AdminLayout />}>
               <Route path="dashboard" element={<AdminDashboardPage />} />
+              <Route path="analytics" element={<Navigate to="/admin/analytics/overview" replace />} />
+              <Route path="analytics/:pageId" element={<AdminAnalyticsPage />} />
+              <Route path="analytics/:pageId/card/:widgetId" element={<AdminAnalyticsWidgetPage />} />
               <Route path="users" element={<AdminUsersPage />} />
+              <Route path="providers" element={<AdminProvidersPage />} />
+              <Route path="dropshipping" element={<AdminDropshippingPage />} />
+              <Route path="pixe" element={<AdminPixePage />} />
               <Route path="listings" element={<AdminListingsPage />} />
               <Route path="bookings" element={<AdminBookingsPage />} />
               <Route path="payouts" element={<AdminPayoutsPage />} />
@@ -320,16 +383,56 @@ const AppContent: React.FC = () => {
             </Route>
           </Route>
 
+          <Route path="/pixe" element={<PixeFeedPage mode="for_you" />} />
+          <Route path="/pixe/following" element={<PixeFeedPage mode="following" />} />
+          <Route path="/pixe/explore" element={<PixeExplorePage />} />
+          <Route path="/pixe/search" element={<PixeExplorePage />} />
+          <Route path="/pixe/creators" element={<PixeCreatorsPage />} />
+          <Route path="/pixe/watch/:videoId" element={<PixeWatchPage />} />
+          <Route path="/pixe/channel/:handle" element={<PixeChannelPage />} />
+          <Route path="/pixe/help" element={<PixeHelpPage />} />
+          <Route path="/pixe/guidelines" element={<PixeGuidelinesPage />} />
+          <Route path="/pixe/policies" element={<PixePoliciesPage />} />
+          <Route path="/pixe/terms" element={<PixeTermsPage />} />
+          <Route path="/pixe/saved" element={<ProtectedRoute />}>
+            <Route index element={<PixeSavedPage />} />
+          </Route>
+          <Route path="/pixe/activity" element={<ProtectedRoute />}>
+            <Route index element={<PixeActivityPage />} />
+            <Route path="watched" element={<PixeActivityPage />} />
+            <Route path="likes" element={<PixeActivityPage />} />
+            <Route path="comments" element={<PixeActivityPage />} />
+          </Route>
+
+          <Route path="/pixe-studio" element={<ProtectedRoute />}>
+            <Route element={<PixeStudioShell />}>
+              <Route index element={<Navigate to="/pixe-studio/dashboard" replace />} />
+              <Route path="dashboard" element={<PixeStudioDashboardPage />} />
+              <Route path="upload" element={<PixeStudioUploadPage />} />
+              <Route path="content" element={<PixeStudioContentPage />} />
+              <Route path="content/:videoId" element={<PixeStudioVideoDetailsPage />} />
+              <Route path="comments" element={<PixeStudioCommentsPage />} />
+              <Route path="analytics" element={<PixeStudioAnalyticsPage />} />
+              <Route path="analytics/:videoId" element={<PixeStudioVideoAnalyticsPage />} />
+              <Route path="monetization" element={<Navigate to="/pixe-studio/analytics" replace />} />
+              <Route path="channel" element={<PixeStudioChannelPage />} />
+              <Route path="settings" element={<PixeStudioSettingsPage />} />
+            </Route>
+          </Route>
+
           {/* Main Layout Routes - Wraps all site pages */}
           <Route element={<Layout />}>
             {/* Dynamic Routes - Must be before catch-all */}
             <Route path="item/:id" element={<ItemDetailPage />} />
+            <Route path="auctions/:itemId" element={<ItemDetailPage />} />
             <Route path="service/:id" element={<ServiceDetailPage />} />
+            <Route path="providers/:providerId" element={<ProviderPublicProfilePage />} />
             <Route path="user/:id" element={<PublicProfilePage />} />
             <Route path="profile/:username" element={<SpotlightRouteFrame><SpotlightProfilePage /></SpotlightRouteFrame>} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="more" element={<MorePage />} />
             <Route path="messages" element={<MessagesPage />} />
+            <Route path="messages/:threadId" element={<MessagesPage />} />
             <Route path="wishlist/:id" element={<PublicWishlistPage />} />
             <Route path="collections/:userId" element={<UserCollectionsPage />} />
             <Route index element={<HomePage />} />
@@ -366,13 +469,14 @@ const AppContent: React.FC = () => {
             <Route path="buyers" element={<BuyerDirectoryPage />} />
             <Route path="explore" element={<ExploreHubPage />} />
             <Route path="browse" element={<BrowsePage />} />
+            <Route path="rentals" element={<RentalsPage />} />
+            <Route path="auctions" element={<AuctionsPage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
                 <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
                 <Route path="reels" element={<ReelsPage />} />
                 <Route path="spotlight" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
                 <Route path="spotlight/post/:id" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
                 <Route path="live" element={<LiveShoppingPage />} />
-                <Route path="pixe" element={<PixePage />} />
             <Route path="battles" element={<ProductBattlePage />} />
             <Route path="mystery-box" element={<MysteryBoxPage />} />
             <Route path="features" element={<FeaturesHubPage />} />
@@ -483,6 +587,7 @@ const AppContent: React.FC = () => {
             <Route path="lookbook" element={<LookbookPage />} />
             <Route path="style-guides" element={<StyleGuidesPage />} />
             <Route path="games" element={<GamesHubPage />} />
+            <Route path="print-on-demand" element={<PrintOnDemandPage />} />
             <Route path="seller/listings" element={<Navigate to="/profile/products" replace />} />
 
             {/* Protected User Routes */}
@@ -491,6 +596,7 @@ const AppContent: React.FC = () => {
                     <Route index element={<DashboardOverview />} />
                     <Route path="orders" element={<MyOrdersPage />} />
                     <Route path="orders/:bookingId" element={<OrderDetailsPage />} />
+                    <Route path="bids" element={<MyBidsPage />} />
                     <Route path="messages" element={<MessagesPage />} />
                     <Route path="messages/:threadId" element={<MessagesPage />} />
                     <Route path="workflows" element={<WorkflowHubPage />} />
@@ -500,6 +606,7 @@ const AppContent: React.FC = () => {
                     <Route path="followed-stores" element={<FollowedStoresPage />} />
                     <Route path="history" element={<BrowsingHistoryPage />} />
                     <Route path="activity" element={<ActivityPage />} />
+                    <Route path="notifications" element={<ProfileNotificationsPage />} />
                     <Route path="edit" element={<Navigate to="/profile/settings" replace />} />
                     <Route path="settings" element={<SettingsPage />}>
                         <Route index element={<ProfileHubPage />} />
@@ -513,38 +620,84 @@ const AppContent: React.FC = () => {
                     <Route path="addresses" element={<Navigate to="/profile/settings/addresses" replace />} />
                     <Route path="notifications-settings" element={<Navigate to="/profile/settings/notifications" replace />} />
                     <Route path="payment-options" element={<Navigate to="/payment-options" replace />} />
-                    <Route path="analytics/traffic" element={<Navigate to="/store/manager/analytics/traffic" replace />} />
-                    <Route path="analytics/revenue" element={<Navigate to="/store/manager/analytics/revenue" replace />} />
-                    <Route path="analytics/conversion" element={<Navigate to="/store/manager/analytics/conversion" replace />} />
-                    <Route path="analytics/sales-units" element={<Navigate to="/store/manager/analytics/sales-units" replace />} />
-                    <Route path="wallet" element={<WalletPage />} />
-                    <Route path="permissions" element={<PermissionsPage />} />
-                    <Route path="switch-accounts" element={<SwitchAccountsPage />} />
+                    <Route path="analytics" element={<ProfileAnalyticsRedirectPage />} />
+                    <Route path="analytics/traffic" element={<Navigate to="/profile/analytics/seller/traffic" replace />} />
+                    <Route path="analytics/revenue" element={<Navigate to="/profile/analytics/seller/revenue" replace />} />
+                    <Route path="analytics/conversion" element={<Navigate to="/profile/analytics/seller/conversion" replace />} />
+                    <Route path="analytics/sales-units" element={<Navigate to="/profile/analytics/seller/sales-units" replace />} />
+                      <Route path="wallet" element={<WalletPage />} />
+                      <Route path="permissions" element={<PermissionsPage />} />
+                      <Route path="switch-accounts" element={<SwitchAccountsPage />} />
+                      <Route path="switch-google-account" element={<SwitchGoogleAccountPage />} />
+                      <Route path="provider/onboarding" element={<ProviderOnboardingPage />} />
+                    <Route path="provider/status" element={<ProviderOnboardingPage />} />
+                    <Route path="provider-dashboard" element={<Navigate to="/profile/provider" replace />} />
+                    <Route path="services/new" element={<Navigate to="/profile/provider/services/new" replace />} />
+                    <Route path="become-a-provider" element={<Navigate to="/profile/provider/onboarding" replace />} />
+
+                    <Route element={<PersonaRoute requiredCapabilities={['buy', 'rent']} requiredPersonaTypes={['consumer']} mode="any" />}>
+                        <Route path="analytics/consumer" element={<Navigate to="/profile/analytics/consumer/overview" replace />} />
+                        <Route path="analytics/consumer/:pageId" element={<PersonaAnalyticsPage scopeType="consumer" />} />
+                        <Route path="analytics/consumer/:pageId/card/:widgetId" element={<PersonaAnalyticsWidgetPage scopeType="consumer" />} />
+                    </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
                         <Route path="store" element={<MyStorePage />} />
-                        <Route path="products" element={<MyListingsPage />} />
-                        <Route path="products/new" element={<ListItemPage />} />
-                        <Route path="products/new-digital" element={<DigitalListItemPage />} />
-                        <Route path="sales" element={<SalesManagementPage />} />
+                    <Route path="products" element={<MyListingsPage />} />
+                    <Route path="products/new" element={<ListItemPage />} />
+                    <Route path="products/new-digital" element={<DigitalListItemPage />} />
+                    <Route path="game-studio" element={<GameStudioPage />} />
+                    <Route path="pod-studio" element={<PODStudioDashboardPage />} />
+                    <Route path="pod-studio/catalog" element={<PODCatalogPage />} />
+                    <Route path="pod-studio/designs" element={<PODDesignLibraryPage />} />
+                    <Route path="pod-studio/products" element={<PODProductsPage />} />
+                    <Route path="pod-studio/orders" element={<PODOrdersPage />} />
+                    <Route path="pod-studio/new" element={<PODProductEditorPage />} />
+                    <Route path="sales" element={<SalesManagementPage />} />
                         <Route path="owner-controls" element={<OwnerControlsPage />} />
                         <Route path="offers" element={<OffersPage />} />
                         <Route path="promotions" element={<PromotionsManagerPage />} />
                         <Route path="earnings" element={<EarningsPage />} />
+                        <Route path="analytics/seller" element={<Navigate to="/profile/analytics/seller/overview" replace />} />
+                        <Route path="analytics/seller/:pageId" element={<PersonaAnalyticsPage scopeType="seller" />} />
+                        <Route path="analytics/seller/:pageId/card/:widgetId" element={<PersonaAnalyticsWidgetPage scopeType="seller" />} />
                     </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['provide_service']} requiredPersonaTypes={['provider']} mode="all" />}>
-                        <Route path="provider-dashboard" element={<ProviderDashboardPage />} />
-                        <Route path="services/new" element={<ListServicePage />} />
-                        <Route path="become-a-provider" element={<BecomeProviderPage />} />
+                        <Route path="provider" element={<ProviderWorkspaceLayout />}>
+                            <Route index element={<ProviderWorkspaceOverviewPage />} />
+                            <Route path="hub-profile" element={<ProviderHubProfilePage />} />
+                            <Route path="services" element={<ProviderServicesPage />} />
+                            <Route path="services/new" element={<ProviderServiceEditorPage />} />
+                            <Route path="services/:serviceId/edit" element={<ProviderServiceEditorPage />} />
+                            <Route path="leads" element={<ProviderLeadsPage />} />
+                            <Route path="proposals" element={<ProviderProposalsPage />} />
+                            <Route path="jobs" element={<ProviderJobsPage />} />
+                            <Route path="calendar" element={<ProviderCalendarPage />} />
+                            <Route path="earnings" element={<ProviderEarningsPage />} />
+                            <Route path="payouts" element={<ProviderPayoutsPage />} />
+                            <Route path="reviews" element={<ProviderReviewsPage />} />
+                            <Route path="settings" element={<ProviderSettingsPage />} />
+                        </Route>
+                        <Route path="analytics/provider" element={<Navigate to="/profile/analytics/provider/overview" replace />} />
+                        <Route path="analytics/provider/:pageId" element={<PersonaAnalyticsPage scopeType="provider" />} />
+                        <Route path="analytics/provider/:pageId/card/:widgetId" element={<PersonaAnalyticsWidgetPage scopeType="provider" />} />
                     </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['affiliate']} requiredPersonaTypes={['affiliate']} mode="all" />}>
                         <Route path="affiliate" element={<AffiliateProgramPage />} />
+                        <Route path="analytics/affiliate" element={<Navigate to="/profile/analytics/affiliate/overview" replace />} />
+                        <Route path="analytics/affiliate/:pageId" element={<PersonaAnalyticsPage scopeType="affiliate" />} />
+                        <Route path="analytics/affiliate/:pageId/card/:widgetId" element={<PersonaAnalyticsWidgetPage scopeType="affiliate" />} />
                     </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['ship']} requiredPersonaTypes={['shipper']} mode="all" />}>
+                        <Route path="shipper" element={<Navigate to="/profile/shipper-dashboard" replace />} />
                         <Route path="shipper-dashboard" element={<ShipperDashboardPage />} />
+                        <Route path="shipper/queue" element={<ShipperDeliveryQueuePage />} />
+                        <Route path="analytics/shipper" element={<Navigate to="/profile/analytics/shipper/overview" replace />} />
+                        <Route path="analytics/shipper/:pageId" element={<PersonaAnalyticsPage scopeType="shipper" />} />
+                        <Route path="analytics/shipper/:pageId/card/:widgetId" element={<PersonaAnalyticsWidgetPage scopeType="shipper" />} />
                     </Route>
 
                     <Route element={<PersonaRoute requiredCapabilities={['sell', 'provide_service']} requiredPersonaTypes={['seller', 'provider']} mode="any" />}>
@@ -554,10 +707,11 @@ const AppContent: React.FC = () => {
                     <Route path="collections" element={<MyCollectionsPage />} />
                     <Route path="go-live" element={<CreateLiveStreamPage />} />
                 <Route path="add-post" element={<CreatePostPage />} />
-                <Route path="spotlight/create" element={<SpotlightRouteFrame><CreateSpotlightPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/create" element={<Navigate to="/spotlight/create" replace />} />
                 <Route path="track-delivery/:bookingId" element={<TrackDeliveryPage />} />
                     <Route path="disputes" element={<DisputeCenterPage />} />
-                    <Route path="analytics/advanced" element={<AdvancedAnalyticsPage />} />
+                    <Route path="digital-library" element={<DigitalLibraryPage />} />
+                    <Route path="analytics/advanced" element={<Navigate to="/profile/analytics/seller/intelligence" replace />} />
                 </Route>
             </Route>
 
@@ -583,10 +737,6 @@ const AppContent: React.FC = () => {
                 <Route index element={<OrderConfirmationPage />} />
             </Route>
 
-            <Route path="pixe-studio" element={<ProtectedRoute />}>
-                <Route index element={<PixeStudio />} />
-            </Route>
-
             <Route path="spotlight/create" element={<ProtectedRoute />}>
                 <Route index element={<SpotlightRouteFrame><CreateSpotlightPage /></SpotlightRouteFrame>} />
             </Route>
@@ -605,11 +755,11 @@ const AppContent: React.FC = () => {
 
             <Route path="store/manager" element={<ProtectedRoute />}>
                 <Route element={<PersonaRoute requiredCapabilities={['sell']} requiredPersonaTypes={['seller']} mode="all" />}>
-                    <Route path="analytics" element={<AdvancedAnalyticsPage />} />
-                    <Route path="analytics/traffic" element={<TrafficAnalyticsPage />} />
-                    <Route path="analytics/revenue" element={<RevenueAnalyticsPage />} />
-                    <Route path="analytics/sales-units" element={<SalesUnitsAnalyticsPage />} />
-                    <Route path="analytics/conversion" element={<ConversionAnalyticsPage />} />
+                    <Route path="analytics" element={<Navigate to="/profile/analytics/seller/overview" replace />} />
+                    <Route path="analytics/traffic" element={<Navigate to="/profile/analytics/seller/traffic" replace />} />
+                    <Route path="analytics/revenue" element={<Navigate to="/profile/analytics/seller/revenue" replace />} />
+                    <Route path="analytics/sales-units" element={<Navigate to="/profile/analytics/seller/sales-units" replace />} />
+                    <Route path="analytics/conversion" element={<Navigate to="/profile/analytics/seller/conversion" replace />} />
                 </Route>
             </Route>
 

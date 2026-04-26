@@ -180,6 +180,33 @@ const fromUserLegacyDefaultPersonaType = (user: Partial<User>): PersonaType => {
   return 'consumer';
 };
 
+const inferDesiredPersonaTypes = (user: Partial<User>): PersonaType[] => {
+  const desired = new Set<PersonaType>(['consumer']);
+  desired.add(fromUserLegacyDefaultPersonaType(user));
+
+  if (user?.purpose === 'list' || user?.purpose === 'both' || Boolean(user?.businessName)) {
+    desired.add('seller');
+  }
+  if (user?.isServiceProvider || Boolean(user?.providerProfile)) {
+    desired.add('provider');
+  }
+  if (user?.isAffiliate || user?.affiliateOnboardingCompleted) {
+    desired.add('affiliate');
+  }
+
+  return Array.from(desired);
+};
+
+const buildPersonaDisplayName = (user: Partial<User>, type: PersonaType) => {
+  const baseName = String(user?.name || 'User').trim() || 'User';
+  if (type === 'consumer') return baseName;
+  if (type === 'seller') return `${baseName} Seller`;
+  if (type === 'provider') return `${baseName} Provider`;
+  if (type === 'affiliate') return `${baseName} Affiliate`;
+  if (type === 'shipper') return `${baseName} Shipper`;
+  return baseName;
+};
+
 const storageKeyForActivePersona = (userId: string) => `${ACTIVE_PERSONA_STORAGE_PREFIX}${userId}`;
 
 const setActivePersonaStorage = (userId: string, personaId: string) => {
@@ -329,6 +356,34 @@ export const personaService = {
     }
 
     saveManyLocal(user.id, personas);
+    return personas;
+  },
+
+  ensureRolePersonas: async (
+    user: Partial<User> & { id: string; name?: string; avatar?: string }
+  ): Promise<AccountPersona[]> => {
+    let personas = await personaService.getPersonasForUser(user);
+    if (personas.length === 0) {
+      personas = await personaService.ensureDefaultConsumerPersona(user);
+    }
+
+    const existingTypes = new Set(personas.map((persona) => persona.type));
+    let createdMissingRole = false;
+
+    for (const type of inferDesiredPersonaTypes(user)) {
+      if (existingTypes.has(type)) continue;
+      await personaService.createPersona(user, type, {
+        displayName: buildPersonaDisplayName(user, type),
+        avatar: user.avatar
+      });
+      existingTypes.add(type);
+      createdMissingRole = true;
+    }
+
+    if (createdMissingRole) {
+      personas = await personaService.getPersonasForUser(user);
+    }
+
     return personas;
   },
 

@@ -68,7 +68,7 @@ const StoreSetupPage: React.FC = () => {
       
       try {
         setIsLoading(true);
-        const existing = await storeBuildService.getUserStore(user.uid);
+        const existing = await storeBuildService.getUserStore(user.id);
         
         if (existing) {
           setStoreId(existing.id || null);
@@ -150,9 +150,9 @@ const StoreSetupPage: React.FC = () => {
 
     try {
       // Save store to database
-      const savedStore = await storeBuildService.saveStoreSetup(user.uid, {
+      const savedStore = await storeBuildService.saveStoreSetup(user.id, {
         ...storeData,
-        userId: user.uid,
+        userId: user.id,
       });
 
       setStoreId(savedStore.id || null);

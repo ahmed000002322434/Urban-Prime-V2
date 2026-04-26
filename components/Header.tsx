@@ -135,8 +135,9 @@ const AccountMenu: React.FC<{
         }
         if (activePersonaType === 'provider') {
             return [
-                { icon: <ListIcon />, text: 'Provider dashboard', path: '/profile/provider-dashboard' },
-                { icon: <ListIcon />, text: 'Create service', path: '/profile/services/new' },
+                { icon: <ListIcon />, text: 'Provider dashboard', path: '/profile/provider' },
+                { icon: <ListIcon />, text: 'Hub profile', path: '/profile/provider/hub-profile' },
+                { icon: <ListIcon />, text: 'Create service', path: '/profile/provider/services/new' },
                 { icon: <ClockIcon />, text: 'Workflows', path: '/profile/workflows' }
             ];
         }
@@ -336,7 +337,7 @@ const NotificationMenu: React.FC<{ notifications: Notification[], onMarkAsRead: 
                 </ul>
             )}
             <div className="p-2 text-center border-t border-border">
-                <Link to="/profile/settings/notifications" className="text-sm font-semibold text-primary hover:underline">Notification Settings</Link>
+                <Link to="/profile/notifications" className="text-sm font-semibold text-primary hover:underline">Open notification inbox</Link>
             </div>
         </div>
     );
@@ -407,6 +408,7 @@ const ExploreMenu: React.FC<{ onClose: () => void; onOpenOmni?: () => void }> = 
     const features = [
         { title: 'Live', desc: 'Shop live streams and creator drops in real time.', link: '/live', icon: <LiveIcon /> },
         { title: 'Spotlight', desc: 'Premium discovery feed for photos, clips, and creators.', link: '/spotlight', icon: <SpotlightIcon /> },
+        { title: 'Services', desc: 'Browse trusted services, instant booking, and custom quote providers.', link: '/services/marketplace', icon: <ListIcon /> },
         { titleKey: 'exploreMenu.pixe.title', descKey: 'exploreMenu.pixe.desc', link: '/reels', icon: <ReelsIcon /> },
         { titleKey: 'exploreMenu.battles.title', descKey: 'exploreMenu.battles.desc', link: '/battles', icon: <BattleIcon /> },
         { titleKey: 'exploreMenu.games.title', descKey: 'exploreMenu.games.desc', link: '/games', icon: <DiamondIcon /> },
@@ -721,6 +723,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         { name: 'Affiliate Program', path: '/affiliate-program' },
         { name: 'Discover Pixe', path: '/reels' },
         { name: 'Prime Spotlight', path: '/spotlight' },
+        { name: 'Services Marketplace', path: '/services/marketplace' },
         { name: 'Create Your AI Store', path: '/create-store' },
         { name: 'Browse All Items', path: '/browse' },
     ];
@@ -887,6 +890,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
 
 
     const isLightResolvedTheme = !['obsidian', 'noir', 'hydra'].includes(resolvedTheme);
+    const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
 
     const bannerPillBorderProgress = Math.min(Math.max(isHomePage ? scrollOpacity : 1, 0), 1);
     const isHomePillCollapsed = isHomePage && bannerPillBorderProgress < 0.12;
@@ -912,7 +916,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const pillClasses = isHomePage
         ? 'transition-all duration-300 rounded-full border'
         : `transition-all duration-300 rounded-full border ${
-              isScrolled ? 'bg-surface/80 backdrop-blur-xl shadow-md border-border/80' : 'bg-surface/70 backdrop-blur-lg shadow-sm border-border/60'
+              prefersNoirTuning
+                  ? (isScrolled ? 'bg-surface/92 backdrop-blur-md shadow-md border-border/80' : 'bg-surface/90 backdrop-blur-sm shadow-sm border-border/60')
+                  : (isScrolled ? 'bg-surface/80 backdrop-blur-xl shadow-md border-border/80' : 'bg-surface/70 backdrop-blur-lg shadow-sm border-border/60')
           }`;
 
     const desktopPillClasses = pillClasses;
@@ -962,8 +968,8 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                   backgroundColor: `rgba(255, 255, 255, ${bannerPillBorderProgress * 0.08})`,
                   borderColor: `rgba(255, 255, 255, ${bannerPillBorderProgress * 0.2})`,
                   borderWidth: `${bannerPillBorderProgress}px`,
-                  backdropFilter: `blur(${6 + bannerPillBorderProgress * 12}px)`,
-                  boxShadow: `0 ${bannerPillBorderProgress * 8}px ${bannerPillBorderProgress * 28}px rgba(255,255,255,${bannerPillBorderProgress * 0.08})`
+                  backdropFilter: `blur(${prefersNoirTuning ? 4 + bannerPillBorderProgress * 6 : 6 + bannerPillBorderProgress * 12}px)`,
+                  boxShadow: `0 ${bannerPillBorderProgress * 8}px ${bannerPillBorderProgress * (prefersNoirTuning ? 18 : 28)}px rgba(255,255,255,${bannerPillBorderProgress * (prefersNoirTuning ? 0.05 : 0.08)})`
               }
         : {};
     const getMobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -1028,6 +1034,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         
                         <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
                              <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
+                        </NavLink>
+                        <NavLink to="/services/marketplace" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-primary' : 'hover:text-primary'}`}>
+                             <span className="text-primary"><ListIcon /></span> Services
                         </NavLink>
                         <NavLink to="/spotlight" className={({ isActive }: { isActive: boolean }) => `${getNavLinkClass({isActive})} flex items-center gap-1 ${isActive ? 'text-sky-500' : 'hover:text-sky-500'}`}>
                              <span className="text-sky-500"><SpotlightIcon /></span> Spotlight
@@ -1106,7 +1115,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     fixed top-0 left-0 right-0 z-50
                     md:hidden transition-colors duration-300
                     ${isScrolled || !isHomePage
-                        ? 'bg-surface/80 backdrop-blur-md border-b border-border/80'
+                        ? (prefersNoirTuning ? 'bg-surface/92 backdrop-blur-sm border-b border-border/80' : 'bg-surface/80 backdrop-blur-md border-b border-border/80')
                         : 'bg-transparent'
                     }
                 `}
@@ -1171,6 +1180,9 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                             </NavLink>
                             <NavLink to="/luxury" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-[#0066FF]' : 'hover:text-[#0066FF]'}`}>
                                 <span className="text-[#0066FF]"><DiamondIcon /></span> Luxury
+                            </NavLink>
+                            <NavLink to="/services/marketplace" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-primary' : 'hover:text-primary'}`}>
+                                <span className="text-primary"><ListIcon /></span> Services
                             </NavLink>
                             <NavLink to="/spotlight" className={({ isActive }: { isActive: boolean }) => `${getMobileNavLinkClass({ isActive })} flex items-center gap-1 ${isActive ? 'text-sky-500' : 'hover:text-sky-500'}`}>
                                 <span className="text-sky-500"><SpotlightIcon /></span> Spotlight

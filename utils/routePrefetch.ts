@@ -25,6 +25,16 @@ const routePrefetchEntries: RoutePrefetchEntry[] = [
     loaders: [() => import('../pages/public/BrowsePage')],
   },
   {
+    cacheKey: () => '/rentals',
+    match: (path) => path === '/rentals',
+    loaders: [() => import('../pages/public/RentalsPage')],
+  },
+  {
+    cacheKey: () => '/auctions',
+    match: (path) => path === '/auctions',
+    loaders: [() => import('../pages/public/AuctionsPage')],
+  },
+  {
     cacheKey: () => '/stores',
     match: (path) => path.startsWith('/stores'),
     loaders: [() => import('../pages/public/StoresDirectoryPage')],
@@ -72,7 +82,17 @@ const routePrefetchEntries: RoutePrefetchEntry[] = [
   {
     cacheKey: () => '/pixe',
     match: (path) => path.startsWith('/pixe'),
-    loaders: [() => import('../pages/public/PixePage')],
+    loaders: [
+      () => import('../pages/public/PixeFeedPage'),
+      () => import('../pages/public/PixeExplorePage'),
+      () => import('../pages/public/PixeCreatorsPage'),
+      () => import('../pages/public/PixeWatchPage'),
+      () => import('../pages/public/PixeChannelPage'),
+      () => import('../pages/public/PixeHelpPage'),
+      () => import('../pages/public/PixeGuidelinesPage'),
+      () => import('../pages/public/PixePoliciesPage'),
+      () => import('../pages/public/PixeTermsPage'),
+    ],
   },
   {
     cacheKey: () => '/live',

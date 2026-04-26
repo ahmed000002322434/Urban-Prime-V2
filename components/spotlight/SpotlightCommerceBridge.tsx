@@ -48,16 +48,16 @@ const SpotlightCommerceBridge: React.FC<SpotlightCommerceBridgeProps> = ({
   const topEntries = entries.slice(0, 4);
 
   return (
-    <section className={`spotlight-commerce-bridge rounded-[1.75rem] border border-white/70 bg-white/72 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/5 ${className}`}>
+    <section className={`spotlight-commerce-bridge rounded-[1.75rem] border border-[#2F3336] bg-[rgba(22,22,22,0.7)] p-4 text-white backdrop-blur-[12px] ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.28em] text-amber-500">Commerce bridge</p>
-          <h3 className="mt-1 text-lg font-black text-slate-950 dark:text-white">Spotlight to shop</h3>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#71767B]">Commerce bridge</p>
+          <h3 className="mt-1 text-lg font-black text-white">Spotlight to shop</h3>
+          <p className="mt-1 text-sm leading-relaxed text-[#71767B]">
             Tagged products can jump straight into item detail, cart, and checkout without leaving the discovery flow.
           </p>
         </div>
-        <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+        <span className="rounded-full border border-[#2F3336] bg-black/40 px-3 py-1 text-[11px] font-semibold text-[#71767B]">
           Live funnel
         </span>
       </div>
@@ -67,14 +67,14 @@ const SpotlightCommerceBridge: React.FC<SpotlightCommerceBridgeProps> = ({
           {topEntries.map(({ item, product }) => (
             <div
               key={`${item.id}:${product.id}`}
-              className="overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/78 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/5"
+              className="overflow-hidden rounded-[1.35rem] border border-[#2F3336] bg-black/50 transition duration-200 hover:-translate-y-0.5 hover:bg-black/70"
             >
               <button
                 type="button"
                 onClick={() => onOpenProduct?.(item, product)}
-                className="group flex w-full items-center gap-3 p-3 text-left transition duration-200 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+                className="group flex w-full items-center gap-3 p-3 text-left transition duration-200 hover:bg-white/[0.03]"
               >
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-100 dark:bg-white/5">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-[#0c0c0c]">
                   {product.image_url ? (
                     <img
                       src={product.image_url}
@@ -85,31 +85,31 @@ const SpotlightCommerceBridge: React.FC<SpotlightCommerceBridgeProps> = ({
                   ) : null}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-slate-950 dark:text-white">{product.title}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="truncate text-sm font-bold text-white">{product.title}</p>
+                  <p className="mt-1 text-xs text-[#71767B]">
                     {safePrice(product)} · {item.creator?.name || 'Creator shop'}
                   </p>
-                  <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-400/10 dark:text-amber-200">
+                  <p className="mt-2 inline-flex rounded-full border border-[#2F3336] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                     {product.cta_label || 'Shop now'}
                   </p>
                 </div>
-                <span className="rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition group-hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:group-hover:bg-white/10">
+                <span className="rounded-full border border-white/70 px-3 py-1.5 text-[11px] font-semibold text-white transition group-hover:bg-white group-hover:text-black">
                   Open
                 </span>
               </button>
 
-              <div className="grid grid-cols-2 gap-2 border-t border-white/60 p-2 dark:border-white/10">
+              <div className="grid grid-cols-2 gap-2 border-t border-[#2F3336] p-2">
                 <button
                   type="button"
                   onClick={() => onOpenProduct?.(item, product)}
-                  className="rounded-full border border-slate-200 bg-white/85 px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                  className="rounded-full border border-[#2F3336] bg-transparent px-3 py-2 text-[11px] font-semibold text-[#71767B] transition hover:bg-white/5 hover:text-white"
                 >
                   View
                 </button>
                 <button
                   type="button"
                   onClick={() => (onBuyProduct || onOpenProduct)?.(item, product)}
-                  className="rounded-full bg-slate-950 px-3 py-2 text-[11px] font-semibold text-white transition hover:brightness-110 dark:bg-white dark:text-slate-950"
+                  className="rounded-full border border-white/70 bg-transparent px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-white hover:text-black"
                 >
                   {onBuyProduct ? 'Buy now' : 'Open'}
                 </button>
@@ -118,7 +118,7 @@ const SpotlightCommerceBridge: React.FC<SpotlightCommerceBridgeProps> = ({
           ))}
         </div>
       ) : (
-        <div className="mt-4 rounded-[1.35rem] border border-dashed border-slate-300 bg-white/60 p-4 text-sm text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+        <div className="mt-4 rounded-[1.35rem] border border-dashed border-[#2F3336] bg-black/40 p-4 text-sm text-[#71767B]">
           When creators tag products in Spotlight, they will appear here and link directly into buy flows.
         </div>
       )}
@@ -128,10 +128,10 @@ const SpotlightCommerceBridge: React.FC<SpotlightCommerceBridgeProps> = ({
           <Link
             key={link.to}
             to={link.to}
-            className="rounded-[1.2rem] border border-white/70 bg-white/80 p-3 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_24px_rgba(15,23,42,0.1)] dark:border-white/10 dark:bg-white/5"
+            className="rounded-[1.2rem] border border-[#2F3336] bg-black/45 p-3 transition duration-200 hover:-translate-y-0.5 hover:bg-black/65"
           >
-            <p className="text-sm font-bold text-slate-950 dark:text-white">{link.label}</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{link.hint}</p>
+            <p className="text-sm font-bold text-white">{link.label}</p>
+            <p className="mt-1 text-xs text-[#71767B]">{link.hint}</p>
           </Link>
         ))}
       </div>

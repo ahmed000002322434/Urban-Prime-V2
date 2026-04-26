@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { itemService } from '../../services/itemService';
+import commerceService from '../../services/commerceService';
 import { spotlightService } from '../../services/spotlightService';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
-import type { Item } from '../../types';
-import Spinner from '../../components/Spinner';
+import { useNotification } from '../../context/NotificationContext';
+import type { AuctionSnapshot, Item, PodVariantOption, RentalDeliveryMode, RentalQuote } from '../../types';
+import { CommerceDetailPageSkeleton } from '../../components/commerce/CommerceSkeleton';
 import LiquidGlassItemDetail from '../../components/gravity/LiquidGlassItemDetail';
 
 const ItemDetailPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, itemId } = useParams<{ id?: string; itemId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const { addItemToCart } = useCart();
   const { user } = useAuth();
+  const { showNotification } = useNotification();
+  const resolvedItemId = id || itemId || '';
 
   const [item, setItem] = useState<Item | null>(null);
   const [relatedItems, setRelatedItems] = useState<Item[]>([]);
@@ -24,12 +28,45 @@ const ItemDetailPage: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [bidAmount, setBidAmount] = useState<number>(0);
   const [rentalDates, setRentalPeriod] = useState({ start: '', end: '' });
+  const [deliveryMode, setDeliveryMode] = useState<RentalDeliveryMode>('shipping');
+  const [rentalQuote, setRentalQuote] = useState<RentalQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [auction, setAuction] = useState<AuctionSnapshot | null>(null);
+  const [bidSubmitting, setBidSubmitting] = useState(false);
+  const [selectedPodVariantId, setSelectedPodVariantId] = useState('');
   const trackedSpotlightViewRef = useRef<string | null>(null);
   const loadRequestIdRef = useRef(0);
 
-  const attributionStorageKey = useMemo(() => (id ? `urbanprime:spotlight:attribution:${id}` : ''), [id]);
+  const podVariantOptions = useMemo(
+    () => (item?.podProfile?.variantOptions || []).filter((variant) => variant.isEnabled !== false),
+    [item?.podProfile?.variantOptions]
+  );
+
+  const selectedPodVariant = useMemo(
+    () => podVariantOptions.find((variant) => variant.id === selectedPodVariantId) || podVariantOptions[0] || null,
+    [podVariantOptions, selectedPodVariantId]
+  );
+
+  const displayItem = useMemo<Item | null>(() => {
+    if (!item) return null;
+    if (!selectedPodVariant) return item;
+
+    const variantPrice = Number(selectedPodVariant.salePrice || item.salePrice || item.price || 0);
+    return {
+      ...item,
+      price: variantPrice,
+      salePrice: variantPrice,
+      compareAtPrice: selectedPodVariant.compareAtPrice || item.compareAtPrice,
+      stock: typeof selectedPodVariant.stock === 'number' ? selectedPodVariant.stock : item.stock
+    };
+  }, [item, selectedPodVariant]);
+
+  const attributionStorageKey = useMemo(
+    () => (resolvedItemId ? `urbanprime:spotlight:attribution:${resolvedItemId}` : ''),
+    [resolvedItemId]
+  );
   const spotlightAttribution = useMemo(() => {
-    if (!id) return null;
+    if (!resolvedItemId) return null;
 
     const params = new URLSearchParams(location.search);
     const contentId = String(params.get('spotlight_content_id') || '').trim();
@@ -71,7 +108,7 @@ const ItemDetailPage: React.FC = () => {
     } catch {
       return null;
     }
-  }, [attributionStorageKey, id, location.search]);
+  }, [attributionStorageKey, location.search, resolvedItemId]);
 
   useEffect(() => {
     if (!attributionStorageKey || !spotlightAttribution || typeof window === 'undefined') return;
@@ -84,13 +121,13 @@ const ItemDetailPage: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!id) return;
+      if (!resolvedItemId) return;
       const requestId = ++loadRequestIdRef.current;
       setLoading(true);
       setError(null);
 
       try {
-        const fetched = await itemService.getItemById(id);
+        const fetched = await itemService.getItemById(resolvedItemId);
         if (requestId !== loadRequestIdRef.current) return;
         if (!fetched) {
           setError('Item not found.');
@@ -99,6 +136,7 @@ const ItemDetailPage: React.FC = () => {
 
         setItem(spotlightAttribution ? { ...fetched, spotlightAttribution } : fetched);
         setBidAmount(Math.ceil((fetched.auctionDetails?.currentBid || fetched.auctionDetails?.startingBid || fetched.price || 0) + 1));
+        setDeliveryMode(fetched.rentalFulfillment?.defaultMode || 'shipping');
 
         if (fetched.listingType === 'rent') setActiveMode('rent');
         else if (fetched.listingType === 'auction') setActiveMode('bid');
@@ -107,6 +145,20 @@ const ItemDetailPage: React.FC = () => {
         const { items: related } = await itemService.getItems({ category: fetched.category }, { page: 1, limit: 4 });
         if (requestId !== loadRequestIdRef.current) return;
         setRelatedItems(related.filter((relatedItem) => relatedItem.id !== fetched.id).slice(0, 4));
+
+        if (fetched.listingType === 'auction' && commerceService.enabled()) {
+          try {
+            const snapshot = await commerceService.getAuctionSnapshot(fetched.id);
+            if (requestId !== loadRequestIdRef.current) return;
+            setAuction(snapshot);
+            setBidAmount(Math.ceil((snapshot.currentBid || snapshot.startingBid || fetched.price || 0) + 1));
+          } catch (auctionError) {
+            console.warn('Auction snapshot load skipped:', auctionError);
+            setAuction(null);
+          }
+        } else {
+          setAuction(null);
+        }
       } catch (err) {
         if (requestId !== loadRequestIdRef.current) return;
         console.error(err);
@@ -120,7 +172,49 @@ const ItemDetailPage: React.FC = () => {
     return () => {
       loadRequestIdRef.current += 1;
     };
-  }, [id, spotlightAttribution]);
+  }, [resolvedItemId, spotlightAttribution]);
+
+  useEffect(() => {
+    const current = item;
+    if (!current || !commerceService.enabled()) {
+      setRentalQuote(null);
+      return;
+    }
+    if (!(current.listingType === 'rent' || current.listingType === 'both')) {
+      setRentalQuote(null);
+      return;
+    }
+    if (!rentalDates.start || !rentalDates.end) {
+      setRentalQuote(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadQuote = async () => {
+      setQuoteLoading(true);
+      try {
+        const quote = await commerceService.quoteRental({
+          itemId: current.id,
+          rentalStart: rentalDates.start,
+          rentalEnd: rentalDates.end,
+          deliveryMode
+        });
+        if (!cancelled) setRentalQuote(quote);
+      } catch (quoteError) {
+        if (!cancelled) {
+          console.warn('Rental quote failed:', quoteError);
+          setRentalQuote(null);
+        }
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    };
+
+    void loadQuote();
+    return () => {
+      cancelled = true;
+    };
+  }, [deliveryMode, item, rentalDates.end, rentalDates.start]);
 
   useEffect(() => {
     setItem((current) => {
@@ -164,47 +258,112 @@ const ItemDetailPage: React.FC = () => {
     };
   }, [item?.id, location.pathname, spotlightAttribution, user?.id]);
 
-  const handleAddToCart = (checkout = false, mode: 'sale' | 'rent' = activeMode === 'rent' ? 'rent' : 'sale') => {
+  useEffect(() => {
+    if (!podVariantOptions.length) {
+      setSelectedPodVariantId('');
+      return;
+    }
+
+    setSelectedPodVariantId((current) =>
+      podVariantOptions.some((variant) => variant.id === current) ? current : podVariantOptions[0].id
+    );
+  }, [item?.id, podVariantOptions]);
+
+  const handleAddToCart = (
+    checkout = false,
+    mode: 'sale' | 'rent' = activeMode === 'rent' ? 'rent' : 'sale',
+    options?: { deliveryMode?: RentalDeliveryMode }
+  ) => {
     if (!item) return;
+    if (mode === 'sale' && item.podProfile && !selectedPodVariant) {
+      showNotification('Choose a POD variant before continuing.');
+      return;
+    }
 
     const rentalPeriod = mode === 'rent' ? { startDate: rentalDates.start, endDate: rentalDates.end } : undefined;
+    const availableStock = typeof selectedPodVariant?.stock === 'number' ? selectedPodVariant.stock : item.stock;
     if (mode === 'rent' && (!rentalDates.start || !rentalDates.end)) {
-      alert('Please select rental dates');
+      showNotification('Please select rental dates.');
       return;
     }
     if (mode === 'rent' && new Date(rentalDates.end).getTime() < new Date(rentalDates.start).getTime()) {
-      alert('Rental end date must be after start date.');
+      showNotification('Rental end date must be after the start date.');
+      return;
+    }
+    if (mode === 'rent' && rentalQuote && !rentalQuote.available) {
+      showNotification(rentalQuote.availabilityFeedback || 'Selected dates are no longer available.');
       return;
     }
     if (mode === 'sale' && quantity < 1) {
-      alert('Please choose a valid quantity.');
+      showNotification('Please choose a valid quantity.');
       return;
     }
-    if (mode === 'sale' && item.stock > 0 && quantity > item.stock) {
-      alert(`Only ${item.stock} item(s) available.`);
+    if (mode === 'sale' && availableStock > 0 && quantity > availableStock) {
+      showNotification(`Only ${availableStock} item(s) available.`);
       return;
     }
 
+    const salePrice = Number(selectedPodVariant?.salePrice || auction?.buyNowPrice || item.buyNowPrice || item.salePrice || item.price || 0);
     const checkoutItem = {
       ...item,
       price: mode === 'rent'
-        ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
-        : (item.buyNowPrice || item.salePrice || item.price || 0)
+        ? (rentalQuote?.dailyRate || item.rentalPrice || item.rentalRates?.daily || item.price || 0)
+        : salePrice,
+      salePrice: mode === 'rent' ? item.salePrice : salePrice,
+      compareAtPrice: selectedPodVariant?.compareAtPrice || item.compareAtPrice,
+      stock: typeof selectedPodVariant?.stock === 'number' ? selectedPodVariant.stock : item.stock,
+      deliveryMode: options?.deliveryMode || deliveryMode,
+      podSelection: selectedPodVariant
+        ? {
+            variantId: selectedPodVariant.id,
+            color: selectedPodVariant.color,
+            size: selectedPodVariant.size,
+            unitPrice: salePrice,
+            templateKey: item.podProfile?.templateKey || 'pod',
+            templateName: item.category || item.brand || undefined,
+            mockupImageUrl: item.imageUrls?.[0] || item.images?.[0] || undefined
+          }
+        : undefined
     };
 
-    addItemToCart(checkoutItem, mode === 'rent' ? 1 : quantity, undefined, rentalPeriod, mode);
+    addItemToCart(checkoutItem as Item, mode === 'rent' ? 1 : quantity, undefined, rentalPeriod, mode);
     if (checkout) navigate('/checkout');
   };
 
+  const handlePlaceBid = async () => {
+    if (!item) return;
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    setBidSubmitting(true);
+    try {
+      const updated = await itemService.placeBid(item.id, bidAmount, {
+        id: user.id,
+        name: user.name || 'Bidder'
+      });
+      setItem(updated);
+      if (commerceService.enabled()) {
+        try {
+          const snapshot = await commerceService.getAuctionSnapshot(item.id);
+          setAuction(snapshot);
+          setBidAmount(Math.ceil((snapshot.currentBid || snapshot.startingBid || updated.price || 0) + 1));
+        } catch {
+          setAuction(null);
+        }
+      }
+      showNotification('Bid submitted successfully.');
+    } catch (bidError) {
+      console.error(bidError);
+      showNotification(bidError instanceof Error ? bidError.message : 'Unable to place bid.');
+    } finally {
+      setBidSubmitting(false);
+    }
+  };
+
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-primary">
-        <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-5">
-          <Spinner size="lg" />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary opacity-60">Loading experience</p>
-        </motion.div>
-      </div>
-    );
+    return <CommerceDetailPageSkeleton />;
   }
 
   if (error || !item) {
@@ -230,7 +389,7 @@ const ItemDetailPage: React.FC = () => {
 
   return (
     <LiquidGlassItemDetail
-      item={item}
+      item={displayItem || item}
       relatedItems={relatedItems}
       activeMode={activeMode}
       setActiveMode={setActiveMode}
@@ -240,7 +399,17 @@ const ItemDetailPage: React.FC = () => {
       setBidAmount={setBidAmount}
       rentalDates={rentalDates}
       setRentalPeriod={setRentalPeriod}
+      deliveryMode={deliveryMode}
+      setDeliveryMode={setDeliveryMode}
+      rentalQuote={rentalQuote}
+      rentalQuoteLoading={quoteLoading}
+      auction={auction}
+      bidSubmitting={bidSubmitting}
+      podVariantOptions={podVariantOptions as PodVariantOption[]}
+      selectedPodVariant={selectedPodVariant}
+      onSelectPodVariant={setSelectedPodVariantId}
       onAddToCart={handleAddToCart}
+      onPlaceBid={handlePlaceBid}
     />
   );
 };

@@ -1,127 +1,256 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { itemService } from '../../services/itemService';
-import type { GameUpload } from '../../types';
-import { useScrollReveal } from '../../hooks/useScrollReveal';
+import digitalMarketplaceService from '../../services/digitalMarketplaceService';
+import type { GameDiscoveryCard, GameDiscoveryPayload, GameDiscoveryShelf } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useNotification } from '../../context/NotificationContext';
 
-const DownloadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>;
-const GamepadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 7.5l.415-.207a.75.75 0 011.085.67V10.5m0 0h6m-6 0a.75.75 0 001.085.67l.415-.207m-7.252 5.25l-.415-.207a.75.75 0 010-1.34l.415-.207m7.252 5.25l.415-.207a.75.75 0 000-1.34l-.415-.207m0 0l-6 0" /></svg>;
+const currency = (value: number) => `$${Number(value || 0).toFixed(2)}`;
 
-const GameCard: React.FC<{ game: GameUpload, onDownload: (gameId: string) => void }> = ({ game, onDownload }) => {
-    const cardRef = useScrollReveal<HTMLDivElement>();
-    return (
-        <div ref={cardRef} className="animate-reveal group bg-white dark:bg-dark-surface rounded-lg shadow-soft border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
-            <div className="relative aspect-video">
-                <img src={game.coverImageUrl} alt={game.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                <div className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-xs font-bold rounded-full">{game.category}</div>
-            </div>
-            <div className="p-4 flex flex-col flex-grow">
-                <h3 className="font-bold text-lg text-gray-900 dark:text-dark-text">{game.name}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">v{game.version}</p>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-3 flex-grow">{game.description}</p>
-                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-4 pt-2 border-t dark:border-gray-600">
-                    <img src={game.uploader.avatar} alt={game.uploader.name} className="w-5 h-5 rounded-full" />
-                    <span>by {game.uploader.name}</span>
-                </div>
-            </div>
-            <div className="p-4 bg-gray-50 dark:bg-dark-surface/50 border-t dark:border-gray-700/50 flex justify-between items-center">
-                <div className="text-sm">
-                    <span className="font-bold">{game.downloads.toLocaleString()}</span>
-                    <span className="text-gray-500"> downloads</span>
-                </div>
-                <button onClick={() => onDownload(game.id)} className="px-4 py-2 bg-primary text-white font-semibold rounded-md text-sm flex items-center gap-2 hover:opacity-90">
-                    <DownloadIcon />
-                    <span>{game.fileSize}</span>
-                </button>
-            </div>
+const cardShell =
+  'group overflow-hidden rounded-[28px] border border-white/10 bg-[#121a2d] text-white shadow-[0_18px_48px_rgba(0,0,0,0.25)] transition hover:-translate-y-1 hover:border-white/20';
+
+const compactCard = (game: GameDiscoveryCard) => (
+  <Link key={game.id} to={`/item/${game.id}`} className={cardShell}>
+    <div className="aspect-[16/10] overflow-hidden bg-[#151d30]">
+      <img src={game.coverImageUrl} alt={game.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+    </div>
+    <div className="space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/58">
+          {game.genres[0] || 'Featured'}
+        </span>
+        <span className="text-sm font-black text-[#ffb37d]">{currency(game.price)}</span>
+      </div>
+      <div>
+        <h3 className="text-xl font-black tracking-[-0.03em]">{game.title}</h3>
+        <p className="mt-2 text-sm text-white/58">{game.tagline || game.description}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {game.platforms.slice(0, 3).map((platform) => (
+          <span key={platform} className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-xs text-white/65">
+            {platform}
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-xs text-white/46">
+        <span>{game.creatorName}</span>
+        <span>{game.purchases} purchases</span>
+      </div>
+    </div>
+  </Link>
+);
+
+const Shelf: React.FC<{ shelf: GameDiscoveryShelf | { title: string; items: GameDiscoveryCard[] } }> = ({ shelf }) => {
+  if (!shelf.items.length) return null;
+  return (
+    <section className="space-y-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-white/38">Curated shelf</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-0.03em] text-white">{shelf.title}</h2>
         </div>
-    );
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {shelf.items.map((game) => compactCard(game))}
+      </div>
+    </section>
+  );
 };
 
 const GamesHubPage: React.FC = () => {
-    const heroRef = useScrollReveal<HTMLDivElement>();
-    const [games, setGames] = useState<GameUpload[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const { showNotification } = useNotification();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('All');
+  const { showNotification } = useNotification();
+  const [payload, setPayload] = useState<GameDiscoveryPayload | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [activeGenre, setActiveGenre] = useState('All');
 
-    useEffect(() => {
-        setIsLoading(true);
-        itemService.getGameUploads()
-            .then(data => setGames(data))
-            .finally(() => setIsLoading(false));
-    }, []);
-
-    const handleDownload = (gameId: string) => {
-        itemService.recordGameDownload(gameId);
-        // In a real app, you would initiate the download via game.fileUrl
-        showNotification("Your download will begin shortly!");
-        // Update local state to reflect new download count
-        setGames(prev => prev.map(g => g.id === gameId ? {...g, downloads: g.downloads + 1} : g));
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const response = await digitalMarketplaceService.getGameDiscovery();
+        if (!cancelled) setPayload(response);
+      } catch (error) {
+        console.error('Games discovery load failed:', error);
+        if (!cancelled) showNotification('Unable to load game discovery right now.');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     };
-    
-    const filteredGames = useMemo(() => {
-        return games.filter(game => {
-            const matchesSearch = game.name.toLowerCase().includes(searchTerm.toLowerCase()) || game.description.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesCategory = categoryFilter === 'All' || game.category === categoryFilter;
-            return matchesSearch && matchesCategory;
-        });
-    }, [games, searchTerm, categoryFilter]);
 
-    const categories = ['All', 'Indie Game', 'Mod', 'Resource Pack', 'Utility'];
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [showNotification]);
 
-    return (
-        <div className="bg-gray-50 dark:bg-dark-background animate-fade-in-up min-h-screen">
-            <section ref={heroRef} className="animate-reveal bg-white dark:bg-dark-surface border-b dark:border-gray-700">
-                <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-                    <div className="text-5xl inline-block p-4 bg-primary/10 text-primary rounded-full mb-4"><GamepadIcon/></div>
-                    <h1 className="text-5xl font-extrabold font-display text-gray-900 dark:text-dark-text">Community Games Hub</h1>
-                    <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">Discover, download, and share games, mods, and resources created by the Urban Prime community.</p>
-                </div>
-            </section>
+  const allGames = useMemo(() => {
+    if (!payload) return [];
+    const map = new Map<string, GameDiscoveryCard>();
+    [payload.hero, ...payload.featured, ...payload.newReleases, ...payload.topSellers, ...payload.genreShelves.flatMap((shelf) => shelf.items)]
+      .filter(Boolean)
+      .forEach((game) => {
+        if (game) map.set(game.id, game);
+      });
+    return Array.from(map.values());
+  }, [payload]);
 
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
-                <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-8">
-                    <div className="relative w-full md:max-w-xs">
-                        <input
-                            type="search"
-                            placeholder="Search games..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full p-3 pl-10 bg-white dark:bg-dark-surface border border-gray-300 dark:border-gray-600 rounded-full"
-                        />
-                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </div>
-                    </div>
-                     <div className="flex items-center gap-2 overflow-x-auto p-1 bg-gray-200 dark:bg-dark-surface rounded-full">
-                        {categories.map(cat => (
-                            <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-4 py-1.5 text-sm font-semibold rounded-full whitespace-nowrap ${categoryFilter === cat ? 'bg-white dark:bg-black text-black dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}>
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
-                    <Link to="/upload-game" className="px-5 py-3 bg-primary text-white font-bold rounded-lg hover:opacity-90 whitespace-nowrap">
-                        + Upload a Game
-                    </Link>
-                </div>
+  const genreOptions = useMemo(() => {
+    const collected = new Set<string>(['All']);
+    allGames.forEach((game) => game.genres.forEach((genre) => collected.add(genre)));
+    return Array.from(collected).slice(0, 10);
+  }, [allGames]);
 
-                {isLoading ? <Spinner size="lg" /> : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                        {filteredGames.map(game => <GameCard key={game.id} game={game} onDownload={handleDownload} />)}
-                    </div>
-                )}
-                 {filteredGames.length === 0 && !isLoading && (
-                    <div className="text-center py-16">
-                        <p className="text-gray-500">No games found matching your criteria.</p>
-                    </div>
-                )}
-            </div>
+  const filteredGames = useMemo(() => {
+    return allGames.filter((game) => {
+      const matchesSearch =
+        !search.trim() ||
+        game.title.toLowerCase().includes(search.toLowerCase()) ||
+        game.description.toLowerCase().includes(search.toLowerCase()) ||
+        game.creatorName.toLowerCase().includes(search.toLowerCase());
+      const matchesGenre = activeGenre === 'All' || game.genres.includes(activeGenre);
+      return matchesSearch && matchesGenre;
+    });
+  }, [activeGenre, allGames, search]);
+
+  const hero = payload?.hero || null;
+
+  return (
+    <div className="min-h-screen bg-[#070d18] text-white">
+      <section className="relative overflow-hidden border-b border-white/6">
+        <div className="absolute inset-0">
+          {hero?.heroImageUrl ? (
+            <img src={hero.heroImageUrl} alt={hero.title} className="h-full w-full object-cover opacity-35" />
+          ) : null}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,107,44,0.24),_transparent_30%),linear-gradient(180deg,rgba(5,9,18,0.2),rgba(7,13,24,0.95)_72%,#070d18_100%)]" />
         </div>
-    );
+
+        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+          <div className="grid gap-12 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+            <div className="max-w-3xl">
+              <p className="text-xs font-black uppercase tracking-[0.32em] text-white/40">Urban Prime Games</p>
+              <h1 className="mt-4 text-5xl font-black tracking-[-0.05em] md:text-7xl">
+                Discovery built for premium digital releases.
+              </h1>
+              <p className="mt-6 text-base leading-7 text-white/68 md:text-lg">
+                Explore curated game shelves, creator-led launches, and secure ZIP delivery wired directly into the Urban Prime marketplace.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/upload-game" className="rounded-full bg-[#ff6b2c] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[#10131b] transition hover:brightness-105">
+                  Ship a game build
+                </Link>
+                <Link to="/profile/game-studio" className="rounded-full border border-white/12 bg-white/5 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/82 transition hover:border-white/25 hover:text-white">
+                  Open studio
+                </Link>
+              </div>
+            </div>
+
+            {hero ? (
+              <Link to={`/item/${hero.id}`} className={`${cardShell} overflow-hidden`}>
+                <div className="aspect-[16/10] overflow-hidden bg-[#121826]">
+                  <img src={hero.coverImageUrl} alt={hero.title} className="h-full w-full object-cover" />
+                </div>
+                <div className="space-y-3 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/58">
+                      Featured release
+                    </span>
+                    <span className="text-sm font-black text-[#ffb37d]">{currency(hero.price)}</span>
+                  </div>
+                  <h2 className="text-3xl font-black tracking-[-0.04em]">{hero.title}</h2>
+                  <p className="text-sm leading-6 text-white/58">{hero.tagline || hero.description}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {hero.platforms.slice(0, 4).map((platform) => (
+                      <span key={platform} className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-xs text-white/65">
+                        {platform}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-[28px] border border-white/8 bg-[#0c1322] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] md:p-5">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="relative">
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search titles, creators, and launch copy"
+                className="w-full rounded-full border border-white/10 bg-[#11192d] px-5 py-3 text-sm text-white outline-none transition placeholder:text-white/32 focus:border-[#ff6b2c] focus:ring-2 focus:ring-[#ff6b2c]/20"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {genreOptions.map((genre) => (
+                <button
+                  key={genre}
+                  type="button"
+                  onClick={() => setActiveGenre(genre)}
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${
+                    activeGenre === genre
+                      ? 'border-[#ff6b2c] bg-[#ff6b2c] text-[#10131b]'
+                      : 'border-white/12 bg-white/5 text-white/68 hover:border-white/25 hover:text-white'
+                  }`}
+                >
+                  {genre}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <main className="mx-auto max-w-7xl space-y-12 px-4 pb-20 sm:px-6 lg:px-8">
+        {isLoading ? (
+          <div className="py-20">
+            <Spinner size="lg" />
+          </div>
+        ) : search.trim() || activeGenre !== 'All' ? (
+          filteredGames.length ? (
+            <Shelf
+              shelf={{
+                title: `Search results${activeGenre !== 'All' ? ` • ${activeGenre}` : ''}`,
+                items: filteredGames
+              }}
+            />
+          ) : (
+            <div className="rounded-[28px] border border-dashed border-white/12 bg-white/4 px-6 py-16 text-center">
+              <p className="text-xl font-black text-white">No titles match this search.</p>
+              <p className="mt-2 text-sm text-white/55">Try a broader keyword or switch back to another genre shelf.</p>
+            </div>
+          )
+        ) : (
+          <>
+            <Shelf shelf={{ title: 'Featured launches', items: payload?.featured || [] }} />
+            <Shelf shelf={{ title: 'New and notable', items: payload?.newReleases || [] }} />
+            <Shelf shelf={{ title: 'Top sellers', items: payload?.topSellers || [] }} />
+            {(payload?.genreShelves || []).map((shelf) => (
+              <Shelf key={shelf.slug} shelf={shelf} />
+            ))}
+          </>
+        )}
+
+        {!isLoading && !(search.trim() || activeGenre !== 'All') && !payload?.total ? (
+          <div className="rounded-[28px] border border-dashed border-white/12 bg-white/4 px-6 py-16 text-center">
+            <p className="text-xl font-black text-white">No published game builds yet.</p>
+            <p className="mt-2 text-sm text-white/55">Upload the first ZIP-backed release to seed discovery.</p>
+            <div className="mt-6 flex justify-center">
+              <Link to="/upload-game" className="rounded-full bg-[#ff6b2c] px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-[#10131b] transition hover:brightness-105">
+                Publish a game
+              </Link>
+            </div>
+          </div>
+        ) : null}
+      </main>
+    </div>
+  );
 };
 
 export default GamesHubPage;

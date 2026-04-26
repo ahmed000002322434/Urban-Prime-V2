@@ -32,7 +32,7 @@ const StoreManagerPage: React.FC = () => {
         setError(null);
 
         // Get user's store
-        const store = await storeBuildService.getUserStore(user.uid);
+        const store = await storeBuildService.getUserStore(user.id);
         if (!store) {
           setError('No store found. Please create one.');
           setIsLoading(false);

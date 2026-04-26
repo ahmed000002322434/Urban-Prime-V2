@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { Capability, PersonaType } from '../types';
 import Spinner from './Spinner';
 import { useAuth } from '../hooks/useAuth';
@@ -44,6 +44,14 @@ const PersonaRoute: React.FC<PersonaRouteProps> = ({
           <p className="mt-2 text-text-secondary">
             This section requires a different persona type. Open account switcher and choose a compatible persona.
           </p>
+          <div className="mt-5 flex justify-center">
+            <Link
+              to="/profile/switch-accounts"
+              className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-5 py-2 text-xs font-black uppercase tracking-[0.18em] text-primary"
+            >
+              Open Switcher
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -62,6 +70,14 @@ const PersonaRoute: React.FC<PersonaRouteProps> = ({
           </p>
           <div className="mt-4 text-xs uppercase tracking-wider text-text-secondary">
             Required: {requiredCapabilities.join(', ')}
+          </div>
+          <div className="mt-5 flex justify-center">
+            <Link
+              to="/profile/switch-accounts"
+              className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-5 py-2 text-xs font-black uppercase tracking-[0.18em] text-primary"
+            >
+              Switch Workspace
+            </Link>
           </div>
         </div>
       </div>

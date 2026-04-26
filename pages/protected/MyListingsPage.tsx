@@ -52,8 +52,21 @@ const isDigitalItem = (item: Item) => {
   return item.itemType === 'digital' || item.productType === 'digital' || Boolean(item.digitalFileUrl);
 };
 
+const isGameItem = (item: Item) => {
+  if (item.gameDetails?.experienceType === 'game') return true;
+  if (item.digitalDelivery?.experienceType === 'game') return true;
+  return String(item.category || '').toLowerCase().includes('game');
+};
+
+const isPodItem = (item: Item) =>
+  item.productType === 'pod' || item.fulfillmentType === 'pod' || Boolean(item.podProfile);
+
 const getEditorRoute = (item: Item, mode: 'edit' | 'duplicate') => {
-  const base = isDigitalItem(item) ? '/profile/products/new-digital' : '/profile/products/new';
+  const base = isGameItem(item)
+    ? '/upload-game'
+    : isDigitalItem(item)
+      ? '/profile/products/new-digital'
+      : '/profile/products/new';
   return `${base}?${mode}=${encodeURIComponent(item.id)}`;
 };
 
@@ -245,6 +258,8 @@ const MyListingsPage: React.FC = () => {
       showNotification(`${label} ${!current ? 'enabled' : 'disabled'}.`);
   };
 
+  const podItemCount = myItems.filter(isPodItem).length;
+
   const filteredItems = myItems.filter(item => {
     const status = getListingStatus(item);
     if (activeTab === 'all') return true;
@@ -302,6 +317,12 @@ const MyListingsPage: React.FC = () => {
             className="flex flex-wrap items-center gap-2"
             variants={itemVariants}
            >
+                <Link
+                  to="/profile/pod-studio/products"
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-md border border-border bg-surface text-text-primary transition hover:border-primary/40 hover:text-primary"
+                >
+                  POD Studio {podItemCount > 0 ? `(${podItemCount})` : ''}
+                </Link>
                 <motion.input
                     whileFocus={{ boxShadow: "0 0 0 3px rgba(15, 185, 177, 0.1)" }}
                     value={searchQuery}
@@ -347,6 +368,7 @@ const MyListingsPage: React.FC = () => {
                     >
                         <Link to="/profile/products/new" className="block px-4 py-2 text-sm text-text-primary hover:bg-surface-soft transition-colors">Physical Product</Link>
                         <Link to="/profile/products/new-digital" className="block px-4 py-2 text-sm text-text-primary hover:bg-surface-soft transition-colors">Digital Product</Link>
+                        <Link to="/profile/pod-studio/new" className="block px-4 py-2 text-sm text-text-primary hover:bg-surface-soft transition-colors">POD Product</Link>
                     </motion.div>
                 </div>
            </motion.div>

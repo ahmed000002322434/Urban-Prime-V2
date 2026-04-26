@@ -19,6 +19,45 @@ const DEFAULT_SPOTLIGHT_COMMISSION_RATE = 0.10;
 const PRODUCT_EVENT_TYPES = new Set(['impression', 'click', 'view_item', 'add_to_cart', 'purchase']);
 const PRODUCT_LINK_PLACEMENTS = new Set(['inline_chip', 'mini_card', 'context_mode', 'hero']);
 const PRODUCT_LINK_SOURCES = new Set(['creator_tagged', 'algorithmic', 'campaign']);
+const RESERVED_PROFILE_USERNAMES = new Set([
+  'settings',
+  'edit',
+  'legacy-edit',
+  'activity',
+  'messages',
+  'orders',
+  'wishlist',
+  'reviews',
+  'coupons',
+  'followed-stores',
+  'history',
+  'switch-accounts',
+  'collections',
+  'go-live',
+  'add-post',
+  'track-delivery',
+  'wallet',
+  'permissions',
+  'workflows',
+  'addresses',
+  'notifications-settings',
+  'payment-options',
+  'analytics',
+  'store',
+  'products',
+  'sales',
+  'owner-controls',
+  'offers',
+  'promotions',
+  'earnings',
+  'provider-dashboard',
+  'services',
+  'become-a-provider',
+  'affiliate',
+  'creator-hub',
+  'spotlight',
+  'me'
+]);
 
 const parsePositiveInt = (value, fallback, min = 1, max = 200) => {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -61,6 +100,8 @@ const slugifyUsername = (value) => safeString(value)
   .replace(/-+/g, '-')
   .replace(/^-|-$/g, '')
   .slice(0, 60);
+const normalizeProfileUsername = (value) => slugifyUsername(value).slice(0, 32);
+const isReservedProfileUsername = (value) => RESERVED_PROFILE_USERNAMES.has(normalizeProfileUsername(value));
 const normalizeTagArray = (value) => {
   if (!Array.isArray(value)) return [];
   return value
@@ -127,6 +168,148 @@ const toIsoOrNull = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 const normalizeJsonObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
+const getSpotlightProfilePreferences = (profileRow) => normalizeJsonObject(profileRow?.preferences);
+const getSpotlightProfileSettings = (profileRow) =>
+  normalizeJsonObject(
+    getSpotlightProfilePreferences(profileRow).spotlightProfile
+    || getSpotlightProfilePreferences(profileRow).spotlight_profile
+  );
+const getSpotlightBannerUrl = (profileRow) =>
+  safeString(
+    getSpotlightProfileSettings(profileRow).bannerUrl
+    || getSpotlightProfileSettings(profileRow).banner_url
+    || '',
+    ''
+  ).trim();
+const getSpotlightPinnedContentId = (profileRow) =>
+  safeString(
+    getSpotlightProfileSettings(profileRow).pinnedContentId
+    || getSpotlightProfileSettings(profileRow).pinned_content_id
+    || '',
+    ''
+  ).trim();
+const normalizeWebsiteUrl = (value) => {
+  const trimmed = safeString(value || '').trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.replace(/^\/+/, '')}`;
+};
+const getSpotlightWebsiteUrl = (profileRow) => {
+  const socialLinks = normalizeJsonObject(profileRow?.social_links);
+  return normalizeWebsiteUrl(socialLinks.website || '');
+};
+const buildCanonicalProfileUsername = (userRow, profileRow) => {
+  const claimedUsername = normalizeProfileUsername(profileRow?.username || '');
+  if (claimedUsername && !isReservedProfileUsername(claimedUsername)) return claimedUsername;
+  const fromName = normalizeProfileUsername(userRow?.name || '');
+  if (fromName && !isReservedProfileUsername(fromName)) return fromName;
+  return normalizeProfileUsername(userRow?.firebase_uid || userRow?.id || 'creator');
+};
+const resolveSpotlightUserById = async (userId) => {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+const resolveSpotlightUserByFirebaseUid = async (firebaseUid) => {
+  if (!firebaseUid) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+    .eq('firebase_uid', firebaseUid)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+const ensureSpotlightUserByFirebaseUid = async (firebaseUid, hints = {}) => {
+  const normalizedFirebaseUid = safeString(firebaseUid || '').trim();
+  if (!normalizedFirebaseUid) return null;
+
+  const existingUser = await resolveSpotlightUserByFirebaseUid(normalizedFirebaseUid);
+  const desiredPayload = {
+    firebase_uid: normalizedFirebaseUid,
+    email: safeString(hints.email || '').trim() || null,
+    name: safeString(hints.name || '').trim() || null,
+    avatar_url: safeString(hints.avatar_url || '').trim() || null,
+    phone: safeString(hints.phone || '').trim() || null
+  };
+
+  if (!existingUser) {
+    let insertPayload = { ...desiredPayload };
+    let insertResult = await supabase
+      .from('users')
+      .insert(insertPayload)
+      .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+      .maybeSingle();
+
+    if (insertResult.error && isUniqueViolation(insertResult.error) && insertPayload.email) {
+      delete insertPayload.email;
+      insertResult = await supabase
+        .from('users')
+        .insert(insertPayload)
+        .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+        .maybeSingle();
+    }
+
+    if (insertResult.error) throw insertResult.error;
+    return insertResult.data || (await resolveSpotlightUserByFirebaseUid(normalizedFirebaseUid));
+  }
+
+  const updatePayload = {};
+  if (desiredPayload.email && desiredPayload.email !== existingUser.email) updatePayload.email = desiredPayload.email;
+  if (desiredPayload.name && desiredPayload.name !== existingUser.name) updatePayload.name = desiredPayload.name;
+  if (desiredPayload.avatar_url && desiredPayload.avatar_url !== existingUser.avatar_url) updatePayload.avatar_url = desiredPayload.avatar_url;
+  if (desiredPayload.phone && desiredPayload.phone !== existingUser.phone) updatePayload.phone = desiredPayload.phone;
+
+  if (Object.keys(updatePayload).length === 0) return existingUser;
+
+  let updateResult = await supabase
+    .from('users')
+    .update(updatePayload)
+    .eq('id', existingUser.id)
+    .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+    .maybeSingle();
+
+  if (updateResult.error && isUniqueViolation(updateResult.error) && updatePayload.email) {
+    delete updatePayload.email;
+    if (Object.keys(updatePayload).length > 0) {
+      updateResult = await supabase
+        .from('users')
+        .update(updatePayload)
+        .eq('id', existingUser.id)
+        .select('id,firebase_uid,name,avatar_url,created_at,email,phone')
+        .maybeSingle();
+    } else {
+      updateResult = { data: existingUser, error: null };
+    }
+  }
+
+  if (updateResult.error) throw updateResult.error;
+  return updateResult.data || existingUser;
+};
+const buildSpotlightProfilePayload = ({ targetUser, profileRow, targetFollowerCount = 0 }) => ({
+  id: targetUser.id,
+  firebase_uid: targetUser.firebase_uid,
+  name: targetUser.name || 'Creator',
+  avatar_url: targetUser.avatar_url || '/icons/urbanprime.svg',
+  banner_url: getSpotlightBannerUrl(profileRow) || null,
+  bio: safeString(profileRow?.about || profileRow?.bio || '').trim(),
+  about: safeString(profileRow?.about || profileRow?.bio || '').trim(),
+  city: safeString(profileRow?.city || '').trim() || null,
+  country: safeString(profileRow?.country || '').trim() || null,
+  website_url: getSpotlightWebsiteUrl(profileRow),
+  joined_at: targetUser.created_at || null,
+  followers_count: Number(profileRow?.followers_count || targetFollowerCount || 0),
+  following_count: Number(profileRow?.following_count || 0),
+  posts_count: Number(profileRow?.posts_count || 0),
+  reels_count: Number(profileRow?.reels_count || 0),
+  is_verified: Boolean(profileRow?.is_verified),
+  username: buildCanonicalProfileUsername(targetUser, profileRow)
+});
 const extractItemImage = (row) => {
   const metadata = normalizeJsonObject(row?.metadata);
   const imageList = Array.isArray(metadata.imageUrls)
@@ -213,6 +396,7 @@ const mapContentRow = (row, metricsById, creatorsById, followedCreatorIds, produ
           firebase_uid: creator.firebase_uid,
           name: creator.name || 'Creator',
           avatar_url: creator.avatar_url || '/icons/urbanprime.svg',
+          username: buildCanonicalProfileUsername(creator, creator),
           is_verified: Boolean(creator.is_verified),
           followers_count: Number(creator.followers_count || 0),
           following_count: Number(creator.following_count || 0),
@@ -497,6 +681,12 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     }
   };
 
+  const normalizeViewerFirebaseUid = (value) => {
+    const normalized = safeString(value || '').trim();
+    if (!normalized || normalized === 'local-user') return '';
+    return normalized;
+  };
+
   const getRequestFirebaseUid = (req) => {
     const candidates = [
       req.user?.uid,
@@ -511,11 +701,11 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
 
     for (const candidate of candidates) {
       if (Array.isArray(candidate)) {
-        const firstValue = safeString(candidate[0] || '').trim();
+        const firstValue = normalizeViewerFirebaseUid(candidate[0] || '');
         if (firstValue) return firstValue;
         continue;
       }
-      const normalized = safeString(candidate || '').trim();
+      const normalized = normalizeViewerFirebaseUid(candidate || '');
       if (normalized) return normalized;
     }
 
@@ -528,7 +718,21 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       res.status(401).json({ error: 'Missing authenticated user context.' });
       return null;
     }
-    const userId = await resolveUserIdFromFirebaseUid(firebaseUid);
+    let userId = await resolveUserIdFromFirebaseUid(firebaseUid);
+    if (!userId && req.user?.uid && req.user.uid === firebaseUid) {
+      try {
+        const ensuredUser = await ensureSpotlightUserByFirebaseUid(firebaseUid, {
+          email: req.user?.email,
+          name: req.user?.name,
+          avatar_url: req.user?.picture,
+          phone: req.user?.phone_number
+        });
+        userId = ensuredUser?.id || null;
+      } catch (error) {
+        res.status(400).json({ error: safeString(error?.message || 'Unable to resolve user id for current session.') });
+        return null;
+      }
+    }
     if (!userId) {
       res.status(400).json({ error: 'Unable to resolve user id for current session.' });
       return null;
@@ -538,7 +742,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
 
   const resolveViewerContext = async (req) => {
     let viewerFirebaseUid = getRequestFirebaseUid(req);
-    if (!viewerFirebaseUid) viewerFirebaseUid = safeString(req.query.viewer_firebase_uid || req.body?.viewer_firebase_uid || '').trim();
+    if (!viewerFirebaseUid) viewerFirebaseUid = normalizeViewerFirebaseUid(req.query.viewer_firebase_uid || req.body?.viewer_firebase_uid || '');
     if (!viewerFirebaseUid) return { viewerFirebaseUid: '', viewerUserId: null };
     let viewerUserId = null;
     try {
@@ -606,7 +810,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     const { data: creatorRows } = await supabase.from('users').select('id,firebase_uid,name,avatar_url').in('id', creatorIds);
     const { data: profileRows } = await supabase
       .from('user_profiles')
-      .select('user_id,followers_count,following_count,posts_count,reels_count,is_verified')
+      .select('user_id,username,followers_count,following_count,posts_count,reels_count,is_verified')
       .in('user_id', creatorIds);
     const profileByUserId = new Map((profileRows || []).map((row) => [row.user_id, row]));
     const map = new Map();
@@ -619,7 +823,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     if (filteredIds.length === 0) return [];
     const [{ data: userRows }, { data: profileRows }] = await Promise.all([
       supabase.from('users').select('id,firebase_uid,name,avatar_url').in('id', filteredIds),
-      supabase.from('user_profiles').select('user_id,is_verified,followers_count,following_count,posts_count,reels_count').in('user_id', filteredIds)
+      supabase.from('user_profiles').select('user_id,username,is_verified,followers_count,following_count,posts_count,reels_count').in('user_id', filteredIds)
     ]);
     const profileByUserId = new Map((profileRows || []).map((row) => [row.user_id, row]));
     return (userRows || []).map((row) => {
@@ -629,6 +833,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         firebase_uid: row.firebase_uid,
         name: row.name || 'Creator',
         avatar_url: row.avatar_url || '/icons/urbanprime.svg',
+        username: buildCanonicalProfileUsername(row, profile),
         is_verified: Boolean(profile.is_verified),
         followers_count: Number(profile.followers_count || 0),
         following_count: Number(profile.following_count || 0),
@@ -639,17 +844,106 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
   };
 
   const resolveTargetUserByUsername = async (rawUsername) => {
-    const normalizedUsername = slugifyUsername(rawUsername);
-    if (!normalizedUsername) return null;
-    const { data: candidateUsers, error: usersError } = await supabase
+    const requestedValue = safeString(rawUsername || '').trim().replace(/^@+/, '');
+    const normalizedUsername = normalizeProfileUsername(requestedValue);
+    if (!requestedValue) return null;
+
+    if (normalizedUsername) {
+      const { data: usernameRow, error: usernameError } = await supabase
+        .from('user_profiles')
+        .select('user_id,username')
+        .eq('username', normalizedUsername)
+        .maybeSingle();
+      if (usernameError) throw usernameError;
+      if (usernameRow?.user_id) {
+        const { data: userByUsername, error: userByUsernameError } = await supabase
+          .from('users')
+          .select('id,firebase_uid,name,avatar_url,created_at')
+          .eq('id', usernameRow.user_id)
+          .maybeSingle();
+        if (userByUsernameError) throw userByUsernameError;
+        if (userByUsername) return userByUsername;
+      }
+    }
+
+    const { data: userById, error: userByIdError } = await supabase
       .from('users')
-      .select('id,firebase_uid,name,avatar_url')
-      .limit(5000);
-    if (usersError) throw usersError;
-    return (candidateUsers || []).find((row) => {
-      const rowSlug = slugifyUsername(row.name);
-      return rowSlug === normalizedUsername || safeString(row.firebase_uid).trim().toLowerCase() === normalizedUsername;
-    }) || null;
+      .select('id,firebase_uid,name,avatar_url,created_at')
+      .eq('id', requestedValue)
+      .maybeSingle();
+    if (userByIdError) throw userByIdError;
+    if (userById) return userById;
+
+    const { data: userByFirebaseUid, error: firebaseUidError } = await supabase
+      .from('users')
+      .select('id,firebase_uid,name,avatar_url,created_at')
+      .eq('firebase_uid', requestedValue)
+      .maybeSingle();
+    if (firebaseUidError) throw firebaseUidError;
+    if (userByFirebaseUid) return userByFirebaseUid;
+
+    const { data: userByNameRows, error: userByNameError } = await supabase
+      .from('users')
+      .select('id,firebase_uid,name,avatar_url,created_at')
+      .ilike('name', requestedValue)
+      .limit(1);
+    if (userByNameError) throw userByNameError;
+    if (userByNameRows?.[0]) return userByNameRows[0];
+
+    if (normalizedUsername) {
+      const normalizedNamePattern = `%${normalizedUsername.split('-').filter(Boolean).join('%')}%`;
+      if (normalizedNamePattern !== '%%') {
+        const { data: normalizedNameRows, error: normalizedNameError } = await supabase
+          .from('users')
+          .select('id,firebase_uid,name,avatar_url,created_at')
+          .ilike('name', normalizedNamePattern)
+          .limit(12);
+        if (normalizedNameError) throw normalizedNameError;
+        const normalizedNameMatch = (normalizedNameRows || []).find(
+          (candidate) => normalizeProfileUsername(candidate?.name || '') === normalizedUsername
+        );
+        if (normalizedNameMatch) return normalizedNameMatch;
+      }
+    }
+
+    return null;
+  };
+
+  const resolveProfileTargetUser = async (rawUsername, { viewerUserId = null, viewerFirebaseUid = '' } = {}) => {
+    const requestedValue = safeString(rawUsername || '').trim();
+    if (normalizeProfileUsername(requestedValue) === 'me') {
+      if (viewerUserId) {
+        const viewerUser = await resolveSpotlightUserById(viewerUserId);
+        if (viewerUser) return viewerUser;
+      }
+      if (viewerFirebaseUid) {
+        const viewerUser = await resolveSpotlightUserByFirebaseUid(viewerFirebaseUid);
+        if (viewerUser) return viewerUser;
+      }
+    }
+    return await resolveTargetUserByUsername(requestedValue);
+  };
+
+  const resolveSelfHealingProfileTargetUser = async (rawUsername, viewerContext = {}) => {
+    const requestedValue = safeString(rawUsername || '').trim();
+    const viewerFirebaseUid = normalizeViewerFirebaseUid(viewerContext?.viewerFirebaseUid || '');
+    let targetUser = await resolveProfileTargetUser(requestedValue, viewerContext);
+    if (targetUser) return targetUser;
+    if (!viewerFirebaseUid) return null;
+
+    const requestedIsViewer =
+      normalizeProfileUsername(requestedValue) === 'me'
+      || requestedValue === viewerFirebaseUid;
+
+    if (!requestedIsViewer) return null;
+
+    try {
+      targetUser = await ensureSpotlightUserByFirebaseUid(viewerFirebaseUid);
+    } catch {
+      targetUser = null;
+    }
+
+    return targetUser;
   };
 
   const buildMetricsMap = async (contentRows) => {
@@ -1140,6 +1434,209 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     }
   });
 
+  app.get('/spotlight/profile/availability', async (req, res) => {
+    try {
+      const rawUsername = safeString(req.query.username || '').trim();
+      if (!rawUsername) return res.status(400).json({ error: 'username is required.' });
+
+      const normalizedUsername = normalizeProfileUsername(rawUsername);
+      if (!normalizedUsername || normalizedUsername.length < 3) {
+        return res.json({
+          data: {
+            username: normalizedUsername,
+            available: false,
+            reason: 'Username must be at least 3 characters.'
+          }
+        });
+      }
+
+      if (isReservedProfileUsername(normalizedUsername)) {
+        return res.json({
+          data: {
+            username: normalizedUsername,
+            available: false,
+            reason: 'This username is reserved.'
+          }
+        });
+      }
+
+      let viewerUserId = null;
+      const viewerFirebaseUid = getRequestFirebaseUid(req);
+      if (viewerFirebaseUid) {
+        try {
+          viewerUserId = await resolveUserIdFromFirebaseUid(viewerFirebaseUid);
+        } catch {
+          viewerUserId = null;
+        }
+      }
+
+      const { data: existingProfile, error: existingProfileError } = await supabase
+        .from('user_profiles')
+        .select('user_id')
+        .eq('username', normalizedUsername)
+        .maybeSingle();
+      if (existingProfileError) return res.status(400).json({ error: existingProfileError.message });
+
+      const available = !existingProfile || existingProfile.user_id === viewerUserId;
+      return res.json({
+        data: {
+          username: normalizedUsername,
+          available,
+          reason: available ? null : 'This username is already taken.'
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ error: safeString(error?.message || 'Unable to validate username.') });
+    }
+  });
+
+  app.patch('/spotlight/profile/me', requireAuth, async (req, res) => {
+    try {
+      const authContext = await resolveAuthedUserId(req, res);
+      if (!authContext) return;
+
+      await ensureUserProfileRow(authContext.userId);
+
+      const [{ data: userRow, error: userError }, { data: profileRow, error: profileError }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id,firebase_uid,name,avatar_url,created_at')
+          .eq('id', authContext.userId)
+          .maybeSingle(),
+        supabase
+          .from('user_profiles')
+          .select('user_id,username,bio,about,city,country,social_links,preferences,followers_count,following_count,posts_count,reels_count,is_verified')
+          .eq('user_id', authContext.userId)
+          .maybeSingle()
+      ]);
+
+      if (userError) return res.status(400).json({ error: userError.message });
+      if (profileError) return res.status(400).json({ error: profileError.message });
+      if (!userRow) return res.status(404).json({ error: 'User not found.' });
+
+      const requestedName = safeString(req.body?.name !== undefined ? req.body.name : userRow.name || '').trim();
+      const requestedBio = safeString(
+        req.body?.bio !== undefined
+          ? req.body.bio
+          : req.body?.about !== undefined
+            ? req.body.about
+            : profileRow?.about || profileRow?.bio || ''
+      ).trim();
+      const requestedAvatarUrl = safeString(
+        req.body?.avatar_url !== undefined ? req.body.avatar_url : userRow.avatar_url || ''
+      ).trim();
+      const requestedBannerUrl = safeString(
+        req.body?.banner_url !== undefined ? req.body.banner_url : getSpotlightBannerUrl(profileRow)
+      ).trim();
+      const requestedWebsiteUrl = req.body?.website_url !== undefined
+        ? normalizeWebsiteUrl(req.body?.website_url)
+        : getSpotlightWebsiteUrl(profileRow);
+      const requestedCity = safeString(
+        req.body?.city !== undefined ? req.body?.city : profileRow?.city || ''
+      ).trim();
+      const requestedCountry = safeString(
+        req.body?.country !== undefined ? req.body?.country : profileRow?.country || ''
+      ).trim();
+      const requestedPinnedContentId = req.body?.pinned_content_id !== undefined
+        ? safeString(req.body?.pinned_content_id || '').trim()
+        : getSpotlightPinnedContentId(profileRow);
+      const normalizedUsername = req.body?.username !== undefined
+        ? normalizeProfileUsername(req.body?.username)
+        : buildCanonicalProfileUsername(userRow, profileRow);
+
+      if (!requestedName) return res.status(400).json({ error: 'Display name is required.' });
+      if (requestedName.length > 80) return res.status(400).json({ error: 'Display name must be 80 characters or fewer.' });
+      if (requestedBio.length > 200) return res.status(400).json({ error: 'Bio must be 200 characters or fewer.' });
+      if (!normalizedUsername || normalizedUsername.length < 3) {
+        return res.status(400).json({ error: 'Username must be at least 3 characters.' });
+      }
+      if (isReservedProfileUsername(normalizedUsername)) {
+        return res.status(400).json({ error: 'This username is reserved.' });
+      }
+
+      if (requestedPinnedContentId) {
+        const { data: pinnedRow, error: pinnedError } = await supabase
+          .from('spotlight_content')
+          .select('id,creator_user_id,status,published_at')
+          .eq('id', requestedPinnedContentId)
+          .eq('creator_user_id', authContext.userId)
+          .maybeSingle();
+        if (pinnedError) return res.status(400).json({ error: pinnedError.message });
+        if (!pinnedRow || pinnedRow.status !== 'published' || !pinnedRow.published_at) {
+          return res.status(400).json({ error: 'Pinned Spotlight must be one of your published posts.' });
+        }
+      }
+
+      const userPatch = {};
+      if (requestedName !== safeString(userRow.name || '').trim()) userPatch.name = requestedName;
+      if (requestedAvatarUrl !== safeString(userRow.avatar_url || '').trim()) userPatch.avatar_url = requestedAvatarUrl || null;
+
+      let nextUserRow = userRow;
+      if (Object.keys(userPatch).length > 0) {
+        const { data: updatedUser, error: updateUserError } = await supabase
+          .from('users')
+          .update(userPatch)
+          .eq('id', authContext.userId)
+          .select('id,firebase_uid,name,avatar_url')
+          .maybeSingle();
+        if (updateUserError) return res.status(400).json({ error: updateUserError.message });
+        if (updatedUser) nextUserRow = updatedUser;
+      }
+
+      const existingPreferences = getSpotlightProfilePreferences(profileRow);
+      const existingSpotlightProfile = getSpotlightProfileSettings(profileRow);
+      const existingSocialLinks = normalizeJsonObject(profileRow?.social_links);
+      const nextPreferences = {
+        ...existingPreferences,
+        spotlightProfile: {
+          ...existingSpotlightProfile,
+          bannerUrl: requestedBannerUrl || null,
+          pinnedContentId: requestedPinnedContentId || null
+        }
+      };
+      const nextSocialLinks = {
+        ...existingSocialLinks,
+        website: requestedWebsiteUrl || null
+      };
+
+      let nextProfileRow = profileRow || { user_id: authContext.userId };
+      const profilePatch = {
+        username: normalizedUsername,
+        about: requestedBio || null,
+        bio: requestedBio || null,
+        city: requestedCity || null,
+        country: requestedCountry || null,
+        social_links: nextSocialLinks,
+        preferences: nextPreferences
+      };
+
+      const { data: updatedProfile, error: updateProfileError } = await supabase
+        .from('user_profiles')
+        .update(profilePatch)
+        .eq('user_id', authContext.userId)
+        .select('user_id,username,bio,about,city,country,social_links,preferences,followers_count,following_count,posts_count,reels_count,is_verified')
+        .maybeSingle();
+
+      if (updateProfileError) {
+        if (isUniqueViolation(updateProfileError)) {
+          return res.status(409).json({ error: 'Username is already taken.' });
+        }
+        return res.status(400).json({ error: updateProfileError.message });
+      }
+      if (updatedProfile) nextProfileRow = updatedProfile;
+
+      return res.json({
+        data: buildSpotlightProfilePayload({
+          targetUser: nextUserRow,
+          profileRow: nextProfileRow,
+          targetFollowerCount: nextProfileRow?.followers_count
+        })
+      });
+    } catch (error) {
+      return res.status(500).json({ error: safeString(error?.message || 'Unable to update Spotlight profile.') });
+    }
+  });
+
   app.get('/spotlight/profile/:username', async (req, res) => {
     try {
       const rawUsername = safeString(req.params.username || '').trim();
@@ -1149,32 +1646,39 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       const normalizedTab = ['posts', 'media', 'likes', 'saved'].includes(tab) ? tab : 'posts';
       const limit = parsePositiveInt(req.query.limit, 24, 1, 48);
       const cursor = decodeCursor(safeString(req.query.cursor || '').trim());
-      const { viewerUserId } = await resolveViewerContext(req);
-      const normalizedUsername = slugifyUsername(rawUsername);
+      const viewerContext = await resolveViewerContext(req);
+      const { viewerUserId, viewerFirebaseUid } = viewerContext;
       const blockedUserIds = await getBlockedUserIdSet(viewerUserId);
-      const targetUser = await resolveTargetUserByUsername(rawUsername);
+      const targetUser = await resolveSelfHealingProfileTargetUser(rawUsername, viewerContext);
       if (!targetUser) return res.status(404).json({ error: 'Profile not found.' });
       if (blockedUserIds.has(targetUser.id)) return res.status(404).json({ error: 'Profile not found.' });
 
       const { data: profileRow, error: profileError } = await supabase
         .from('user_profiles')
-        .select('about,followers_count,following_count,posts_count,reels_count,is_verified,interest_profile')
+        .select('username,bio,about,city,country,social_links,followers_count,following_count,posts_count,reels_count,is_verified,preferences,interest_profile')
         .eq('user_id', targetUser.id)
         .maybeSingle();
       if (profileError) return res.status(400).json({ error: profileError.message });
 
-      const [followedCreatorIds, targetFollowerCount, isFollowingRow, followerPreviewRows, followingPreviewRows] = await Promise.all([
+      const isSelf = Boolean(
+        (viewerUserId && viewerUserId === targetUser.id)
+        || (viewerFirebaseUid && viewerFirebaseUid === targetUser.firebase_uid)
+      );
+      const [followedCreatorIds, targetFollowerCount, isFollowingRow, followsYouRow, followerPreviewRows, followingPreviewRows] = await Promise.all([
         getFollowedCreatorIds(viewerUserId),
         supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('following_user_id', targetUser.id),
         viewerUserId
           ? supabase.from('user_follows').select('id').eq('follower_id', viewerUserId).eq('following_user_id', targetUser.id).maybeSingle()
           : Promise.resolve({ data: null }),
+        viewerUserId && !isSelf
+          ? supabase.from('user_follows').select('id').eq('follower_id', targetUser.id).eq('following_user_id', viewerUserId).maybeSingle()
+          : Promise.resolve({ data: null }),
         supabase.from('user_follows').select('follower_id').eq('following_user_id', targetUser.id).limit(8),
         supabase.from('user_follows').select('following_user_id').eq('follower_id', targetUser.id).limit(8)
       ]);
 
-      const isSelf = viewerUserId === targetUser.id;
       const isFollowing = Boolean(isFollowingRow?.data?.id);
+      const followsYou = Boolean(followsYouRow?.data?.id);
       const [likedCount, savedCount] = isSelf
         ? await Promise.all([
           supabase.from('spotlight_likes').select('id', { count: 'exact', head: true }).eq('user_id', targetUser.id),
@@ -1183,20 +1687,11 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         : [0, 0];
 
       const baseSelect = 'id,creator_user_id,media_type,media_url,thumbnail_url,caption,hashtags,interest_tags,visibility,allow_comments,status,published_at,reposted_from_content_id,feed_score,trending_score,created_at,updated_at';
-      const profileFields = {
-        id: targetUser.id,
-        firebase_uid: targetUser.firebase_uid,
-        name: targetUser.name || 'Creator',
-        avatar_url: targetUser.avatar_url || '/icons/urbanprime.svg',
-        bio: safeString(profileRow?.about || '').trim(),
-        about: safeString(profileRow?.about || '').trim(),
-        followers_count: Number(profileRow?.followers_count || targetFollowerCount?.count || 0),
-        following_count: Number(profileRow?.following_count || 0),
-        posts_count: Number(profileRow?.posts_count || 0),
-        reels_count: Number(profileRow?.reels_count || 0),
-        is_verified: Boolean(profileRow?.is_verified),
-        username: normalizedUsername
-      };
+      const profileFields = buildSpotlightProfilePayload({
+        targetUser,
+        profileRow,
+        targetFollowerCount: targetFollowerCount?.count
+      });
 
       const followerPreviewIds = (followerPreviewRows?.data || []).map((row) => row.follower_id).filter(Boolean);
       const followingPreviewIds = (followingPreviewRows?.data || []).map((row) => row.following_user_id).filter(Boolean);
@@ -1204,6 +1699,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
         buildUserPreviewList(followerPreviewIds),
         buildUserPreviewList(followingPreviewIds)
       ]);
+      const pinnedContentId = getSpotlightPinnedContentId(profileRow);
 
       let itemsRows = [];
       let savedAtByContentId = new Map();
@@ -1279,6 +1775,23 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       });
 
       const feedItems = await hydrateFeedItems({ contentRows: accessibleRows, followedCreatorIds });
+      let pinnedItem = null;
+      if (pinnedContentId) {
+        const { data: pinnedRows, error: pinnedError } = await supabase
+          .from('spotlight_content')
+          .select(baseSelect)
+          .eq('id', pinnedContentId)
+          .eq('creator_user_id', targetUser.id)
+          .eq('status', 'published')
+          .not('published_at', 'is', null)
+          .limit(1);
+        if (pinnedError) return res.status(400).json({ error: pinnedError.message });
+        const accessiblePinnedRows = (pinnedRows || []).filter((row) => canViewerAccessRow({ row, viewerUserId, followedCreatorIds }));
+        if (accessiblePinnedRows.length > 0) {
+          const hydratedPinned = await hydrateFeedItems({ contentRows: accessiblePinnedRows, followedCreatorIds });
+          pinnedItem = hydratedPinned?.[0] || null;
+        }
+      }
       const sortedItems = feedItems
         .map((item) => ({
           ...item,
@@ -1340,6 +1853,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
           profile: profileFields,
           is_self: isSelf,
           is_following: isFollowing,
+          follows_you: followsYou,
           tab: normalizedTab,
           counts: {
             posts: Number(profileRow?.posts_count || 0),
@@ -1349,6 +1863,7 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
           },
           followers_preview: followersPreview,
           following_preview: followingPreview,
+          pinned_item: pinnedItem,
           items: pageItems,
           next_cursor: nextCursor,
           has_more: hasMore
@@ -1366,10 +1881,11 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       const tab = safeString(req.query.tab || 'followers').trim().toLowerCase();
       const normalizedTab = tab === 'following' ? 'following' : 'followers';
       const limit = parsePositiveInt(req.query.limit, 80, 1, 200);
-      const { viewerUserId } = await resolveViewerContext(req);
+      const viewerContext = await resolveViewerContext(req);
+      const { viewerUserId } = viewerContext;
       const blockedUserIds = await getBlockedUserIdSet(viewerUserId);
       const followedCreatorIds = await getFollowedCreatorIds(viewerUserId);
-      const targetUser = await resolveTargetUserByUsername(rawUsername);
+      const targetUser = await resolveSelfHealingProfileTargetUser(rawUsername, viewerContext);
       if (!targetUser) return res.status(404).json({ error: 'Profile not found.' });
       if (blockedUserIds.has(targetUser.id)) return res.status(404).json({ error: 'Profile not found.' });
 
@@ -2346,13 +2862,20 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
 
       const contentId = safeString(req.body?.content_id || '').trim() || null;
       const commentId = safeString(req.body?.comment_id || '').trim() || null;
+      const targetUserIdRaw = safeString(req.body?.target_user_id || '').trim() || null;
+      const targetFirebaseUid = safeString(req.body?.target_firebase_uid || '').trim() || null;
       const reason = safeString(req.body?.reason || '').trim();
       const details = safeString(req.body?.details || '').trim() || null;
 
       if (!reason) return res.status(400).json({ error: 'reason is required.' });
-      if (!contentId && !commentId) return res.status(400).json({ error: 'Provide content_id or comment_id.' });
+      if (!contentId && !commentId && !targetUserIdRaw && !targetFirebaseUid) {
+        return res.status(400).json({ error: 'Provide content_id, comment_id, target_user_id, or target_firebase_uid.' });
+      }
 
-      let reportedUserId = null;
+      let reportedUserId = targetUserIdRaw || null;
+      if (!reportedUserId && targetFirebaseUid) {
+        reportedUserId = await resolveUserIdFromFirebaseUid(targetFirebaseUid);
+      }
       if (contentId) {
         const { data } = await supabase.from('spotlight_content').select('creator_user_id').eq('id', contentId).maybeSingle();
         reportedUserId = data?.creator_user_id || reportedUserId;
@@ -2360,6 +2883,9 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       if (commentId) {
         const { data } = await supabase.from('spotlight_comments').select('user_id').eq('id', commentId).maybeSingle();
         reportedUserId = data?.user_id || reportedUserId;
+      }
+      if (reportedUserId === authContext.userId) {
+        return res.status(400).json({ error: 'Cannot report your own account or content.' });
       }
 
       const { data, error } = await supabase

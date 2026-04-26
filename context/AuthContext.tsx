@@ -229,7 +229,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const syncPersonas = useCallback(async (currentUser: User): Promise<AccountPersona[]> => {
-    const list = await personaService.ensureDefaultConsumerPersona(currentUser);
+    const list = await personaService.ensureRolePersonas(currentUser);
     setPersonas(list);
     const active = personaService.getActivePersona(currentUser.id, list);
     setActivePersonaState(active);
@@ -450,6 +450,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // --- Admin Portal Portal Bypass ---
       if (authUser.id === 'admin-bypass') {
         setUser(authUser);
+        setProfileCompletion(completedBypassCompletion);
+        setIsProfileOnboardingEnabled(false);
         // Also ensure default persona is synced for admin bypass
         await syncPersonas(authUser);
         return authUser;

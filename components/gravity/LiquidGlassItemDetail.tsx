@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import type { Item } from '../../types';
+import { Link } from 'react-router-dom';
+import type { AuctionSnapshot, Item, PodVariantOption, RentalDeliveryMode, RentalQuote } from '../../types';
 
 type PurchaseMode = 'buy' | 'bid' | 'rent';
 type CheckoutMode = 'sale' | 'rent';
@@ -16,7 +16,21 @@ interface LiquidGlassItemDetailProps {
   setBidAmount: (amount: number) => void;
   rentalDates: { start: string; end: string };
   setRentalPeriod: (period: { start: string; end: string }) => void;
-  onAddToCart: (checkout?: boolean, mode?: CheckoutMode) => void;
+  deliveryMode: RentalDeliveryMode;
+  setDeliveryMode: (mode: RentalDeliveryMode) => void;
+  rentalQuote: RentalQuote | null;
+  rentalQuoteLoading: boolean;
+  auction: AuctionSnapshot | null;
+  bidSubmitting: boolean;
+  podVariantOptions?: PodVariantOption[];
+  selectedPodVariant?: PodVariantOption | null;
+  onSelectPodVariant?: (variantId: string) => void;
+  onAddToCart: (
+    checkout?: boolean,
+    mode?: CheckoutMode,
+    options?: { deliveryMode?: RentalDeliveryMode }
+  ) => void;
+  onPlaceBid: () => Promise<void>;
 }
 
 const money = (value: number, currency = 'USD') =>
@@ -42,22 +56,16 @@ const isAuction = (item: Item) => item.listingType === 'auction';
 const isRental = (item: Item) => item.listingType === 'rent' || item.listingType === 'both';
 const isSale = (item: Item) => item.listingType === 'sale' || item.listingType === 'both';
 
-const priceFor = (item: Item, mode: PurchaseMode) => {
-  if (mode === 'rent') return item.rentalPrice || item.rentalRates?.daily || item.price || 0;
-  if (mode === 'bid') return item.auctionDetails?.currentBid || item.auctionDetails?.startingBid || item.price || 0;
-  return item.buyNowPrice || item.salePrice || item.price || 0;
-};
-
 const rentalDays = (start: string, end: string) => {
   if (!start || !end) return 0;
   const startDate = new Date(start);
   const endDate = new Date(end);
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return 0;
-  return Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000) + 1);
+  return Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
 };
 
 const auctionCountdown = (value?: string | null) => {
-  if (!value) return '';
+  if (!value) return 'Awaiting close time';
   const diff = new Date(value).getTime() - Date.now();
   if (!Number.isFinite(diff) || diff <= 0) return 'Auction ended';
   const days = Math.floor(diff / 86400000);
@@ -67,6 +75,11 @@ const auctionCountdown = (value?: string | null) => {
   if (hours > 0) return `${hours}h ${minutes}m left`;
   return `${Math.max(minutes, 1)}m left`;
 };
+
+const historyName = (entry: any) =>
+  String(entry?.bidderDisplayName || entry?.userName || entry?.bidderId || entry?.userId || 'Bidder');
+
+const historyPlacedAt = (entry: any) => String(entry?.placedAt || entry?.placed_at || '');
 
 const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
   item,
@@ -79,9 +92,18 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
   setBidAmount,
   rentalDates,
   setRentalPeriod,
-  onAddToCart
+  deliveryMode,
+  setDeliveryMode,
+  rentalQuote,
+  rentalQuoteLoading,
+  auction,
+  bidSubmitting,
+  podVariantOptions = [],
+  selectedPodVariant = null,
+  onSelectPodVariant,
+  onAddToCart,
+  onPlaceBid
 }) => {
-  const navigate = useNavigate();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showMobilePill, setShowMobilePill] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -106,15 +128,31 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
     return list.length > 0 ? list : [`https://picsum.photos/seed/${item.id}/1200/1400`];
   }, [item]);
 
-  const currentPrice = priceFor(item, activeMode);
-  const minNextBid = Math.ceil(currentPrice + 1);
+  const auctionHistory = auction?.history || item.auctionDetails?.bids || [];
+  const auctionCurrentBid =
+    auction?.currentBid || item.auctionDetails?.currentBid || item.auctionDetails?.startingBid || item.price || 0;
+  const minNextBid = Math.ceil(auctionCurrentBid + 1);
   const compareAt = activeMode === 'buy' ? item.compareAtPrice : undefined;
-  const savePercent = compareAt && compareAt > currentPrice ? Math.round(((compareAt - currentPrice) / compareAt) * 100) : 0;
-  const stayDays = rentalDays(rentalDates.start, rentalDates.end);
-  const rentalTotal = stayDays > 0 ? stayDays * currentPrice : currentPrice;
+  const savePercent = compareAt && compareAt > (item.buyNowPrice || item.salePrice || item.price || 0)
+    ? Math.round(((compareAt - (item.buyNowPrice || item.salePrice || item.price || 0)) / compareAt) * 100)
+    : 0;
+  const stayDays = rentalQuote?.rentalDays || rentalDays(rentalDates.start, rentalDates.end);
+  const rentalUnitPrice = rentalQuote?.dailyRate || item.rentalRates?.daily || item.rentalPrice || item.price || 0;
+  const rentalTotal = rentalQuote?.totalDueNow || stayDays * rentalUnitPrice + (rentalQuote?.securityDeposit || 0);
+  const currentPrice =
+    activeMode === 'rent'
+      ? rentalUnitPrice
+      : activeMode === 'bid'
+        ? auctionCurrentBid
+        : item.buyNowPrice || item.salePrice || item.price || 0;
   const digital = isDigital(item);
+  const pod = item.productType === 'pod' || item.fulfillmentType === 'pod' || Boolean(item.podProfile);
+  const podTurnaroundDays = Number(item.podProfile?.turnaroundDays || item.processingTimeDays || 4);
   const lowStock = item.stock > 0 && item.stock <= 5;
   const canBuy = item.stock > 0 || digital;
+  const canBuyAuctionNow = Boolean(auction?.canBuyNow || item.buyNowPrice);
+  const canPickup = item.rentalFulfillment ? item.rentalFulfillment.pickup !== false : true;
+  const canShip = item.rentalFulfillment ? item.rentalFulfillment.shipping !== false : true;
 
   const shippingSummary = (item.shippingEstimates || [])
     .map((estimate: any) => {
@@ -127,9 +165,13 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
 
   const deliveryText = digital
     ? 'Delivered instantly after checkout'
-    : shippingSummary || (item.whoPaysShipping === 'seller' ? 'Ships in 1-3 business days' : 'Shipping calculated at checkout');
+    : pod
+      ? `Made to order. Seller target turnaround ${podTurnaroundDays} day${podTurnaroundDays === 1 ? '' : 's'}.`
+      : shippingSummary || (item.whoPaysShipping === 'seller' ? 'Ships in 1-3 business days' : 'Shipping calculated at checkout');
   const returnText = digital
     ? item.licenseType || 'Digital license included'
+    : pod
+      ? 'Made-to-order POD policy applies'
     : item.returnPolicy?.windowDays
       ? `${item.returnPolicy.windowDays}-day returns`
       : 'Return policy available';
@@ -144,40 +186,28 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
     ...(item.features || []).slice(0, 4)
   ]).slice(0, 6);
 
-  const attributeRows = [
-    ['Category', titleCase(item.category) || 'General'],
-    ['Brand', item.brand || 'Urban Prime'],
-    ['Condition', titleCase(item.condition) || 'New'],
-    ['SKU', item.sku || 'Not listed'],
-    ['Fulfillment', titleCase(item.fulfillmentType || 'in_house')],
-    ['Shipping', item.whoPaysShipping === 'seller' ? 'Seller pays shipping' : 'Buyer pays shipping'],
-    ['Weight class', titleCase(item.shippingWeightClass || 'Not specified')],
-    ['Origin', [item.originCity, item.originCountry].filter(Boolean).join(', ') || 'Not specified'],
-    ['Dimensions', item.dimensionsIn ? `${item.dimensionsIn.l}" x ${item.dimensionsIn.w}" x ${item.dimensionsIn.h}"` : 'Not specified'],
-    ['Weight', item.weightLbs ? `${item.weightLbs} lb` : 'Not specified']
-  ];
-
-  const packageList = (item.packageContents || []).filter(Boolean);
-  const careList = (item.careInstructions || []).filter(Boolean);
-  const certifications = (item.certifications || []).filter(Boolean);
-  const warrantyLine = item.warranty?.coverage ? `Warranty: ${item.warranty.coverage}` : '';
-  const supplierLine = item.supplierInfo?.name ? `Supplier: ${item.supplierInfo.name}` : '';
-
   const activeImage = selectedImage || images[0];
+  const shortDescription = item.description || 'Seller description coming soon.';
+  const visibleDescription = expanded ? shortDescription : shortDescription.slice(0, 280);
 
   const handlePrimaryAction = () => {
     if (activeMode === 'bid') {
-      const nextBid = Math.max(minNextBid, Number.isFinite(bidAmount) ? bidAmount : minNextBid);
-      const bid = String(nextBid);
-      const params = new URLSearchParams({ itemId: item.id, sellerId: item.owner?.id || '', bid });
-      navigate(`/chat-with-us?${params.toString()}`);
+      if (typeof document !== 'undefined') {
+        const offerPanel = document.getElementById('auction-offer-panel');
+        offerPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = offerPanel?.querySelector('input[type="number"]');
+        if (input instanceof HTMLInputElement) {
+          window.setTimeout(() => input.focus(), 180);
+        }
+      }
       return;
     }
-    onAddToCart(false, activeMode === 'rent' ? 'rent' : 'sale');
+    onAddToCart(false, activeMode === 'rent' ? 'rent' : 'sale', { deliveryMode });
   };
 
   const handleBuyNow = () => {
-    onAddToCart(true, activeMode === 'rent' ? 'rent' : 'sale');
+    if (activeMode === 'bid' && !canBuyAuctionNow) return;
+    onAddToCart(true, activeMode === 'rent' ? 'rent' : 'sale', { deliveryMode });
   };
 
   const modeButtons = [
@@ -186,9 +216,20 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
     { id: 'bid' as const, label: 'Bid', show: isAuction(item) }
   ].filter((mode) => mode.show);
 
+  const attributeRows = [
+    ['Category', titleCase(item.category) || 'General'],
+    ['Brand', item.brand || 'Urban Prime'],
+    ['Condition', titleCase(item.condition) || 'New'],
+    ['SKU', item.sku || 'Not listed'],
+    ['Fulfillment', titleCase(item.fulfillmentType || 'in_house')],
+    ['Shipping', item.whoPaysShipping === 'seller' ? 'Seller pays shipping' : 'Buyer pays shipping'],
+    ['Origin', [item.originCity, item.originCountry].filter(Boolean).join(', ') || 'Not specified'],
+    ['Weight', item.weightLbs ? `${item.weightLbs} lb` : 'Not specified']
+  ];
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-transparent text-text-primary">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_20%_12%,rgba(255,255,255,0.22),transparent_40%),radial-gradient(circle_at_78%_14%,rgba(99,102,241,0.2),transparent_36%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_18%_10%,rgba(255,255,255,0.26),transparent_38%),radial-gradient(circle_at_76%_12%,rgba(148,163,184,0.2),transparent_34%)]" />
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1500px] flex-col gap-10 px-4 pb-20 pt-16 sm:px-6 lg:px-10 lg:pt-20">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
@@ -216,29 +257,10 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                     </span>
                   ) : null}
                 </div>
-                {images.length > 1 ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImage(images[(images.indexOf(activeImage) - 1 + images.length) % images.length])}
-                      className="absolute left-3 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/30 text-white"
-                    >
-                      {'<'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImage(images[(images.indexOf(activeImage) + 1) % images.length])}
-                      className="absolute right-3 top-1/2 z-10 h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/30 text-white"
-                    >
-                      {'>'}
-                    </button>
-                  </>
-                ) : null}
                 <img
                   src={activeImage}
                   alt={item.title}
                   loading="eager"
-                  fetchPriority="high"
                   className="aspect-[4/4.2] w-full object-contain px-8 py-8"
                 />
               </div>
@@ -275,6 +297,38 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 ))}
               </div>
             </div>
+
+            {activeMode === 'bid' ? (
+              <div className="glass-panel p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-text-secondary">Bid history</p>
+                    <h2 className="mt-2 text-2xl font-bold tracking-[-0.03em] text-text-primary">Live auction activity</h2>
+                  </div>
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">
+                    {auction?.reserveMet ? 'Reserve met' : 'Reserve active'}
+                  </span>
+                </div>
+                <div className="mt-5 space-y-3">
+                  {auctionHistory.length > 0 ? auctionHistory.slice(0, 6).map((entry: any) => (
+                    <div key={entry.id || `${historyPlacedAt(entry)}-${historyName(entry)}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-text-primary">{historyName(entry)}</p>
+                        <p className="text-xs text-text-secondary">{historyPlacedAt(entry) ? new Date(historyPlacedAt(entry)).toLocaleString() : 'Just now'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-base font-black text-text-primary">{money(Number(entry.amount || 0))}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">{String(entry.status || 'placed')}</p>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-8 text-center text-sm text-text-secondary">
+                      No bids yet. Open the bid panel to place the first public offer.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-24">
@@ -287,7 +341,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 <span className="rounded-full bg-amber-500/15 px-2 py-1 font-bold text-amber-600 dark:text-amber-300">{(item.avgRating || 0).toFixed(1)}</span>
                 <span>{item.reviews?.length || 0} reviews</span>
                 <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1 font-semibold uppercase tracking-[0.14em]">
-                  {item.isVerified ? 'Trusted seller' : 'Verified profile available'}
+                  {item.isVerified ? 'Trusted seller' : 'Profile available'}
                 </span>
               </div>
               <div className="mt-4 border-t border-white/10 pt-4">
@@ -298,9 +352,9 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 </div>
                 <p className="mt-2 text-sm text-text-secondary">
                   {activeMode === 'bid'
-                    ? `Current bid ${money(currentPrice)}. ${auctionCountdown(item.auctionDetails?.endTime)}.`
+                    ? `Current bid ${money(auctionCurrentBid)}. ${auctionCountdown(auction?.endTime || item.auctionDetails?.endTime)}.`
                     : activeMode === 'rent'
-                      ? `${money(currentPrice)} per day${item.minRentalDuration ? ` with a minimum ${item.minRentalDuration}-day booking.` : '.'}`
+                      ? `${money(rentalUnitPrice)} per day${item.minRentalDuration ? ` with a minimum ${item.minRentalDuration}-hour listing rule.` : '.'}`
                       : digital
                         ? 'Instant digital fulfillment with secure checkout.'
                         : deliveryText}
@@ -322,39 +376,211 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 </div>
               ) : null}
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-5 space-y-3">
                 {activeMode === 'buy' ? (
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary">Quantity</span>
-                    <div className="flex items-center gap-3">
-                      <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-8 w-8 rounded-full border border-white/15 text-text-primary">-</button>
-                      <span className="w-6 text-center text-sm font-bold text-text-primary">{quantity}</span>
-                      <button type="button" onClick={() => setQuantity(quantity + 1)} className="h-8 w-8 rounded-full border border-white/15 text-text-primary">+</button>
+                  <div className="space-y-3">
+                    {pod && podVariantOptions.length ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Variant</p>
+                            <p className="mt-1 text-sm font-bold text-text-primary">
+                              {selectedPodVariant
+                                ? [selectedPodVariant.color, selectedPodVariant.size].filter(Boolean).join(' / ')
+                                : 'Choose a POD variant'}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/15 bg-black/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary dark:bg-white/5">
+                            {podTurnaroundDays} day turnaround
+                          </span>
+                        </div>
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                          {podVariantOptions.map((variant) => {
+                            const active = selectedPodVariant?.id === variant.id;
+                            const label = [variant.color, variant.size].filter(Boolean).join(' / ');
+                            return (
+                              <button
+                                key={variant.id}
+                                type="button"
+                                onClick={() => onSelectPodVariant?.(variant.id)}
+                                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                  active
+                                    ? 'border-primary/50 bg-primary/10 text-primary'
+                                    : 'border-white/10 bg-black/10 text-text-primary hover:border-white/25 dark:bg-white/5'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-sm font-bold">{label}</span>
+                                  <span className="text-xs font-black uppercase tracking-[0.16em]">
+                                    {money(Number(variant.salePrice || currentPrice))}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">
+                                  SKU {variant.sku || variant.id}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                      <span className="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary">Quantity</span>
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-8 w-8 rounded-full border border-white/15 text-text-primary">-</button>
+                        <span className="w-6 text-center text-sm font-bold text-text-primary">{quantity}</span>
+                        <button type="button" onClick={() => setQuantity(quantity + 1)} className="h-8 w-8 rounded-full border border-white/15 text-text-primary">+</button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
 
                 {activeMode === 'rent' ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Start</span>
-                      <input type="date" value={rentalDates.start} onChange={(event) => setRentalPeriod({ ...rentalDates, start: event.target.value })} className="mt-2 w-full bg-transparent text-xs font-bold text-text-primary" />
-                    </label>
-                    <label className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">End</span>
-                      <input type="date" value={rentalDates.end} onChange={(event) => setRentalPeriod({ ...rentalDates, end: event.target.value })} className="mt-2 w-full bg-transparent text-xs font-bold text-text-primary" />
-                    </label>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Start</span>
+                        <input type="date" value={rentalDates.start} onChange={(event) => setRentalPeriod({ ...rentalDates, start: event.target.value })} className="mt-2 w-full bg-transparent text-xs font-bold text-text-primary" />
+                      </label>
+                      <label className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">End</span>
+                        <input type="date" value={rentalDates.end} onChange={(event) => setRentalPeriod({ ...rentalDates, end: event.target.value })} className="mt-2 w-full bg-transparent text-xs font-bold text-text-primary" />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {canPickup ? (
+                        <button
+                          type="button"
+                          onClick={() => setDeliveryMode('pickup')}
+                          className={`rounded-2xl border px-4 py-3 text-xs font-black uppercase tracking-[0.2em] ${deliveryMode === 'pickup' ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-text-primary'}`}
+                        >
+                          Pickup
+                        </button>
+                      ) : null}
+                      {canShip ? (
+                        <button
+                          type="button"
+                          onClick={() => setDeliveryMode('shipping')}
+                          className={`rounded-2xl border px-4 py-3 text-xs font-black uppercase tracking-[0.2em] ${deliveryMode === 'shipping' ? 'border-primary/40 bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-text-primary'}`}
+                        >
+                          Shipping
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Quote status</p>
+                          <p className="mt-1 text-sm font-bold text-text-primary">
+                            {rentalQuoteLoading
+                              ? 'Checking availability'
+                              : rentalQuote
+                                ? rentalQuote.available
+                                  ? 'Dates available'
+                                  : 'Dates blocked'
+                                : 'Select dates to quote'}
+                          </p>
+                        </div>
+                        {rentalQuote ? (
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${rentalQuote.available ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-300'}`}>
+                            {rentalQuote.available ? 'Available' : 'Unavailable'}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Rental</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(rentalQuote?.subtotal || stayDays * rentalUnitPrice)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Deposit</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(rentalQuote?.securityDeposit || item.securityDeposit || 0)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Due now</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(rentalTotal)}</p>
+                        </div>
+                      </div>
+                      <p className="mt-4 text-sm text-text-secondary">
+                        {rentalQuote?.availabilityFeedback || 'We revalidate blackouts and active bookings before checkout.'}
+                      </p>
+                    </div>
                   </div>
                 ) : null}
 
                 {activeMode === 'bid' ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Your bid</span>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-lg font-bold text-text-primary">$</span>
-                      <input type="number" min={minNextBid} value={bidAmount} onChange={(event) => setBidAmount(Number(event.target.value))} className="w-full bg-transparent text-xl font-bold text-text-primary" />
+                  <div className="space-y-3">
+                    <div id="auction-offer-panel" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Auction status</p>
+                          <p className="mt-2 text-base font-black text-text-primary">{auction?.status ? titleCase(auction.status) : 'Live'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Minimum next bid</p>
+                          <p className="mt-2 text-lg font-black text-text-primary">{money(minNextBid)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Current</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(auctionCurrentBid)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Bid count</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{auction?.bidCount || item.auctionDetails?.bidCount || 0}</p>
+                        </div>
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Buy now</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{canBuyAuctionNow ? money(auction?.buyNowPrice || item.buyNowPrice || 0) : 'Disabled'}</p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="mt-2 text-xs text-text-secondary">Minimum next bid ${minNextBid}</p>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-text-secondary">Place a public bid</p>
+                          <p className="mt-2 text-sm text-text-secondary">
+                            Seller counters and winner checkout windows stay inside the auction workflow.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">
+                          {auctionCountdown(auction?.endTime || item.auctionDetails?.endTime)}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-4 dark:bg-white/5">
+                        <span className="text-2xl font-black text-text-primary">$</span>
+                        <input
+                          type="number"
+                          min={minNextBid}
+                          value={bidAmount}
+                          onChange={(event) => setBidAmount(Number(event.target.value))}
+                          className="w-full bg-transparent text-3xl font-black text-text-primary outline-none"
+                        />
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Minimum next bid</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(minNextBid)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-black/10 p-3 dark:bg-white/5">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-secondary">Current bid</p>
+                          <p className="mt-2 text-sm font-black text-text-primary">{money(auctionCurrentBid)}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void onPlaceBid()}
+                        disabled={bidSubmitting || bidAmount < minNextBid}
+                        className="mt-5 h-12 w-full rounded-full bg-primary text-xs font-black uppercase tracking-[0.22em] text-primary-text disabled:opacity-45"
+                      >
+                        {bidSubmitting ? 'Submitting...' : 'Submit bid'}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -363,13 +589,18 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 <button
                   type="button"
                   onClick={handlePrimaryAction}
-                  disabled={activeMode === 'bid' && bidAmount < minNextBid}
+                  disabled={activeMode === 'rent' && Boolean(rentalQuote) && !rentalQuote.available}
                   className="h-12 rounded-full bg-primary text-xs font-black uppercase tracking-[0.2em] text-primary-text disabled:opacity-50"
                 >
-                  {activeMode === 'bid' ? 'Place bid' : activeMode === 'rent' ? 'Add rental to cart' : 'Add to cart'}
+                  {activeMode === 'bid' ? 'Review bid' : activeMode === 'rent' ? 'Add rental to cart' : 'Add to cart'}
                 </button>
-                <button type="button" onClick={handleBuyNow} disabled={!canBuy && activeMode !== 'rent'} className="h-12 rounded-full border border-white/20 text-xs font-black uppercase tracking-[0.2em] text-text-primary disabled:opacity-40">
-                  {activeMode === 'rent' ? `Reserve now - ${money(rentalTotal)}` : 'Buy now'}
+                <button
+                  type="button"
+                  onClick={handleBuyNow}
+                  disabled={activeMode === 'bid' ? !canBuyAuctionNow : !canBuy && activeMode !== 'rent'}
+                  className="h-12 rounded-full border border-white/20 text-xs font-black uppercase tracking-[0.2em] text-text-primary disabled:opacity-40"
+                >
+                  {activeMode === 'rent' ? `Reserve now - ${money(rentalTotal)}` : activeMode === 'bid' ? `Buy now${canBuyAuctionNow ? ` - ${money(auction?.buyNowPrice || item.buyNowPrice || 0)}` : ''}` : 'Buy now'}
                 </button>
               </div>
 
@@ -377,51 +608,29 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
                 <p className="font-bold text-text-primary">Delivery and policy</p>
                 <p className="mt-2">{deliveryText}</p>
                 <p className="mt-1">{returnText}</p>
+                {activeMode === 'bid' ? <p className="mt-2">{auctionCountdown(auction?.endTime || item.auctionDetails?.endTime)}</p> : null}
                 <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-text-secondary">Secure checkout powered by Urban Prime</p>
               </div>
             </div>
-          </div>
-        </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-          <div className="glass-panel p-5 sm:p-6">
-            <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-text-secondary">Listing details</p>
-            <h2 className="mt-2 text-2xl font-bold tracking-[-0.03em] text-text-primary">Everything the seller configured</h2>
-            <div className="mt-5 divide-y divide-white/10 rounded-3xl border border-white/10 bg-white/5 px-4">
-              {attributeRows.map(([label, value]) => (
-                <div key={label} className="flex items-start justify-between gap-4 py-3">
-                  <span className="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary">{label}</span>
-                  <span className="text-right text-sm font-semibold text-text-primary">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-5">
             <div className="glass-panel p-5 sm:p-6">
-              <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-text-secondary">Protection and care</p>
-              <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">In the box</p>
-                  <div className="mt-3 space-y-2 text-xs text-text-secondary">
-                    {packageList.length ? packageList.map((entry) => <p key={entry}>- {entry}</p>) : <p>Package contents were not listed.</p>}
+              <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-text-secondary">Listing details</p>
+              <h2 className="mt-2 text-2xl font-bold tracking-[-0.03em] text-text-primary">Everything the seller configured</h2>
+              <p className="mt-4 text-sm leading-7 text-text-secondary">
+                {visibleDescription}
+                {shortDescription.length > 280 ? (
+                  <button onClick={() => setExpanded((value) => !value)} className="ml-2 font-black uppercase tracking-[0.18em] text-primary">
+                    {expanded ? 'Show less' : 'Read more'}
+                  </button>
+                ) : null}
+              </p>
+              <div className="mt-5 divide-y divide-white/10 rounded-3xl border border-white/10 bg-white/5 px-4">
+                {attributeRows.map(([label, value]) => (
+                  <div key={label} className="flex items-start justify-between gap-4 py-3">
+                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary">{label}</span>
+                    <span className="text-right text-sm font-semibold text-text-primary">{value}</span>
                   </div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Care</p>
-                  <div className="mt-3 space-y-2 text-xs text-text-secondary">
-                    {careList.length ? careList.map((entry) => <p key={entry}>- {entry}</p>) : <p>No care instructions were added.</p>}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">Protection</p>
-                  <div className="mt-3 space-y-2 text-xs text-text-secondary">
-                    {certifications.length ? certifications.map((entry) => <p key={entry}>- {entry}</p>) : null}
-                    {warrantyLine ? <p>- {warrantyLine}</p> : null}
-                    {supplierLine ? <p>- {supplierLine}</p> : null}
-                    {!certifications.length && !warrantyLine && !supplierLine ? <p>Protection details were not fully listed.</p> : null}
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -481,10 +690,10 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
             <p className="text-xs font-medium text-text-secondary">{money(currentPrice)}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={handlePrimaryAction} disabled={activeMode === 'bid' && bidAmount < minNextBid} className="rounded-full bg-primary px-3 py-2 text-xs font-black uppercase tracking-wide text-primary-text disabled:opacity-50">
-              {activeMode === 'bid' ? 'Bid' : activeMode === 'rent' ? 'Cart' : 'Add'}
+            <button type="button" onClick={handlePrimaryAction} className="rounded-full bg-primary px-3 py-2 text-xs font-black uppercase tracking-wide text-primary-text">
+              {activeMode === 'bid' ? 'Review' : activeMode === 'rent' ? 'Cart' : 'Add'}
             </button>
-            <button type="button" onClick={handleBuyNow} disabled={!canBuy && activeMode !== 'rent'} className="rounded-full border border-white/20 px-3 py-2 text-xs font-black uppercase tracking-wide text-text-primary disabled:opacity-40">
+            <button type="button" onClick={handleBuyNow} disabled={activeMode === 'bid' ? !canBuyAuctionNow : !canBuy && activeMode !== 'rent'} className="rounded-full border border-white/20 px-3 py-2 text-xs font-black uppercase tracking-wide text-text-primary disabled:opacity-40">
               {activeMode === 'rent' ? 'Reserve' : 'Buy'}
             </button>
           </div>

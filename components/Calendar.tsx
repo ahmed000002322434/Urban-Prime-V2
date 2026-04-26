@@ -15,6 +15,22 @@ interface CalendarProps {
 const ChevronLeftIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
 const ChevronRightIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
 
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateKey = (value?: string) => {
+  const raw = String(value || '').trim();
+  const [year, month, day] = raw.split('-').map((part) => Number(part));
+  if (!year || !month || !day) return null;
+  const parsed = new Date(year, month - 1, day);
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
 const Calendar: React.FC<CalendarProps> = ({ 
     startDate, 
     endDate, 
@@ -27,8 +43,8 @@ const Calendar: React.FC<CalendarProps> = ({
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  const start = startDate ? new Date(startDate) : null;
-  const end = endDate ? new Date(endDate) : null;
+  const start = parseDateKey(startDate);
+  const end = parseDateKey(endDate);
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -52,7 +68,8 @@ const Calendar: React.FC<CalendarProps> = ({
   
   const handleDateClick = (day: number) => {
     const clickedDate = new Date(year, month, day);
-    const dateString = clickedDate.toISOString().split('T')[0];
+    clickedDate.setHours(0, 0, 0, 0);
+    const dateString = formatDateKey(clickedDate);
 
     // Block past dates
     if (clickedDate < today) return;
@@ -79,7 +96,7 @@ const Calendar: React.FC<CalendarProps> = ({
             const tempEnd = new Date(clickedDate);
             let isRangeValid = true;
             for (let d = new Date(start); d <= tempEnd; d.setDate(d.getDate() + 1)) {
-                if (bookedDates.includes(d.toISOString().split('T')[0])) {
+                if (bookedDates.includes(formatDateKey(d))) {
                     isRangeValid = false;
                     break;
                 }
@@ -102,7 +119,8 @@ const Calendar: React.FC<CalendarProps> = ({
     // Current month's days
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
-      const dateString = date.toISOString().split('T')[0];
+      date.setHours(0, 0, 0, 0);
+      const dateString = formatDateKey(date);
       const isBooked = bookedDates.includes(dateString);
       const isPast = date < today;
       

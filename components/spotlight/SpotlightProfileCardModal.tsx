@@ -1,17 +1,41 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import BlueTickBadge from './BlueTickBadge';
-import SpotlightTextCard from './SpotlightTextCard';
+import {
+  buildSpotlightProfileForm,
+  compactSpotlightNumber,
+  normalizeSpotlightUsernameInput,
+  safeSpotlightAvatar,
+  SpotlightAvatarImage,
+  SpotlightPinnedSpotlightSection,
+  SpotlightProfileEditorOverlay,
+  SpotlightProfileHeaderCard,
+  SpotlightProfileMediaGrid,
+  SpotlightProfileTabBar,
+  SpotlightProfileTimelineList,
+  type SpotlightProfileFormState,
+  type SpotlightProfileTab,
+  type UsernameStateKind
+} from './SpotlightProfileShared';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
+import { uploadService } from '../../services/uploadService';
 import {
   spotlightService,
   type SpotlightCreator,
   type SpotlightItem,
   type SpotlightProfileResponse
 } from '../../services/spotlightService';
+import { auth } from '../../firebase';
 
-type ProfileTab = 'posts' | 'media' | 'likes' | 'saved';
+const resolveSpotlightViewerFirebaseUid = (userId?: string | null) => {
+  const authUid = String(auth.currentUser?.uid || '').trim();
+  if (authUid) return authUid;
+  const fallbackUid = String(userId || '').trim();
+  return fallbackUid && fallbackUid !== 'local-user' ? fallbackUid : '';
+};
+
 type PeopleTab = 'followers' | 'following';
 
 type SpotlightProfileCardModalProps = {
@@ -23,29 +47,12 @@ type SpotlightProfileCardModalProps = {
   onBlocked?: () => void;
 };
 
-const PROFILE_TABS: ProfileTab[] = ['posts', 'media', 'likes', 'saved'];
-
-const compact = (value: number) => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0);
-const safeAvatar = (url?: string | null) => (url && url.trim() ? url : '/icons/urbanprime.svg');
-const formatTimeAgo = (value?: string | null) => {
-  if (!value) return '';
-  const delta = Date.now() - new Date(value).getTime();
-  const minutes = Math.floor(delta / 60000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d`;
-  return `${Math.floor(days / 30)}mo`;
-};
-
 function PeopleSheet({
   open,
   title,
   people,
   loading,
-  viewerUserId,
+  viewerFirebaseUid,
   onClose,
   onToggleFollow,
   onOpenMessage
@@ -54,7 +61,7 @@ function PeopleSheet({
   title: string;
   people: SpotlightCreator[];
   loading: boolean;
-  viewerUserId?: string | null;
+  viewerFirebaseUid?: string | null;
   onClose: () => void;
   onToggleFollow: (creator: SpotlightCreator) => void;
   onOpenMessage: (creator: SpotlightCreator) => void;
@@ -100,20 +107,22 @@ function PeopleSheet({
               ) : null}
               {!loading ? people.map((person) => (
                 <div key={person.id} className="flex items-center gap-3 rounded-[1.4rem] border border-white/40 bg-white/72 px-3 py-3 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
-                  <img src={safeAvatar(person.avatar_url)} alt={person.name} className="h-12 w-12 rounded-2xl object-cover" />
+                  <SpotlightAvatarImage src={safeSpotlightAvatar(person.avatar_url)} alt={person.name} className="h-12 w-12 rounded-2xl object-cover" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">{person.name}</p>
                       {person.is_verified ? <BlueTickBadge className="h-4 w-4" /> : null}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{compact(person.followers_count)} followers · {compact(person.following_count)} following</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {compactSpotlightNumber(person.followers_count)} followers / {compactSpotlightNumber(person.following_count)} following
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {person.id !== viewerUserId ? (
+                    {person.firebase_uid !== viewerFirebaseUid ? (
                       <button
                         type="button"
                         onClick={() => onToggleFollow(person)}
-                        className={`rounded-full px-3 py-2 text-xs font-semibold transition ${person.is_following ? 'border border-white/50 bg-slate-950 text-white dark:border-white/10 dark:bg-white dark:text-slate-950' : 'bg-sky-500 text-white hover:brightness-110 dark:bg-sky-400 dark:text-slate-950'}`}
+                        className={`rounded-full px-3 py-2 text-xs font-semibold transition ${person.is_following ? 'border border-white/50 bg-slate-950 text-white dark:border-white/10 dark:bg-white dark:text-slate-950' : 'bg-[linear-gradient(135deg,#111111_0%,#7c2d12_52%,#ea580c_100%)] text-white hover:brightness-110'}`}
                       >
                         {person.is_following ? 'Following' : 'Follow'}
                       </button>
@@ -144,21 +153,39 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
   onOpenMessage,
   onBlocked
 }) => {
-  const { user, openAuthModal } = useAuth();
+  const navigate = useNavigate();
+  const { user, openAuthModal, updateUser } = useAuth();
   const { showNotification } = useNotification();
-  const [tab, setTab] = useState<ProfileTab>('posts');
+  const [tab, setTab] = useState<SpotlightProfileTab>('posts');
   const [payload, setPayload] = useState<SpotlightProfileResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [peopleTab, setPeopleTab] = useState<PeopleTab | null>(null);
   const [people, setPeople] = useState<SpotlightCreator[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState<SpotlightProfileFormState>(buildSpotlightProfileForm(null));
+  const [usernameState, setUsernameState] = useState<{ kind: UsernameStateKind; message: string }>({
+    kind: 'idle',
+    message: 'Claim a unique public handle.'
+  });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
+  const [bannerPreview, setBannerPreview] = useState('');
+  const [pinOptions, setPinOptions] = useState<SpotlightItem[]>([]);
+  const [pinOptionsLoading, setPinOptionsLoading] = useState(false);
+  const viewerFirebaseUid = useMemo(() => resolveSpotlightViewerFirebaseUid(user?.id), [user?.id]);
 
   const profile = payload?.profile || null;
   const isSelf = Boolean(payload?.is_self);
   const isFollowing = Boolean(payload?.is_following);
+  const followsYou = Boolean(payload?.follows_you);
   const items = payload?.items || [];
   const counts = payload?.counts || { posts: 0, media: 0, likes: 0, saved: 0 };
+  const pinnedItem = payload?.pinned_item || null;
+  const profileLookupKey = payload?.profile?.id || payload?.profile?.firebase_uid || payload?.profile?.username || username;
 
   const creatorTarget = useMemo<SpotlightCreator | null>(() => {
     if (!profile) return null;
@@ -167,6 +194,7 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
       firebase_uid: profile.firebase_uid,
       name: profile.name,
       avatar_url: profile.avatar_url,
+      username: profile.username,
       is_verified: profile.is_verified,
       followers_count: profile.followers_count,
       following_count: profile.following_count,
@@ -176,23 +204,53 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
     };
   }, [payload?.is_following, profile]);
 
-  const loadProfile = useCallback(async () => {
-    if (!open || !username) return;
+  const syncProfileEditor = useCallback((nextPayload: SpotlightProfileResponse | null) => {
+    const nextForm = buildSpotlightProfileForm(nextPayload?.profile || null, nextPayload?.pinned_item?.id || null);
+    setProfileForm(nextForm);
+    setAvatarFile(null);
+    setBannerFile(null);
+    setAvatarPreview(nextForm.avatar_url);
+    setBannerPreview(nextForm.banner_url);
+    setUsernameState({
+      kind: nextForm.username ? 'current' : 'idle',
+      message: nextForm.username ? 'This is your current username.' : 'Claim a unique public handle.'
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
+
+  useEffect(() => () => {
+    if (bannerPreview.startsWith('blob:')) URL.revokeObjectURL(bannerPreview);
+  }, [bannerPreview]);
+
+  const fetchProfile = useCallback(async (lookupKey: string, nextTab: SpotlightProfileTab) => (
+    await spotlightService.getProfile(lookupKey, {
+      tab: nextTab,
+      limit: nextTab === 'media' ? 18 : 12,
+      viewerFirebaseUid: viewerFirebaseUid || undefined
+    })
+  ), [viewerFirebaseUid]);
+
+  const loadProfile = useCallback(async (lookupKey = profileLookupKey, nextTab = tab) => {
+    if (!open || !lookupKey) return null;
     setLoading(true);
     try {
-      const nextPayload = await spotlightService.getProfile(username, {
-        tab,
-        limit: 12,
-        viewerFirebaseUid: user?.id
-      });
+      const nextPayload = await fetchProfile(lookupKey, nextTab);
       setPayload(nextPayload);
+      if (!editorOpen) {
+        syncProfileEditor(nextPayload);
+      }
+      return nextPayload;
     } catch (error: any) {
       showNotification(error?.message || 'Unable to load Spotlight profile.');
       setPayload(null);
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [open, showNotification, tab, user?.id, username]);
+  }, [editorOpen, fetchProfile, open, profileLookupKey, showNotification, syncProfileEditor, tab]);
 
   useEffect(() => {
     if (!open) {
@@ -202,23 +260,34 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
       setPeople([]);
       setPeopleLoading(false);
       setMoreOpen(false);
+      setEditorOpen(false);
+      setSavingProfile(false);
+      setPinOptions([]);
+      setPinOptionsLoading(false);
+      syncProfileEditor(null);
       return;
     }
     void loadProfile();
-  }, [loadProfile, open]);
+  }, [loadProfile, open, syncProfileEditor]);
 
   useEffect(() => {
-    if (!open || !peopleTab || !username) {
+    if (!isSelf && (tab === 'likes' || tab === 'saved')) {
+      setTab('posts');
+    }
+  }, [isSelf, tab]);
+
+  useEffect(() => {
+    if (!open || !peopleTab || !profileLookupKey) {
       setPeople([]);
       setPeopleLoading(false);
       return;
     }
     let cancelled = false;
     setPeopleLoading(true);
-    spotlightService.getProfilePeople(username, {
+    spotlightService.getProfilePeople(profileLookupKey, {
       tab: peopleTab,
       limit: 120,
-      viewerFirebaseUid: user?.id
+      viewerFirebaseUid: viewerFirebaseUid || undefined
     }).then((response) => {
       if (!cancelled) setPeople(response?.items || []);
     }).catch((error: any) => {
@@ -232,7 +301,74 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, peopleTab, showNotification, user?.id, username]);
+  }, [open, peopleTab, profileLookupKey, showNotification, viewerFirebaseUid]);
+
+  useEffect(() => {
+    if (!editorOpen || !isSelf || !profileLookupKey) {
+      setPinOptions([]);
+      setPinOptionsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPinOptionsLoading(true);
+    spotlightService.getProfile(profileLookupKey, {
+      tab: 'posts',
+      limit: 48,
+      viewerFirebaseUid: viewerFirebaseUid || undefined
+    }).then((response) => {
+      if (!cancelled) {
+        setPinOptions(response?.items || []);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setPinOptions([]);
+      }
+    }).finally(() => {
+      if (!cancelled) setPinOptionsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editorOpen, isSelf, profileLookupKey, viewerFirebaseUid]);
+
+  useEffect(() => {
+    if (!editorOpen || !isSelf) return;
+
+    const nextUsername = normalizeSpotlightUsernameInput(profileForm.username);
+    const currentUsername = normalizeSpotlightUsernameInput(profile?.username || '');
+    if (!nextUsername || nextUsername.length < 3) {
+      setUsernameState({ kind: 'invalid', message: 'Username must be at least 3 characters.' });
+      return;
+    }
+    if (nextUsername === currentUsername) {
+      setUsernameState({ kind: 'current', message: 'This is your current username.' });
+      return;
+    }
+
+    let cancelled = false;
+    setUsernameState({ kind: 'checking', message: 'Checking username...' });
+    const timer = window.setTimeout(() => {
+      spotlightService.checkUsernameAvailability(nextUsername)
+        .then((response) => {
+          if (cancelled) return;
+          if (response?.available) {
+            setUsernameState({ kind: 'available', message: 'Username is available.' });
+          } else {
+            setUsernameState({ kind: 'taken', message: response?.reason || 'This username is already taken.' });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setUsernameState({ kind: 'idle', message: 'Unable to validate username right now.' });
+          }
+        });
+    }, 320);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [editorOpen, isSelf, profile?.username, profileForm.username]);
 
   const handleToggleFollow = useCallback(async (creator: SpotlightCreator | null) => {
     if (!creator) return;
@@ -270,13 +406,14 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
       openAuthModal('login');
       return;
     }
+    setMoreOpen(false);
     onOpenMessage(creatorTarget);
   }, [creatorTarget, onOpenMessage, openAuthModal, user]);
 
   const handleShare = useCallback(async () => {
     if (!profile) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/profile/${encodeURIComponent(profile.firebase_uid || profile.username || username || profile.name)}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/profile/${encodeURIComponent(profile.username || profile.firebase_uid || username || profile.name)}`);
       showNotification('Profile link copied.');
     } catch {
       showNotification('Unable to copy profile link.');
@@ -315,6 +452,166 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
     }
   }, [onBlocked, onClose, openAuthModal, profile, showNotification, user]);
 
+  const handleReportUser = useCallback(async () => {
+    if (!profile) return;
+    if (!user) {
+      openAuthModal('login');
+      return;
+    }
+    const reason = window.prompt(`Why are you reporting ${profile.name}?`, 'Harassment or spam');
+    const trimmedReason = String(reason || '').trim();
+    if (!trimmedReason) return;
+    try {
+      await spotlightService.reportUser({
+        target_user_id: profile.id,
+        target_firebase_uid: profile.firebase_uid,
+        reason: trimmedReason
+      });
+      showNotification('User report submitted.');
+      setMoreOpen(false);
+    } catch (error: any) {
+      showNotification(error?.message || 'Unable to report user.');
+    }
+  }, [openAuthModal, profile, showNotification, user]);
+
+  const handleFormChange = useCallback((field: keyof SpotlightProfileFormState, value: string) => {
+    setProfileForm((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const handleAvatarFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarFile(file);
+    setAvatarPreview((current) => {
+      if (current.startsWith('blob:')) URL.revokeObjectURL(current);
+      return previewUrl;
+    });
+    event.target.value = '';
+  }, []);
+
+  const handleBannerFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setBannerFile(file);
+    setBannerPreview((current) => {
+      if (current.startsWith('blob:')) URL.revokeObjectURL(current);
+      return previewUrl;
+    });
+    event.target.value = '';
+  }, []);
+
+  const handleRemoveBanner = useCallback(() => {
+    setBannerFile(null);
+    setBannerPreview('');
+    setProfileForm((current) => ({ ...current, banner_url: '' }));
+  }, []);
+
+  const handleOpenEditor = useCallback(() => {
+    if (!payload) return;
+    syncProfileEditor(payload);
+    setMoreOpen(false);
+    setEditorOpen(true);
+  }, [payload, syncProfileEditor]);
+
+  const handleCloseEditor = useCallback(() => {
+    syncProfileEditor(payload);
+    setEditorOpen(false);
+  }, [payload, syncProfileEditor]);
+
+  const handleSaveProfile = useCallback(async () => {
+    if (!user || !profile) {
+      openAuthModal('login');
+      return;
+    }
+
+    const nextName = profileForm.name.trim();
+    const nextUsername = normalizeSpotlightUsernameInput(profileForm.username);
+    const nextBio = profileForm.bio.trim();
+
+    if (!nextName) {
+      showNotification('Display name is required.');
+      return;
+    }
+    if (!nextUsername || nextUsername.length < 3) {
+      showNotification('Username must be at least 3 characters.');
+      return;
+    }
+    if (usernameState.kind === 'taken' || usernameState.kind === 'invalid') {
+      showNotification(usernameState.message || 'Choose a different username.');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      let avatarUrl = profileForm.avatar_url.trim();
+      let bannerUrl = profileForm.banner_url.trim();
+
+      if (avatarFile) {
+        const uploadedAvatar = await uploadService.uploadImage({
+          file: avatarFile,
+          uploadType: 'profile',
+          userId: user.id,
+          resourceId: 'spotlight-profile-avatar'
+        });
+        avatarUrl = uploadedAvatar.url;
+      }
+
+      if (bannerFile) {
+        const uploadedBanner = await uploadService.uploadImage({
+          file: bannerFile,
+          uploadType: 'spotlight-banner',
+          userId: user.id,
+          resourceId: 'spotlight-profile-banner'
+        });
+        bannerUrl = uploadedBanner.url;
+      }
+
+      const updatedProfile = await spotlightService.updateMyProfile({
+        name: nextName,
+        username: nextUsername,
+        bio: nextBio,
+        website_url: profileForm.website_url.trim() || null,
+        city: profileForm.city.trim() || null,
+        country: profileForm.country.trim() || null,
+        pinned_content_id: profileForm.pinned_content_id || null,
+        avatar_url: avatarUrl || null,
+        banner_url: bannerUrl || null
+      });
+
+      updateUser({
+        name: updatedProfile.name,
+        avatar: updatedProfile.avatar_url,
+        about: updatedProfile.bio
+      });
+
+      const refreshedPayload = await fetchProfile(updatedProfile.id || updatedProfile.firebase_uid || updatedProfile.username || profileLookupKey || username || profile.firebase_uid, tab);
+      setPayload(refreshedPayload);
+      syncProfileEditor(refreshedPayload);
+      setEditorOpen(false);
+      showNotification('Spotlight profile updated.');
+    } catch (error: any) {
+      showNotification(error?.message || 'Unable to update Spotlight profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [avatarFile, bannerFile, fetchProfile, openAuthModal, profile, profile?.firebase_uid, profileForm.avatar_url, profileForm.banner_url, profileForm.bio, profileForm.city, profileForm.country, profileForm.name, profileForm.pinned_content_id, profileForm.username, profileForm.website_url, profileLookupKey, showNotification, syncProfileEditor, tab, updateUser, user, username, usernameState.kind, usernameState.message]);
+
+  const handleOpenItem = useCallback((item: SpotlightItem) => {
+    onClose();
+    onOpenItem(item);
+  }, [onClose, onOpenItem]);
+
+  const emptyMessage = tab === 'media'
+    ? 'No media available for this profile yet.'
+    : tab === 'likes'
+      ? 'No liked posts to show yet.'
+      : tab === 'saved'
+        ? 'No saved posts to show yet.'
+        : 'No Spotlight posts available yet.';
+  const visibleItems = (!isSelf && (tab === 'likes' || tab === 'saved')) ? [] : items;
+
   return (
     <AnimatePresence>
       {open ? (
@@ -322,7 +619,7 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[95] flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-[95] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-4"
           onClick={onClose}
         >
           <motion.div
@@ -334,9 +631,9 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
             className="relative flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[1.55rem] border border-white/10 bg-slate-950/96 text-white shadow-[0_28px_80px_rgba(0,0,0,0.52)] backdrop-blur-[28px] sm:rounded-[2.4rem]"
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-              <div className="absolute -left-16 top-10 h-44 w-44 rounded-full bg-sky-400/18 blur-3xl" />
-              <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-indigo-400/16 blur-3xl" />
-              <div className="absolute bottom-10 left-1/3 h-44 w-44 rounded-full bg-cyan-300/14 blur-3xl" />
+              <div className="absolute -left-16 top-10 h-44 w-44 rounded-full bg-amber-400/18 blur-3xl" />
+              <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-orange-500/16 blur-3xl" />
+              <div className="absolute bottom-10 left-1/3 h-44 w-44 rounded-full bg-rose-500/12 blur-3xl" />
             </div>
 
             <div className="relative border-b border-white/10 px-3 py-3 sm:px-6 sm:py-4">
@@ -345,20 +642,32 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
                   <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-300">Prime identity</p>
                   <h2 className="mt-1 text-xl font-black tracking-tight text-white">Spotlight profile card</h2>
                 </div>
-                <button onClick={onClose} className="rounded-full border border-white/10 bg-white/10 p-2 text-white transition hover:-translate-y-0.5 hover:bg-white/15">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-5 w-5"><path d="M6 6l12 12M18 6 6 18" /></svg>
-                </button>
+                <div className="flex items-center gap-2">
+                  {profile ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        navigate(`/profile/${encodeURIComponent(isSelf ? 'me' : (profile.id || username || profile.firebase_uid || profile.username || profile.name))}`);
+                      }}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                    >
+                      Open page
+                    </button>
+                  ) : null}
+                  <button onClick={onClose} className="rounded-full border border-white/10 bg-white/10 p-2 text-white transition hover:-translate-y-0.5 hover:bg-white/15">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-5 w-5"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="relative min-h-0 flex-1 overflow-y-auto">
               {loading && !payload ? (
                 <div className="space-y-5 p-4 sm:p-6">
-                  <div className="h-56 animate-pulse rounded-[2rem] bg-white/5" />
-                  <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/5" />
-                    <div className="h-80 animate-pulse rounded-[2rem] bg-white/5" />
-                  </div>
+                  <div className="h-64 animate-pulse rounded-[2rem] bg-white/5" />
+                  <div className="h-20 animate-pulse rounded-[1.7rem] bg-white/5" />
+                  <div className="h-72 animate-pulse rounded-[1.8rem] bg-white/5" />
                 </div>
               ) : null}
 
@@ -370,163 +679,65 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
 
               {payload && profile ? (
                 <div className="space-y-4 p-3 sm:space-y-5 sm:p-6">
-                  <section className="overflow-hidden rounded-[1.55rem] border border-white/10 bg-slate-950/78 shadow-[0_22px_70px_rgba(0,0,0,0.28)] backdrop-blur-3xl sm:rounded-[2rem]">
-                    <div className="relative h-44 overflow-hidden bg-[linear-gradient(135deg,rgba(8,17,31,0.98),rgba(29,78,216,0.86),rgba(103,232,249,0.55))] sm:h-56">
-                      <div className="absolute left-10 top-12 h-28 w-28 rounded-full border border-white/25 bg-white/12 backdrop-blur-2xl" />
-                      <div className="absolute right-10 top-8 h-36 w-36 rounded-full border border-white/20 bg-white/10 backdrop-blur-2xl" />
-                      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/20 to-transparent" />
-                    </div>
+                  <SpotlightProfileHeaderCard
+                    surface="dark"
+                    profile={profile}
+                    counts={counts}
+                    isSelf={isSelf}
+                    isFollowing={isFollowing}
+                    followsYou={followsYou}
+                    followersPreview={payload.followers_preview || []}
+                    followingPreview={payload.following_preview || []}
+                    moreOpen={moreOpen}
+                    onOpenFollowers={() => setPeopleTab('followers')}
+                    onOpenFollowing={() => setPeopleTab('following')}
+                    onEdit={isSelf ? handleOpenEditor : undefined}
+                    onCreate={isSelf ? () => {
+                      onClose();
+                      navigate('/spotlight/create');
+                    } : undefined}
+                    onShare={handleShare}
+                    onToggleFollow={!isSelf ? () => void handleToggleFollow(creatorTarget) : undefined}
+                    onMessage={!isSelf ? handleMessage : undefined}
+                    onToggleMore={!isSelf ? () => setMoreOpen((current) => !current) : undefined}
+                    onRestrict={!isSelf ? () => void handleRestrict() : undefined}
+                    onReport={!isSelf ? () => void handleReportUser() : undefined}
+                    onBlock={!isSelf ? () => void handleBlock() : undefined}
+                  />
 
-                    <div className="px-3 pb-3 sm:px-6 sm:pb-6">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                        <div className="-mt-12 flex flex-col gap-4 sm:-mt-16 sm:flex-row sm:items-end">
-                          <img src={safeAvatar(profile.avatar_url)} alt={profile.name} className="h-24 w-24 rounded-[1.5rem] border-4 border-white object-cover shadow-[0_18px_50px_rgba(15,23,42,0.28)] dark:border-slate-950 sm:h-32 sm:w-32" />
-                          <div className="pb-0 sm:pb-1 max-sm:text-center">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-2xl font-black tracking-tight text-white sm:text-slate-950 dark:sm:text-white sm:text-3xl">{profile.name}</h3>
-                              {profile.is_verified ? <BlueTickBadge className="h-6 w-6" /> : null}
-                            </div>
-                            <p className="mt-1 text-sm text-slate-300">@{profile.username || username}</p>
-                            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">{profile.bio || 'This creator has not added a bio yet.'}</p>
-                          </div>
-                        </div>
+                  <SpotlightPinnedSpotlightSection
+                    surface="dark"
+                    pinnedItem={pinnedItem}
+                    isSelf={isSelf}
+                    onOpenItem={handleOpenItem}
+                    onEditProfile={isSelf ? handleOpenEditor : undefined}
+                  />
 
-                        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-                          {isSelf ? (
-                            <>
-                              <button className="w-full rounded-full border border-white/10 bg-slate-900/70 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">Your profile</button>
-                              <button onClick={handleShare} className="w-full rounded-full bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] transition hover:brightness-110 sm:w-auto">Share</button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => void handleToggleFollow(creatorTarget)} className={`w-full rounded-full px-4 py-2.5 text-sm font-semibold transition sm:w-auto ${isFollowing ? 'border border-white/10 bg-slate-900/80 text-white hover:bg-slate-900' : 'bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] hover:brightness-110'}`}>
-                                {isFollowing ? 'Following' : 'Follow'}
-                              </button>
-                              <button onClick={handleMessage} className="w-full rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">Message</button>
-                              <div className="relative">
-                                <button onClick={() => setMoreOpen((current) => !current)} className="w-full rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900 sm:w-auto">More</button>
-                                {moreOpen ? (
-                                  <div className="absolute right-0 top-full z-10 mt-2 w-48 overflow-hidden rounded-[1.2rem] border border-white/10 bg-slate-950/96 p-2 shadow-xl backdrop-blur-2xl">
-                                    <button onClick={handleShare} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-white/5">Copy profile link</button>
-                                    <button onClick={() => void handleRestrict()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-white/5">Restrict</button>
-                                    <button onClick={() => void handleBlock()} className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-300 hover:bg-rose-500/10">Block</button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                  <SpotlightProfileTabBar
+                    surface="dark"
+                    activeTab={tab}
+                    isSelf={isSelf}
+                    onTabChange={setTab}
+                  />
 
-                      <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
-                        <button onClick={() => setPeopleTab('followers')} className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-left text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-slate-900 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
-                          <span className="block text-xl font-black text-white">{compact(profile.followers_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Followers</span>
-                        </button>
-                        <button onClick={() => setPeopleTab('following')} className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-left text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl transition hover:-translate-y-0.5 hover:bg-slate-900 sm:rounded-[1.5rem] sm:px-4 sm:py-4">
-                          <span className="block text-xl font-black text-white">{compact(profile.following_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Following</span>
-                        </button>
-                        <div className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:rounded-[1.5rem] sm:px-4 sm:py-4">
-                          <span className="block text-xl font-black text-white">{compact(profile.posts_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Posts</span>
-                        </div>
-                        <div className="rounded-[1.35rem] border border-white/10 bg-slate-900/75 px-3 py-3 text-white shadow-[0_14px_30px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:rounded-[1.5rem] sm:px-4 sm:py-4">
-                          <span className="block text-xl font-black text-white">{compact(profile.reels_count)}</span>
-                          <span className="text-xs uppercase tracking-[0.18em] text-slate-400">Media</span>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-4 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl sm:p-5">
-                      <div className="flex flex-wrap gap-2">
-                        {PROFILE_TABS.map((key) => (
-                          <button
-                            key={key}
-                            onClick={() => setTab(key)}
-                            className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${tab === key ? 'bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] text-white shadow-[0_14px_35px_rgba(99,102,241,0.25)]' : 'border border-white/10 bg-slate-900/70 text-slate-200 hover:bg-slate-900'}`}
-                          >
-                            {key.toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
-                        {items.map((item) => (
-                          <button
-                            key={item.id}
-                            onClick={() => {
-                              onClose();
-                              onOpenItem(item);
-                            }}
-                            className="group overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-900/70 text-left shadow-[0_16px_35px_rgba(0,0,0,0.22)] transition duration-200 hover:-translate-y-0.5 hover:bg-slate-900"
-                          >
-                            <div className="relative aspect-[4/5] overflow-hidden bg-slate-950/80">
-                              {String(item.media_url || '').startsWith('data:image/svg+xml') ? (
-                                <SpotlightTextCard
-                                  caption={item.caption}
-                                  creatorName={item.creator?.name || 'Creator'}
-                                  timeLabel={formatTimeAgo(item.published_at || item.created_at)}
-                                  variant="tile"
-                                  className="h-full w-full rounded-none p-2"
-                                />
-                              ) : (
-                                <>
-                                  <img src={item.thumbnail_url || item.media_url} alt={item.caption || 'Spotlight content'} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
-                                  <div className="absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-                                    {item.media_type === 'video' ? 'Video' : 'Image'}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                            <div className="space-y-1 p-3">
-                              <p className="line-clamp-2 text-sm leading-relaxed text-slate-200">{item.caption || 'Prime Spotlight post'}</p>
-                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
-                                <span>{formatTimeAgo(item.published_at || item.created_at)}</span>
-                                <span>{compact(item.metrics.likes)} likes</span>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-
-                        {items.length === 0 ? (
-                          <div className="col-span-full rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/70 p-8 text-center text-sm text-slate-300 backdrop-blur-2xl">
-                            No content available for this tab yet.
-                          </div>
-                        ) : null}
-                      </div>
-                    </section>
-
-                    <aside className="space-y-4">
-                      <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl">
-                        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-sky-500">Creator pulse</p>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                          <div className="rounded-[1.4rem] border border-white/10 bg-slate-900/70 px-4 py-4">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Tab focus</p>
-                            <p className="mt-2 text-2xl font-black text-white">{compact(counts[tab])}</p>
-                            <p className="mt-1 text-sm text-slate-400">Visible in {tab}</p>
-                          </div>
-                          <div className="rounded-[1.4rem] border border-white/10 bg-slate-900/70 px-4 py-4">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Profile state</p>
-                            <p className="mt-2 text-lg font-black text-white">{isSelf ? 'Owner view' : isFollowing ? 'Following' : 'Discovery mode'}</p>
-                            <p className="mt-1 text-sm text-slate-400">Built directly inside Spotlight</p>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="rounded-[2rem] border border-white/10 bg-slate-950/80 p-5 shadow-[0_22px_70px_rgba(0,0,0,0.24)] backdrop-blur-3xl">
-                        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-violet-500">Quick actions</p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button onClick={handleShare} className="rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900">Share</button>
-                          {!isSelf ? <button onClick={handleMessage} className="rounded-full border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-900">Message</button> : null}
-                          {!isSelf ? <button onClick={() => void handleToggleFollow(creatorTarget)} className="rounded-full bg-[linear-gradient(90deg,#a855f7_0%,#6366f1_45%,#38bdf8_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(99,102,241,0.28)] transition hover:brightness-110">{isFollowing ? 'Following' : 'Follow'}</button> : null}
-                        </div>
-                      </section>
-                    </aside>
-                  </div>
+                  {tab === 'media' || tab === 'saved' ? (
+                    <SpotlightProfileMediaGrid
+                      surface="dark"
+                      items={visibleItems}
+                      pinnedItemId={pinnedItem?.id}
+                      emptyMessage={emptyMessage}
+                      compact={tab === 'saved'}
+                      onOpenItem={handleOpenItem}
+                    />
+                  ) : (
+                    <SpotlightProfileTimelineList
+                      surface="dark"
+                      items={visibleItems}
+                      pinnedItemId={pinnedItem?.id}
+                      emptyMessage={emptyMessage}
+                      onOpenItem={handleOpenItem}
+                    />
+                  )}
                 </div>
               ) : null}
             </div>
@@ -536,10 +747,27 @@ const SpotlightProfileCardModal: React.FC<SpotlightProfileCardModalProps> = ({
               title={peopleTab === 'following' ? 'Following' : 'Followers'}
               people={people}
               loading={peopleLoading}
-              viewerUserId={user?.id || null}
+              viewerFirebaseUid={viewerFirebaseUid || null}
               onClose={() => setPeopleTab(null)}
               onToggleFollow={(creator) => void handleToggleFollow(creator)}
               onOpenMessage={onOpenMessage}
+            />
+
+            <SpotlightProfileEditorOverlay
+              open={editorOpen}
+              form={profileForm}
+              usernameState={usernameState}
+              saving={savingProfile}
+              avatarPreview={avatarPreview}
+              bannerPreview={bannerPreview}
+              pinnedCandidates={pinOptions}
+              pinOptionsLoading={pinOptionsLoading}
+              onChange={handleFormChange}
+              onAvatarFileChange={handleAvatarFileChange}
+              onBannerFileChange={handleBannerFileChange}
+              onRemoveBanner={handleRemoveBanner}
+              onClose={handleCloseEditor}
+              onSave={() => void handleSaveProfile()}
             />
           </motion.div>
         </motion.div>

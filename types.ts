@@ -46,6 +46,7 @@ export interface User {
   dailyUsage?: { date: string; videos: number; images: number };
   rating?: number; // Added rating to fix usage in directories
   chatSettings?: ChatSettings;
+  pendingAffiliateReferral?: AffiliateAttributionSession;
 }
 
 
@@ -130,7 +131,7 @@ export interface ProfileUpdatePayload {
 }
 
 export interface DataModeConfig {
-  mode: 'supabase' | 'firebase' | 'hybrid';
+  mode: 'supabase' | 'firebase' | 'hybrid' | 'local';
   requireBackend: boolean;
   enableFirestoreFallback: boolean;
   enableLocalMockFallback: boolean;
@@ -167,6 +168,58 @@ export interface RoleSetupDraft {
 
 export type PaymentRail = 'stripe' | 'paypal' | 'razorpay' | 'jazzcash' | 'bank_transfer' | 'local_bank';
 export type ShippingRail = 'shippo' | 'easypost' | 'self_managed' | 'local_courier';
+export type RuntimeAvailabilityState = 'backend_live' | 'firestore_fallback' | 'local_fallback' | 'offline_blocked';
+
+export interface SpotlightAttribution {
+  spotlightContentId: string;
+  spotlightProductLinkId?: string | null;
+  campaignKey?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface CheckoutPaymentDetails {
+  rail?: PaymentRail | 'legacy_card_entry' | string;
+  kind?: 'online' | 'wallet' | 'manual' | string;
+  payer_name?: string;
+  payer_phone?: string;
+  reference?: string | null;
+  notes?: string | null;
+  provider_label?: string;
+  card_last4?: string;
+  card_holder_name?: string;
+  card_expiry?: string;
+  [key: string]: unknown;
+}
+
+export interface CheckoutShippingInfo extends Partial<Address> {
+  shippingTotal?: number;
+  deliveryNote?: string;
+  giftWrap?: boolean;
+  contactless?: boolean;
+  pickupOnly?: boolean;
+  shippingGroups?: string[];
+  pickupGroups?: string[];
+}
+
+export interface CheckoutSubmissionOptions {
+  actorPersonaId?: string | null;
+  actorName?: string;
+  paymentDetails?: CheckoutPaymentDetails | null;
+  couponCode?: string | null;
+}
+
+export interface RuntimeAvailabilitySnapshot {
+  state: RuntimeAvailabilityState;
+  backendConfigured: boolean;
+  backendAvailable: boolean;
+  firestoreFallbackAvailable: boolean;
+  localFallbackAvailable: boolean;
+  requiresLiveBackend: boolean;
+  queuedWriteCount: number;
+  dataMode: DataModeConfig['mode'];
+  checkedAt: string;
+  message: string;
+}
 
 export interface PaymentProviderCapability {
   rail: PaymentRail;
@@ -201,6 +254,21 @@ export interface ShipperDashboardSnapshot {
     status: string;
     city?: string;
   }>;
+}
+
+export interface ShipperDeliveryQueueEntry {
+  shipmentId: string;
+  orderId: string;
+  detailId: string;
+  buyerName: string;
+  buyerEmail?: string;
+  status: string;
+  carrier?: string;
+  trackingNumber?: string;
+  eta: string;
+  updatedAt: string;
+  itemCount: number;
+  delayed: boolean;
 }
 
 export interface OnboardingDraft {
@@ -413,6 +481,290 @@ export interface StoreCreationData {
     policies?: { shipping: string; returns: string };
 }
 
+export type RentalDeliveryMode = 'pickup' | 'shipping';
+
+export interface RentalQuote {
+    itemId: string;
+    available: boolean;
+    currency: string;
+    rentalDays: number;
+    quantity: number;
+    dailyRate: number;
+    subtotal: number;
+    securityDeposit: number;
+    deliveryMode: RentalDeliveryMode;
+    totalDueNow: number;
+    rentalStart: string;
+    rentalEnd: string;
+    availabilityFeedback: string;
+    blockedRanges: Array<{
+        start: string;
+        end: string;
+        reason: string;
+        type: string;
+    }>;
+}
+
+export interface RentalBlockEntry {
+    id: string;
+    itemId: string;
+    start: string;
+    end: string;
+    type: 'manual_blackout' | 'maintenance';
+    status: string;
+    reason: string;
+    createdAt: string;
+    createdBy?: string | null;
+    metadata?: Record<string, unknown>;
+}
+
+export interface RentalBlockDraft {
+    start: string;
+    end: string;
+    type?: 'manual_blackout' | 'maintenance';
+    reason?: string;
+}
+
+export interface AuctionBidHistoryEntry {
+    id: string;
+    amount: number;
+    status: string;
+    counterAmount?: number;
+    placedAt: string;
+    bidderId: string;
+    bidderDisplayName: string;
+    sourceThreadId?: string | null;
+    metadata?: Record<string, unknown>;
+}
+
+export interface AuctionSnapshot {
+    itemId: string;
+    status: string;
+    reserveMet: boolean;
+    currentBid: number;
+    startingBid: number;
+    reservePrice: number;
+    buyNowPrice: number;
+    endTime: string;
+    bidCount: number;
+    highestBidId?: string | null;
+    winnerId?: string | null;
+    winnerCheckoutExpiresAt?: string | null;
+    myBidId?: string | null;
+    myHighestBid?: number;
+    canBid: boolean;
+    canBuyNow: boolean;
+    canCheckout: boolean;
+    history: AuctionBidHistoryEntry[];
+}
+
+export interface CommerceDispute {
+    id: string;
+    orderId?: string | null;
+    orderItemId?: string | null;
+    rentalBookingId?: string | null;
+    openedBy: {
+        id: string;
+        name: string;
+    };
+    reasonCode: string;
+    details: string;
+    status: string;
+    resolution?: string;
+    adminNotes?: string;
+    createdAt: string;
+}
+
+export interface CommerceOrderDetail {
+    id: string;
+    source: 'rental_booking' | 'order_item';
+    orderId: string;
+    bookingId?: string | null;
+    orderItemId: string;
+    itemId: string;
+    itemTitle: string;
+    itemImageUrl: string;
+    status: string;
+    paymentStatus: string;
+    type: 'rent' | 'sale';
+    listingMode: 'rent' | 'sale' | 'auction';
+    deliveryMode?: RentalDeliveryMode | 'digital';
+    rentalStart?: string | null;
+    rentalEnd?: string | null;
+    trackingNumber?: string | null;
+    returnTrackingNumber?: string | null;
+    totalPrice: number;
+    quantity: number;
+    securityDeposit: number;
+    depositStatus?: string;
+    claimAmount?: number;
+    claimReason?: string;
+    claimEvidenceUrl?: string;
+    buyer?: {
+        id: string;
+        firebaseUid?: string;
+        name: string;
+    } | null;
+    seller?: {
+        id: string;
+        firebaseUid?: string;
+        name: string;
+    } | null;
+    digitalDelivery?: {
+        available: boolean;
+        packageFileName?: string;
+        packageSizeBytes?: number;
+        packageVersion?: string;
+        scanStatus?: string;
+    } | null;
+    shippingAddress?: any;
+    pickupInstructions?: string;
+    pickupCode?: string;
+    pickupWindowStart?: string | null;
+    pickupWindowEnd?: string | null;
+    podJob?: PodJob | null;
+    dropship?: {
+        enabled: boolean;
+        status: string;
+        approvalState: string;
+        routingMode: string;
+        carrier?: string | null;
+        trackingNumber?: string | null;
+        etaLabel?: string | null;
+        blindDropship: boolean;
+        payableTotal: number;
+        marginSnapshot: number;
+        trackingSyncState?: string | null;
+    } | null;
+    legacyBooking?: Booking;
+}
+
+export interface PublicTrackedOrderItem {
+    id: string;
+    orderItemId: string;
+    itemId: string;
+    itemTitle: string;
+    itemImageUrl: string;
+    type: 'rent' | 'sale';
+    listingMode: 'rent' | 'sale' | 'auction';
+    status: string;
+    legacyStatus: string;
+    quantity: number;
+    totalPrice: number;
+    trackingNumber?: string | null;
+    returnTrackingNumber?: string | null;
+    deliveryMode?: RentalDeliveryMode | 'digital' | null;
+    rentalStart?: string | null;
+    rentalEnd?: string | null;
+    pickupInstructions?: string | null;
+    pickupWindowStart?: string | null;
+    pickupWindowEnd?: string | null;
+    sellerName?: string | null;
+}
+
+export interface PublicTrackedShipment {
+    id: string;
+    orderId: string;
+    status: string;
+    carrier?: string | null;
+    trackingNumber?: string | null;
+    estimatedDelivery?: string | null;
+    updatedAt?: string | null;
+}
+
+export interface PublicOrderTrackingResult {
+    orderId: string;
+    status: string;
+    paymentStatus: string;
+    currency: string;
+    placedAt: string;
+    updatedAt: string;
+    subtotal: number;
+    shippingTotal: number;
+    taxTotal: number;
+    total: number;
+    note?: string | null;
+    shippingAddress?: any;
+    items: PublicTrackedOrderItem[];
+    shipments: PublicTrackedShipment[];
+}
+
+export interface CommerceBidProfileRow {
+    id: string;
+    itemId: string;
+    itemTitle: string;
+    amount: number;
+    status: string;
+    counterAmount?: number;
+    placedAt: string;
+    sourceThreadId?: string | null;
+    currentBid: number;
+    canCheckout: boolean;
+    canAcceptCounter?: boolean;
+    canDeclineCounter?: boolean;
+    winnerCheckoutExpiresAt?: string | null;
+    auctionStatus: string;
+    buyNowPrice: number;
+}
+
+export interface CommerceAdminOverview {
+    generatedAt: string;
+    summary: {
+        totalRentals: number;
+        openDisputes: number;
+        activeAuctions: number;
+        totalOrders: number;
+    };
+    rentals: Array<{
+        id: string;
+        itemId: string;
+        itemTitle: string;
+        status: string;
+        deliveryMode: string;
+        rentalStart: string;
+        rentalEnd: string;
+        securityDepositStatus: string;
+    }>;
+    auctions: Array<{
+        id: string;
+        itemId: string;
+        itemTitle: string;
+        status: string;
+        winnerId?: string | null;
+        reserveMet: boolean;
+        closedAt?: string | null;
+        winnerCheckoutExpiresAt?: string | null;
+    }>;
+    disputes: Array<{
+        id: string;
+        status: string;
+        reasonCode: string;
+        openedBy: string;
+        orderId?: string | null;
+        rentalBookingId?: string | null;
+        createdAt: string;
+    }>;
+    orders: Array<{
+        id: string;
+        status: string;
+        total: number;
+        createdAt: string;
+    }>;
+}
+
+export interface CommerceProviderSnapshot {
+    paymentRails: PaymentRail[];
+    shippingRails: ShippingRail[];
+    payouts: {
+        enabled: boolean;
+        rails: PaymentRail[];
+    };
+    realtime: {
+        notifications: boolean;
+        analytics: boolean;
+    };
+}
+
 export interface CartItem extends Item {
     quantity: number;
     subscription?: SubscriptionDetails;
@@ -421,6 +773,14 @@ export interface CartItem extends Item {
         startDate: string;
         endDate: string;
     };
+    deliveryMode?: RentalDeliveryMode;
+    pickupInstructions?: string;
+    pickupCode?: string;
+    pickupWindowStart?: string | null;
+    pickupWindowEnd?: string | null;
+    auctionWinnerCheckout?: boolean;
+    auctionBidId?: string;
+    podSelection?: PodLineSelection;
 }
 
 export interface CartGroup {
@@ -435,13 +795,18 @@ export interface SubscriptionDetails {
 
 export interface Booking {
     id: string;
+    source?: 'firestore' | 'commerce';
     engagementId?: string;
     orderId?: string; // New field to link back to main order
+    orderItemId?: string;
+    canonicalRentalBookingId?: string | null;
     itemId: string;
     itemTitle: string;
     renterId: string;
+    renterSupabaseId?: string;
     renterName: string;
     provider: { id: string };
+    providerSupabaseId?: string;
     startDate: string;
     endDate: string;
     totalPrice: number;
@@ -450,6 +815,11 @@ export interface Booking {
     trackingNumber?: string;
     paymentStatus?: 'escrow' | 'released' | 'refunded';
     type?: 'rent' | 'sale';
+    deliveryMode?: RentalDeliveryMode;
+    pickupInstructions?: string | null;
+    pickupCode?: string | null;
+    pickupWindowStart?: string | null;
+    pickupWindowEnd?: string | null;
     mode?: WorkMode;
     fulfillmentKind?: WorkFulfillmentKind;
     currency?: string;
@@ -462,6 +832,7 @@ export interface Booking {
         reason: string;
         proofImage: string;
     }
+    podJob?: PodJob | null;
     renterPersonaId?: string;
     providerPersonaId?: string;
 }
@@ -625,6 +996,11 @@ export interface Item {
   };
   minRentalDuration?: number; 
   securityDeposit?: number;
+  rentalFulfillment?: {
+    pickup?: boolean;
+    shipping?: boolean;
+    defaultMode?: RentalDeliveryMode;
+  };
   images: string[]; 
   imageUrls: string[];
   owner: { id: string; name: string; avatar: string; businessName?: string };
@@ -655,7 +1031,7 @@ export interface Item {
   returnPolicy?: ReturnPolicy;
   warranty?: WarrantyPolicy;
   marketplaceFees?: MarketplaceFees;
-  fulfillmentType?: 'in_house' | 'dropship' | '3pl';
+  fulfillmentType?: 'in_house' | 'dropship' | '3pl' | 'pod';
   originCountry?: string;
   originCity?: string;
   dimensionsIn?: { l: number; w: number; h: number };
@@ -676,7 +1052,7 @@ export interface Item {
       currentBid: number;
       endTime: string;
       bidCount: number;
-      bids: any[];
+      bids: AuctionBidHistoryEntry[];
   };
   buyNowPrice?: number;
   reservePrice?: number;
@@ -686,20 +1062,29 @@ export interface Item {
   materials?: { name: string }[];
   status?: 'published' | 'draft' | 'archived' | 'sold';
   boostLevel?: string;
-  productType?: 'physical' | 'digital' | 'dropship';
+  productType?: 'physical' | 'digital' | 'dropship' | 'pod';
   itemType?: 'physical' | 'digital';
-  spotlightAttribution?: {
-    spotlightContentId: string;
-    spotlightProductLinkId?: string | null;
-    campaignKey?: string | null;
-    expiresAt?: string | null;
-  };
+  spotlightAttribution?: SpotlightAttribution;
+  digitalDelivery?: DigitalDeliveryProfile;
+  gameDetails?: GameDetailsProfile;
+  coverImageUrl?: string;
+  galleryImageUrls?: string[];
+  developer?: string;
+  publisher?: string;
+  tagline?: string;
+  releaseDate?: string;
+  trailerUrl?: string;
+  genres?: string[];
+  platforms?: string[];
+  modes?: string[];
+  tags?: string[];
   digitalFileUrl?: string;
   licenseType?: string;
   licenseDescription?: string;
   supplierInfo?: SupplierInfo;
   dropshipProfile?: DropshipProfile;
   dropshipVariants?: DropshipVariant[];
+  podProfile?: PodProfile;
   wholesalePrice?: number;
   enable3dPreview?: boolean;
   battleWins?: number;
@@ -817,6 +1202,8 @@ export interface CustomsInfo {
 export interface SupplierInfo {
     id: string;
     name: string;
+    supplierId?: string;
+    supplierProductId?: string;
     rating?: number;
     originCountry?: string;
     processingTimeDays?: number;
@@ -826,6 +1213,30 @@ export interface SupplierInfo {
     returnPolicy?: ReturnPolicy;
     compliance?: ComplianceProfile;
     shippingCost?: number;
+    blindDropship?: boolean;
+    sellerVisibility?: 'approved_only' | 'all_sellers' | 'hidden';
+}
+
+export interface Supplier {
+    id: string;
+    name: string;
+    contactEmail?: string;
+    apiUrl?: string;
+    status: 'draft' | 'active' | 'paused' | 'blocked';
+    fulfillmentMode: 'manual_email' | 'manual_panel' | 'api';
+    defaultRoutingMode: 'manual_review' | 'seller_approve' | 'auto_submit';
+    slaDays?: number;
+    blindDropship: boolean;
+    shippingProfile?: ShippingProfile;
+    returnPolicy?: ReturnPolicy;
+    brandingOptions?: BrandingOptions;
+    settlementTerms?: Record<string, unknown>;
+    contactChannels?: Record<string, unknown>;
+    apiConfig?: Record<string, unknown>;
+    adminNotes?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt?: string;
 }
 
 export interface DropshipVariant {
@@ -841,14 +1252,198 @@ export interface DropshipVariant {
 
 export interface DropshipProfile {
     supplierId?: string;
+    supplierProductId?: string;
     supplierSku?: string;
     fulfillment?: 'auto' | 'manual';
+    routingMode?: 'manual_review' | 'seller_approve' | 'auto_submit';
+    blindDropship?: boolean;
+    autoFulfill?: boolean;
+    manualSupplierLinkRequired?: boolean;
+    supplierName?: string;
+    supplierStatus?: string;
     minOrderQuantity?: number;
+    minMarginPercent?: number;
     maxDailyCapacity?: number;
     brandingOptions?: BrandingOptions;
     handlingTimeDays?: number;
+    processingTimeDays?: number;
     estimatedDelivery?: ShippingEstimate;
     customsInfo?: CustomsInfo;
+    lastSupplierSyncAt?: string;
+    payableExposure?: number;
+    metadata?: Record<string, unknown>;
+}
+
+export type PodFulfillmentMode = 'manual';
+export type PodProfileStatus = 'draft' | 'published' | 'needs_attention';
+export type PodDesignAssetStatus = 'active' | 'archived' | 'flagged';
+export type PodJobStatus =
+    | 'queued'
+    | 'reviewing'
+    | 'in_production'
+    | 'printed'
+    | 'packed'
+    | 'shipped'
+    | 'completed'
+    | 'cancelled';
+
+export interface PodPrintArea {
+    key: string;
+    label: string;
+    width: number;
+    height: number;
+    recommendedDpi?: number;
+    bleedInches?: number;
+}
+
+export interface PodVariantOption {
+    id: string;
+    color: string;
+    size?: string;
+    sku?: string;
+    baseCost: number;
+    salePrice: number;
+    compareAtPrice?: number;
+    stock?: number;
+    isEnabled?: boolean;
+}
+
+export interface PodCatalogTemplate {
+    key: string;
+    name: string;
+    category: string;
+    description?: string;
+    baseCost: number;
+    leadTimeDays: number;
+    availableColors: string[];
+    availableSizes: string[];
+    printAreas: PodPrintArea[];
+    mockupImageUrls: string[];
+}
+
+export interface PodDesignAsset {
+    id: string;
+    ownerUserId?: string;
+    title: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    previewUrl?: string;
+    tags: string[];
+    notes?: string;
+    status: PodDesignAssetStatus;
+    usageCount?: number;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface PodProfile {
+    templateKey: string;
+    templateName?: string;
+    category?: string;
+    brandName: string;
+    providerLabel?: string;
+    variantOptions: PodVariantOption[];
+    designAssetIds: string[];
+    mockupImageUrls: string[];
+    printAreas?: PodPrintArea[];
+    baseCost: number;
+    turnaroundDays: number;
+    fulfillmentMode: PodFulfillmentMode;
+    status: PodProfileStatus;
+    marginFloorPercent?: number;
+}
+
+export interface PodJob {
+    id: string;
+    sellerId: string;
+    itemId: string;
+    orderId: string;
+    orderItemId: string;
+    buyerId: string;
+    status: PodJobStatus;
+    itemTitle?: string;
+    buyerName?: string;
+    buyerCity?: string;
+    variantSnapshot: Record<string, any>;
+    designSnapshot: Record<string, any>;
+    shippingSnapshot: Record<string, any>;
+    trackingNumber?: string | null;
+    carrier?: string | null;
+    notes?: string | null;
+    totalPrice?: number;
+    mockupImageUrl?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface PodLineSelection {
+    variantId: string;
+    color: string;
+    size?: string;
+    unitPrice: number;
+    templateKey: string;
+    templateName?: string;
+    mockupImageUrl?: string;
+}
+
+export interface PodStudioListing {
+    id: string;
+    title: string;
+    status: string;
+    price: number;
+    baseCost: number;
+    marginPercent: number;
+    coverImageUrl: string;
+    templateKey: string;
+    templateName: string;
+    designCount: number;
+    queuedJobs: number;
+    turnaroundDays: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface PodStudioDashboard {
+    summary: {
+        revenue: number;
+        activeListings: number;
+        queuedJobs: number;
+        lowMarginAlerts: number;
+        avgTurnaroundDays: number;
+    };
+    listings: PodStudioListing[];
+    jobs: PodJob[];
+}
+
+export interface PodDiscoveryCard {
+    id: string;
+    title: string;
+    description: string;
+    price: number;
+    coverImageUrl: string;
+    category: string;
+    templateKey: string;
+    templateName: string;
+    creatorName: string;
+    brandName?: string;
+    tags: string[];
+    colors: string[];
+    sizes: string[];
+}
+
+export interface PodDiscoveryShelf {
+    slug: string;
+    title: string;
+    items: PodDiscoveryCard[];
+}
+
+export interface PodDiscoveryPayload {
+    hero: PodDiscoveryCard | null;
+    featured: PodDiscoveryCard[];
+    collections: PodDiscoveryShelf[];
+    byCategory: PodDiscoveryShelf[];
+    total: number;
 }
 
 export interface MarketplaceFees {
@@ -856,6 +1451,142 @@ export interface MarketplaceFees {
     paymentProcessingFeeRate?: number;
     flatFee?: number;
     currency?: string;
+}
+
+export interface DigitalPackageScanReport {
+    status: 'clean' | 'warning' | 'blocked' | 'pending';
+    summary: string;
+    blocked?: string[];
+    warnings?: string[];
+    antivirusEngine?: string;
+    antivirusStatus?: 'clean' | 'warning' | 'blocked' | 'pending';
+    antivirusSummary?: string;
+    scannedAt?: string;
+    packageSha256?: string;
+    zipSizeBytes?: number;
+    totalUncompressedBytes?: number;
+    entryCount?: number;
+    compressionRatio?: number;
+    sampleEntries?: string[];
+}
+
+export interface DigitalDeliveryProfile {
+    experienceType?: 'game' | 'digital';
+    packageAssetId?: string | null;
+    packageFileName?: string;
+    packageMimeType?: string;
+    packageSizeBytes?: number;
+    packageVersion?: string;
+    supportedPlatforms?: string[];
+    scan?: DigitalPackageScanReport | null;
+    zipOnly?: boolean;
+    downloadCount?: number;
+}
+
+export interface GameDetailsProfile {
+    experienceType: 'game';
+    tagline?: string;
+    developer?: string;
+    publisher?: string;
+    releaseDate?: string;
+    trailerUrl?: string;
+    genres?: string[];
+    platforms?: string[];
+    modes?: string[];
+    tags?: string[];
+}
+
+export interface DigitalMarketplaceSellerListing {
+    id: string;
+    title: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+    price: number;
+    version?: string;
+    coverImageUrl: string;
+    creatorName: string;
+    experienceType: 'game' | 'digital';
+    genres: string[];
+    platforms: string[];
+    purchases: number;
+    unitsSold: number;
+    grossRevenue: number;
+    downloads: number;
+    scanStatus: string;
+    scanSummary?: string;
+    licenseType?: string;
+}
+
+export interface DigitalMarketplaceDashboard {
+    summary: {
+        totalListings: number;
+        published: number;
+        drafts: number;
+        games: number;
+        downloads: number;
+        purchases: number;
+        revenue: number;
+        scanWarnings: number;
+    };
+    listings: DigitalMarketplaceSellerListing[];
+}
+
+export interface GameDiscoveryCard {
+    id: string;
+    title: string;
+    tagline: string;
+    description: string;
+    coverImageUrl: string;
+    heroImageUrl: string;
+    price: number;
+    version?: string;
+    creatorName: string;
+    releaseDate?: string;
+    genres: string[];
+    platforms: string[];
+    modes: string[];
+    tags: string[];
+    scanStatus: string;
+    purchases: number;
+    downloads: number;
+}
+
+export interface GameDiscoveryShelf {
+    slug: string;
+    title: string;
+    items: GameDiscoveryCard[];
+}
+
+export interface GameDiscoveryPayload {
+    hero: GameDiscoveryCard | null;
+    featured: GameDiscoveryCard[];
+    newReleases: GameDiscoveryCard[];
+    topSellers: GameDiscoveryCard[];
+    genreShelves: GameDiscoveryShelf[];
+    total: number;
+}
+
+export interface DigitalLibraryEntry {
+    id: string;
+    orderId: string;
+    itemId: string;
+    title: string;
+    coverImageUrl: string;
+    purchasedAt: string;
+    version?: string;
+    pricePaid: number;
+    creatorName: string;
+    experienceType: 'game' | 'digital';
+    packageFileName: string;
+    packageSizeBytes: number;
+    licenseType?: string;
+    licenseDescription?: string;
+    platforms: string[];
+    genres: string[];
+    scanStatus: string;
+    scanSummary?: string;
+    downloadCount: number;
 }
 
 export interface FulfillmentEvent {
@@ -867,21 +1598,61 @@ export interface FulfillmentEvent {
 
 export interface DropshipOrder {
     id: string;
-    itemId: string;
-    supplierId: string;
-    buyerId?: string;
-    sellerId?: string;
-    status: 'pending' | 'accepted' | 'in_production' | 'shipped' | 'delivered' | 'cancelled' | 'failed';
-    trackingNumber?: string;
-    carrier?: string;
+    orderId?: string | null;
+    orderItemId?: string | null;
+    itemId?: string | null;
+    itemTitle?: string;
+    itemImageUrl?: string;
+    supplierId?: string | null;
+    supplierName?: string;
+    supplierProductId?: string | null;
+    supplierProductTitle?: string;
+    buyerId?: string | null;
+    buyerName?: string;
+    sellerId?: string | null;
+    sellerName?: string;
+    status:
+        | 'pending_review'
+        | 'approved'
+        | 'submitted'
+        | 'accepted'
+        | 'processing'
+        | 'shipped'
+        | 'delivered'
+        | 'cancelled'
+        | 'failed'
+        | 'returned';
+    approvalState?: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'not_required';
+    routingMode?: 'manual_review' | 'seller_approve' | 'auto_submit';
+    trackingNumber?: string | null;
+    carrier?: string | null;
+    externalOrderRef?: string | null;
+    externalStatus?: string | null;
+    labelUrl?: string | null;
+    etaLabel?: string | null;
+    blindDropship?: boolean;
+    trackingSyncState?: string | null;
+    supplierCostSnapshot?: number;
+    shippingCostSnapshot?: number;
+    sellerSalePriceSnapshot?: number;
+    payableTotal?: number;
+    marginSnapshot?: number;
+    currency?: string;
+    failureReason?: string | null;
+    cancelReason?: string | null;
+    settlementId?: string | null;
+    settlementStatus?: string | null;
+    metadata?: Record<string, unknown>;
     events?: FulfillmentEvent[];
-    costBreakdown?: {
-        productCost: number;
-        shippingCost: number;
-        duties: number;
-        total: number;
-    };
     createdAt: string;
+    approvedAt?: string | null;
+    submittedAt?: string | null;
+    acceptedAt?: string | null;
+    shippedAt?: string | null;
+    deliveredAt?: string | null;
+    cancelledAt?: string | null;
+    failedAt?: string | null;
+    returnedAt?: string | null;
 }
 
 export interface WalletTransaction {
@@ -902,6 +1673,7 @@ export interface PayoutRequest {
     userId: string;
     amount: number;
     status: 'pending' | 'completed' | 'rejected';
+    walletTransactionId?: string;
     method: {
         type: 'bank_account' | 'paypal';
         details: string; 
@@ -938,10 +1710,14 @@ export interface Question {
 export interface AffiliateCoupon {
     id: string;
     userId: string;
+    affiliateId?: string;
+    storeId?: string | null;
     code: string;
     discountPercentage: number;
     uses: number;
     commissionRate: number;
+    status?: 'active' | 'paused' | 'archived';
+    createdAt?: string;
 }
 
 export interface CreativeAsset {
@@ -970,6 +1746,9 @@ export interface Affiliate {
     lastPayoutAt?: string;
     country?: string;
     taxFormStatus?: 'not_started' | 'submitted' | 'approved';
+    minPayout?: number;
+    approvalMode?: AffiliateApprovalMode;
+    supportedSurfaces?: AffiliateSourceSurface[];
 }
 
 export interface AffiliateEarning {
@@ -990,9 +1769,19 @@ export interface AffiliateLink {
     originalUrl: string;
     shortCode: string;
     clicks: number;
+    affiliateId?: string;
+    storeId?: string | null;
+    itemId?: string | null;
+    destinationUrl?: string;
+    sourceSurface?: AffiliateSourceSurface;
+    status?: 'active' | 'paused';
     campaignId?: string;
     createdAt?: string;
 }
+
+export type AffiliateApprovalMode = 'manual' | 'automatic';
+export type AffiliateSourceSurface = 'link' | 'coupon' | 'spotlight' | 'pixe' | 'seller_referral';
+export type AffiliateEventType = 'sale_conversion' | 'rental_conversion' | 'seller_bonus';
 
 export interface AffiliateEligibility {
     enabled: boolean;
@@ -1011,6 +1800,9 @@ export interface AffiliateProgramSettings {
     minPayout?: number;
     payoutSchedule?: 'weekly' | 'biweekly' | 'monthly';
     countries?: string[];
+    approvalMode?: AffiliateApprovalMode;
+    supportedSurfaces?: AffiliateSourceSurface[];
+    sellerBonusAmount?: number;
 }
 
 export interface AffiliateAttribution {
@@ -1019,21 +1811,50 @@ export interface AffiliateAttribution {
     clickId: string;
     campaignId?: string;
     itemId?: string;
+    storeId?: string | null;
+    programId?: string | null;
+    trackingCode?: string;
+    sourceSurface?: AffiliateSourceSurface;
     createdAt: string;
     expiresAt?: string;
     referrer?: string;
     utm?: Record<string, string>;
 }
 
+export interface AffiliateAttributionSession {
+    affiliateId?: string;
+    affiliateUserId: string;
+    clickId?: string;
+    linkId?: string;
+    couponId?: string;
+    trackingCode?: string;
+    storeId?: string | null;
+    itemId?: string | null;
+    sourceSurface: AffiliateSourceSurface;
+    destinationUrl?: string;
+    createdAt: string;
+    expiresAt?: string;
+}
+
 export interface AffiliateConversion {
     id: string;
     attributionId: string;
     orderId: string;
+    orderItemId?: string;
+    bookingId?: string;
+    storeId?: string | null;
+    programId?: string | null;
+    itemId?: string | null;
+    affiliateUserId?: string;
+    sourceSurface?: AffiliateSourceSurface;
+    eventType?: AffiliateEventType;
     amount: number;
     commissionRate: number;
     commissionAmount: number;
     status: 'pending' | 'approved' | 'reversed' | 'paid';
     createdAt: string;
+    releasedAt?: string;
+    reversalReason?: string;
 }
 
 export interface AffiliatePayout {
@@ -1161,6 +1982,165 @@ export interface GrowthInsight {
     actionLink?: string;
 }
 
+export type AnalyticsScopeType = PersonaType | 'admin';
+export type AnalyticsTimeRange = '24h' | '7d' | '30d' | '90d' | '180d';
+export type AnalyticsConnectionState = 'live' | 'reconnecting' | 'delayed';
+export type AnalyticsPageId =
+  | 'overview'
+  | 'spend'
+  | 'rentals'
+  | 'discovery'
+  | 'traffic'
+  | 'revenue'
+  | 'sales-units'
+  | 'conversion'
+  | 'products'
+  | 'intelligence'
+  | 'pipeline'
+  | 'earnings'
+  | 'clients'
+  | 'campaigns'
+  | 'payouts'
+  | 'sla'
+  | 'regions'
+  | 'exceptions'
+  | 'commerce'
+  | 'operations'
+  | 'trust';
+
+export interface SeriesPoint {
+  id?: string;
+  date?: string;
+  label: string;
+  value: number;
+  secondaryValue?: number;
+  meta?: Record<string, any>;
+}
+
+export interface BreakdownRow {
+  id: string;
+  label: string;
+  value: number;
+  secondaryValue?: number;
+  change?: number;
+  href?: string;
+  tone?: 'default' | 'positive' | 'warning' | 'critical';
+  meta?: string;
+}
+
+export interface LeaderboardRow {
+  id: string;
+  label: string;
+  primary: string | number;
+  secondary?: string;
+  value?: number;
+  href?: string;
+  trend?: 'up' | 'down' | 'stable';
+  badge?: string;
+}
+
+export interface AnalyticsAlert {
+  id: string;
+  tone: 'info' | 'positive' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  actionLabel?: string;
+  actionHref?: string;
+}
+
+export interface AnalyticsWidgetColumn {
+  key: string;
+  label: string;
+  align?: 'left' | 'center' | 'right';
+  format?: 'currency' | 'number' | 'percent' | 'text';
+}
+
+export interface AnalyticsWidgetPayload {
+  id: string;
+  kind:
+    | 'timeseries'
+    | 'bar-list'
+    | 'donut'
+    | 'funnel'
+    | 'table'
+    | 'leaderboard'
+    | 'timeline'
+    | 'heatmap'
+    | 'ticker'
+    | 'stat-list';
+  title: string;
+  description?: string;
+  accent?: string;
+  aggregateMode?: 'event' | 'aggregate';
+  footer?: string;
+  emptyMessage?: string;
+  series?: SeriesPoint[];
+  comparisonSeries?: SeriesPoint[];
+  breakdown?: BreakdownRow[];
+  leaderboard?: LeaderboardRow[];
+  columns?: AnalyticsWidgetColumn[];
+  rows?: Array<Record<string, string | number | null>>;
+  stages?: Array<{
+    id?: string;
+    label: string;
+    value: number;
+    percentage?: number;
+    description?: string;
+  }>;
+  timeline?: Array<{
+    id: string;
+    label: string;
+    timestamp?: string;
+    status?: string;
+    description?: string;
+  }>;
+  heatmap?: Array<{
+    x: string;
+    y: string;
+    value: number;
+  }>;
+  ticker?: string[];
+}
+
+export interface PersonaAnalyticsHeroMetric {
+  id: string;
+  label: string;
+  value: string | number;
+  changeText?: string;
+  tone?: 'default' | 'positive' | 'warning' | 'critical';
+  href?: string;
+}
+
+export interface PersonaAnalyticsPagePayload {
+  scopeType: AnalyticsScopeType;
+  scopeId: string;
+  pageId: AnalyticsPageId;
+  range: AnalyticsTimeRange;
+  generatedAt: string;
+  staleAfterMs: number;
+  timezone: string;
+  title: string;
+  subtitle: string;
+  personaLabel: string;
+  aggregateFallback?: boolean;
+  exportFormats?: Array<'csv' | 'json'>;
+  alerts: AnalyticsAlert[];
+  heroMetrics: PersonaAnalyticsHeroMetric[];
+  widgets: AnalyticsWidgetPayload[];
+}
+
+export interface LiveAnalyticsEnvelope {
+  type: 'analytics.connected' | 'analytics.update' | 'analytics.page' | 'analytics.delay';
+  scopeType: AnalyticsScopeType;
+  scopeId: string;
+  pageId?: AnalyticsPageId;
+  range?: AnalyticsTimeRange;
+  generatedAt: string;
+  connectionState?: AnalyticsConnectionState;
+  pages?: AnalyticsPageId[];
+  summary?: Record<string, any>;
+}
+
 export interface ProjectShowcase {
     id: string;
     projectName: string;
@@ -1253,6 +2233,7 @@ export interface SupplierProduct {
     category: string;
     shippingInfo: { cost: number; time: string };
     supplierId?: string;
+    supplierSku?: string;
     variants?: DropshipVariant[];
     processingTimeDays?: number;
     countryOfOrigin?: string;
@@ -1260,6 +2241,16 @@ export interface SupplierProduct {
     shippingEstimates?: ShippingEstimate[];
     returnPolicy?: ReturnPolicy;
     certifications?: string[];
+    currency?: string;
+    status?: 'draft' | 'active' | 'paused' | 'archived';
+    stock?: number;
+    minOrderQuantity?: number;
+    attributes?: Record<string, unknown>;
+    sellerVisibility?: 'approved_only' | 'all_sellers' | 'hidden';
+    syncMode?: 'managed' | 'api' | 'csv' | string;
+    legacySourceRef?: string;
+    lastSyncedAt?: string | null;
+    supplier?: Supplier;
 }
 
 export interface ItemCollection {
@@ -1305,6 +2296,98 @@ export interface ReelComment {
 
 export interface SiteSettings {
     siteBanner: { message: string; isActive: boolean };
+    dropshipping?: {
+        enabled: boolean;
+        requireApproval: boolean;
+        allowAutoSubmit: boolean;
+        catalogMode: string;
+        buyerRelationship: string;
+    };
+}
+
+export interface SellerDropshipProfile {
+    id: string;
+    sellerId: string;
+    sellerPersonaId?: string | null;
+    status: 'draft' | 'pending' | 'approved' | 'suspended' | 'rejected';
+    approvedBy?: string | null;
+    approvedAt?: string | null;
+    riskNotes?: string;
+    settings: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+    sellerName?: string;
+}
+
+export interface SupplierSettlementLine {
+    id: string;
+    supplierOrderId: string;
+    amount: number;
+    createdAt: string;
+}
+
+export interface SupplierSettlement {
+    id: string;
+    supplierId: string;
+    supplierName: string;
+    status: 'draft' | 'ready' | 'settled' | 'reversed';
+    amountTotal: number;
+    currency: string;
+    externalRef?: string | null;
+    notes?: string;
+    metadata?: Record<string, unknown>;
+    createdBy?: string | null;
+    settledAt?: string | null;
+    createdAt: string;
+    updatedAt?: string;
+    lines: SupplierSettlementLine[];
+}
+
+export interface DropshipCatalogFilters {
+    q?: string;
+    supplierId?: string;
+    category?: string;
+    status?: string;
+    sellerVisibility?: string;
+    limit?: number;
+}
+
+export interface DropshipWorkspaceSnapshot {
+    profile: SellerDropshipProfile;
+    platform: {
+        enabled: boolean;
+        requireApproval: boolean;
+        allowAutoSubmit: boolean;
+        catalogMode: string;
+        buyerRelationship: string;
+    };
+    canAccessCatalog: boolean;
+    requirements: string[];
+}
+
+export type DropshipOrderDetail = DropshipOrder;
+
+export interface DropshipAdminOverview {
+    generatedAt: string;
+    settings: {
+        enabled: boolean;
+        requireApproval: boolean;
+        allowAutoSubmit: boolean;
+        catalogMode: string;
+        buyerRelationship: string;
+    };
+    summary: {
+        suppliers: number;
+        activeProducts: number;
+        pendingSellerApprovals: number;
+        ordersNeedingAttention: number;
+        unsettledPayables: number;
+    };
+    suppliers: Supplier[];
+    products: SupplierProduct[];
+    sellers: SellerDropshipProfile[];
+    orders: DropshipOrder[];
+    settlements: SupplierSettlement[];
 }
 
 export interface SupportQuery {
@@ -1357,6 +2440,8 @@ export interface RentalHistoryItem {
     /** Canonical Supabase-backed line (vs legacy Firestore booking) */
     source?: 'firestore' | 'commerce';
     orderId?: string;
+    podJobStatus?: PodJobStatus;
+    podVariantLabel?: string;
 }
 
 export interface Offer {
@@ -1400,6 +2485,7 @@ export interface ChatThread {
     sellerId: string;
     buyerPersonaId?: string;
     sellerPersonaId?: string;
+    inboxLabel?: 'primary' | 'general' | null;
     lastMessage: string;
     lastUpdated: string;
     messages: ChatMessage[];
@@ -1420,6 +2506,10 @@ export interface ChatMessage {
     isRead?: boolean;
     offer?: CustomOffer;
     sources?: any[];
+    replyToMessageId?: string;
+    reactions?: Record<string, string[]>;
+    editedAt?: string;
+    deletedAt?: string;
 }
 
 export type ChatCallMode = 'voice' | 'video';
@@ -1457,7 +2547,7 @@ export interface ChatSettings {
 
 export type WorkMode = 'instant' | 'proposal' | 'hybrid';
 export type WorkFulfillmentKind = 'local' | 'remote' | 'onsite' | 'hybrid';
-export type WorkListingStatus = 'draft' | 'published' | 'archived' | 'paused';
+export type WorkListingStatus = 'draft' | 'pending_review' | 'published' | 'rejected' | 'archived' | 'paused';
 export type WorkRequestStatus = 'open' | 'in_review' | 'matched' | 'cancelled' | 'closed';
 export type WorkProposalStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn' | 'expired';
 export type WorkContractStatus = 'draft' | 'pending' | 'active' | 'completed' | 'cancelled' | 'disputed';
@@ -1465,6 +2555,9 @@ export type MilestoneStatus = 'pending' | 'submitted' | 'approved' | 'released' 
 export type EscrowAction = 'hold' | 'release' | 'refund' | 'adjustment';
 export type EngagementStatus = 'created' | 'active' | 'completed' | 'cancelled' | 'disputed';
 export type EngagementSourceType = 'order' | 'booking' | 'contract' | 'service_request';
+export type WorkRequestType = 'booking' | 'quote';
+export type ProviderApplicationStatus = 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'resubmission_requested';
+export type WorkAvailabilityDayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export interface WorkLocation {
     city?: string;
@@ -1473,6 +2566,160 @@ export interface WorkLocation {
     latitude?: number;
     longitude?: number;
     addressLine1?: string;
+}
+
+export interface WorkAvailabilityWindow {
+    start: string;
+    end: string;
+    label?: string;
+}
+
+export interface WorkAvailabilityDay {
+    enabled: boolean;
+    windows: WorkAvailabilityWindow[];
+}
+
+export interface WorkServiceAreaCoverage {
+    kind?: 'city' | 'region' | 'country' | 'radius' | 'custom';
+    label: string;
+    radiusKm?: number;
+}
+
+export interface WorkAvailability {
+    timezone?: string;
+    weeklySchedule?: Partial<Record<WorkAvailabilityDayKey, WorkAvailabilityDay>>;
+    blackoutDates?: string[];
+    leadTimeHours?: number;
+    serviceArea?: WorkServiceAreaCoverage[];
+    notes?: string;
+}
+
+export interface WorkPortfolioItem {
+    id: string;
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    link?: string;
+}
+
+export interface WorkFaq {
+    question: string;
+    answer: string;
+}
+
+export interface WorkPolicySet {
+    cancellation?: string;
+    revisions?: string;
+    reschedule?: string;
+    delivery?: string;
+    custom?: string[];
+}
+
+export interface WorkListingDetails {
+    summary?: string;
+    languages?: string[];
+    responseSlaHours?: number;
+    serviceAreaLabel?: string;
+    trustBadges?: string[];
+    portfolio?: WorkPortfolioItem[];
+    faqs?: WorkFaq[];
+    policies?: WorkPolicySet;
+    documents?: string[];
+    instantBookingEnabled?: boolean;
+    quoteEnabled?: boolean;
+}
+
+export interface WorkRequestAnswer {
+    label: string;
+    value: string;
+}
+
+export interface WorkRequestDetails {
+    requestType?: WorkRequestType;
+    packageId?: string;
+    packageName?: string;
+    packageType?: ServicePricingModel['type'];
+    desiredDate?: string;
+    desiredTime?: string;
+    schedulingNotes?: string;
+    answers?: WorkRequestAnswer[];
+    policyAcknowledged?: boolean;
+    serviceAddress?: WorkLocation & {
+        label?: string;
+        postalCode?: string;
+        addressLine2?: string;
+    };
+}
+
+export interface ProviderApplicationDocument {
+    id: string;
+    label: string;
+    url: string;
+    type?: string;
+    status?: 'submitted' | 'verified' | 'rejected';
+}
+
+export interface ProviderApplication {
+    id: string;
+    userId: string;
+    userSupabaseId?: string;
+    applicantName?: string;
+    applicantEmail?: string;
+    applicantAvatar?: string;
+    providerPersonaId?: string;
+    businessName?: string;
+    businessType?: string;
+    bio?: string;
+    serviceCategories: string[];
+    languages?: string[];
+    yearsExperience?: number;
+    serviceArea?: WorkServiceAreaCoverage[];
+    responseSlaHours?: number;
+    payoutReady?: boolean;
+    website?: string;
+    documents?: ProviderApplicationDocument[];
+    portfolio?: WorkPortfolioItem[];
+    onboardingProgress?: number;
+    status: ProviderApplicationStatus;
+    notes?: string;
+    reviewerNotes?: string;
+    submittedAt?: string;
+    reviewedAt?: string;
+    createdAt: string;
+    updatedAt?: string;
+}
+
+export interface ProviderWorkspaceSummary {
+    stats: {
+        earnings: number;
+        activeJobs: number;
+        jobsCompleted: number;
+        averageRating: number;
+        responseRate: number;
+    };
+    queues: {
+        leads: number;
+        proposals: number;
+        activeContracts: number;
+        pendingListings: number;
+        pendingApplication: number;
+    };
+    calendar: {
+        upcomingBookings: number;
+        nextBookingAt?: string;
+        timezone?: string;
+    };
+    escrow: {
+        held: number;
+        released: number;
+        refunded: number;
+    };
+    payouts: {
+        available: number;
+        processing: number;
+        pendingRequests: number;
+        totalPaidOut: number;
+    };
 }
 
 export interface WorkPackage {
@@ -1502,10 +2749,14 @@ export interface WorkListing {
     packages: WorkPackage[];
     skills?: string[];
     media?: string[];
-    availability?: Record<string, any>;
+    availability?: WorkAvailability;
+    details?: WorkListingDetails;
     riskScore?: number;
     status: WorkListingStatus;
     visibility?: 'public' | 'private' | 'unlisted';
+    reviewNotes?: string;
+    submittedAt?: string;
+    reviewedAt?: string;
     publishedAt?: string;
     createdAt: string;
     updatedAt?: string;
@@ -1530,8 +2781,13 @@ export interface WorkRequest {
     location?: WorkLocation;
     requirements?: string[];
     attachments?: string[];
+    requestType?: WorkRequestType;
+    details?: WorkRequestDetails;
     riskScore?: number;
     status: WorkRequestStatus;
+    scheduledAt?: string;
+    acceptedAt?: string;
+    declinedAt?: string;
     createdAt: string;
     updatedAt?: string;
 }
@@ -1693,6 +2949,10 @@ export interface Service {
     riskScore?: number;
     currency?: string;
     timezone?: string;
+    availability?: WorkAvailability;
+    details?: WorkListingDetails;
+    providerProfile?: ServiceProviderProfile;
+    status?: WorkListingStatus;
     providerPersonaId?: string;
     buyerPersonaId?: string;
     listingSource?: 'legacy' | 'omniwork';
@@ -1726,6 +2986,24 @@ export interface ServiceProviderProfile {
   availabilityNotes?: string; 
   status: 'pending_approval' | 'approved' | 'rejected';
   serviceCategories: string[];
+  applicationId?: string;
+  applicationStatus?: ProviderApplicationStatus;
+  businessName?: string;
+  businessType?: string;
+  website?: string;
+  yearsExperience?: number;
+  responseSlaHours?: number;
+  payoutReady?: boolean;
+  verificationLevel?: 'none' | 'basic' | 'enhanced' | 'verified';
+  languages?: string[];
+  portfolio?: WorkPortfolioItem[];
+  documents?: ProviderApplicationDocument[];
+  serviceAreaCoverage?: WorkServiceAreaCoverage[];
+  weeklyAvailability?: WorkAvailability;
+  trustBadges?: string[];
+  onboardingProgress?: number;
+  onboardingChecklist?: string[];
+  notes?: string;
 }
 
 export interface Job {
@@ -1850,6 +3128,9 @@ export interface AffiliateCampaign {
     title: string;
     description: string;
     commissionRate: number;
+    storeId?: string | null;
+    status?: 'new' | 'active' | 'paused' | 'suspended';
+    supportedSurfaces?: AffiliateSourceSurface[];
     landingUrl?: string;
     startDate?: string;
     endDate?: string;

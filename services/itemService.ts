@@ -27,18 +27,29 @@ import {
     sendPasswordResetEmail,
     GoogleAuthProvider,
     User as FirebaseUser,
-    confirmPasswordReset
+    confirmPasswordReset,
+    EmailAuthProvider,
+    deleteUser as deleteFirebaseUser,
+    reauthenticateWithCredential
 } from 'firebase/auth';
 import { db, auth, googleProvider, isFirebaseDisabled } from '../firebase';
 import { localDb } from './localDb';
 import { backendFetch, getBackendBaseUrl, isBackendConfigured } from './backendClient';
+import commerceService, { mapCommerceDetailToBooking } from './commerceService';
 import supabaseMirror from './supabaseMirror';
 import personaService from './personaService';
 import analyticsService from './analyticsService';
-import workService, { mapWorkListingToService } from './workService';
+import workService, { mapWorkListingToService, type ListWorkListingsParams } from './workService';
 import proposalService from './proposalService';
 import contractService from './contractService';
+import {
+    canUseDirectSupabaseTables,
+    ensureSupabaseUserRecord,
+    syncSupabaseUserProfile
+} from './supabaseAppBridge';
+import { affiliateCommissionService } from './affiliateCommissionService';
 import { shouldUseFirestoreFallback, shouldUseLocalDb, shouldUseLocalMockFallback } from './dataMode';
+import { resolveBackendUserId, resolveBackendUserLookupKeys } from './backendUserIdentity';
 import { enforceAvatarIdentity } from '../utils/avatarEnforcement';
 import type { 
     Item, 
@@ -73,6 +84,8 @@ import type {
     SellerPerformanceStats,
     GrowthInsight,
     CartItem,
+    CheckoutSubmissionOptions,
+    CheckoutShippingInfo,
     Notification,
     ListingActivityPreferences,
     ChatThread,
@@ -272,6 +285,50 @@ const mapUnifiedProfilePayloadToUser = (payload: any, fallbackUid: string): User
     return enforceAvatarIdentity(enrichedUser);
 };
 
+const mapBackendAffiliateProfileRow = (row: any): Partial<User> => {
+    if (!row || typeof row !== 'object') return {};
+
+    const affiliateProfile = row.affiliate_profile && typeof row.affiliate_profile === 'object'
+        ? (row.affiliate_profile as AffiliateProfile)
+        : undefined;
+
+    return {
+        isAffiliate: Boolean(row.is_affiliate || row.onboarding_completed || affiliateProfile),
+        affiliateOnboardingCompleted: Boolean(row.onboarding_completed),
+        affiliateProfile,
+        pendingAffiliateReferral: row.pending_referral || undefined,
+        walletBalance: row.wallet_balance !== undefined ? Number(row.wallet_balance || 0) : undefined,
+        processingBalance: row.processing_balance !== undefined ? Number(row.processing_balance || 0) : undefined,
+        heldDeposits: row.held_deposits !== undefined ? Number(row.held_deposits || 0) : undefined,
+        affiliateTier: row.affiliate_tier || undefined
+    };
+};
+
+const buildAffiliateProfileBackendPayload = (uid: string, updates: Partial<User>) => {
+    const payload: Record<string, unknown> = {
+        user_id: uid,
+        updated_at: new Date().toISOString()
+    };
+
+    let hasAffiliateFields = false;
+    const setAffiliateField = (key: string, value: unknown) => {
+        if (value === undefined) return;
+        payload[key] = value;
+        hasAffiliateFields = true;
+    };
+
+    setAffiliateField('is_affiliate', updates.isAffiliate);
+    setAffiliateField('onboarding_completed', updates.affiliateOnboardingCompleted);
+    setAffiliateField('affiliate_profile', updates.affiliateProfile);
+    setAffiliateField('pending_referral', updates.pendingAffiliateReferral);
+    setAffiliateField('wallet_balance', updates.walletBalance);
+    setAffiliateField('processing_balance', updates.processingBalance);
+    setAffiliateField('held_deposits', updates.heldDeposits);
+    setAffiliateField('affiliate_tier', updates.affiliateTier);
+
+    return hasAffiliateFields ? payload : null;
+};
+
 
 
 const BACKEND_ITEM_SELECT = [
@@ -291,6 +348,7 @@ const BACKEND_ITEM_SELECT = [
     'rental_price',
     'auction_start_price',
     'auction_reserve_price',
+    'auction_end_at',
     'stock',
     'is_featured',
     'is_verified',
@@ -370,6 +428,7 @@ const buildItemMetadataSnapshot = (
         rentalRates: itemData.rentalRates,
         minRentalDuration: itemData.minRentalDuration,
         securityDeposit: itemData.securityDeposit,
+        rentalFulfillment: itemData.rentalFulfillment,
         bookedDates: itemData.bookedDates,
         videoUrl: itemData.videoUrl,
         sku: itemData.sku,
@@ -391,6 +450,7 @@ const buildItemMetadataSnapshot = (
         certifications: itemData.certifications,
         affiliateEligibility: itemData.affiliateEligibility,
         supplierInfo: itemData.supplierInfo,
+        dropshipProfile: itemData.dropshipProfile,
         automation: itemData.automation,
         features: itemData.features,
         specifications: itemData.specifications,
@@ -401,9 +461,23 @@ const buildItemMetadataSnapshot = (
         auctionDetails: itemData.auctionDetails,
         productType: itemData.productType,
         itemType: itemData.itemType,
+        coverImageUrl: itemData.coverImageUrl,
+        galleryImageUrls: itemData.galleryImageUrls,
+        developer: itemData.developer,
+        publisher: itemData.publisher,
+        tagline: itemData.tagline,
+        releaseDate: itemData.releaseDate,
+        trailerUrl: itemData.trailerUrl,
+        genres: itemData.genres,
+        platforms: itemData.platforms,
+        modes: itemData.modes,
+        tags: itemData.tags,
         digitalFileUrl: itemData.digitalFileUrl,
+        digitalDelivery: itemData.digitalDelivery,
+        gameDetails: itemData.gameDetails,
         licenseType: itemData.licenseType,
         licenseDescription: itemData.licenseDescription,
+        podProfile: itemData.podProfile,
         brand: itemData.brand,
         brandCatalogPath: (itemData as any).brandCatalogPath || null,
         brandId: (itemData as any).brandId || null,
@@ -467,6 +541,7 @@ const mapBackendItemRow = (
         rentalRates: metadata.rentalRates || undefined,
         minRentalDuration: metadata.minRentalDuration ?? undefined,
         securityDeposit: metadata.securityDeposit ?? undefined,
+        rentalFulfillment: metadata.rentalFulfillment || undefined,
         images: itemImages,
         imageUrls: itemImages,
         owner: {
@@ -500,7 +575,7 @@ const mapBackendItemRow = (
         shippingEstimates: Array.isArray(metadata.shippingEstimates) ? metadata.shippingEstimates : [],
         returnPolicy: metadata.returnPolicy || undefined,
         warranty: metadata.warranty || undefined,
-        fulfillmentType: metadata.fulfillmentType || undefined,
+        fulfillmentType: metadata.fulfillmentType || (metadata.podProfile ? 'pod' : undefined),
         originCountry: metadata.originCountry || undefined,
         originCity: metadata.originCity || undefined,
         dimensionsIn: metadata.dimensionsIn || undefined,
@@ -516,13 +591,47 @@ const mapBackendItemRow = (
         materials: Array.isArray(metadata.materials) ? metadata.materials : [],
         reservePrice: row?.auction_reserve_price ?? metadata.reservePrice ?? undefined,
         buyNowPrice: metadata.buyNowPrice ?? undefined,
-        auctionDetails: metadata.auctionDetails || undefined,
-        productType: metadata.productType || undefined,
-        itemType: metadata.itemType || undefined,
+        auctionDetails: metadata.auctionDetails
+            ? {
+                ...metadata.auctionDetails,
+                endTime: metadata.auctionDetails.endTime || row?.auction_end_at || ''
+            }
+            : row?.auction_end_at || row?.auction_start_price
+                ? {
+                    startingBid: toNumber(row?.auction_start_price, 0),
+                    currentBid: toNumber(metadata.currentBid ?? row?.auction_start_price, toNumber(row?.auction_start_price, 0)),
+                    endTime: row?.auction_end_at || '',
+                    bidCount: toNumber(metadata.bidCount, 0),
+                    bids: Array.isArray(metadata.bids) ? metadata.bids : []
+                }
+                : undefined,
+        productType: metadata.productType || (metadata.podProfile ? 'pod' : undefined),
+        itemType: metadata.itemType || (metadata.podProfile ? 'physical' : undefined),
+        coverImageUrl: metadata.coverImageUrl || itemImages[0] || undefined,
+        galleryImageUrls: Array.isArray(metadata.galleryImageUrls) ? metadata.galleryImageUrls : itemImages,
+        developer: metadata.developer || metadata.gameDetails?.developer || undefined,
+        publisher: metadata.publisher || metadata.gameDetails?.publisher || undefined,
+        tagline: metadata.tagline || metadata.gameDetails?.tagline || undefined,
+        releaseDate: metadata.releaseDate || metadata.gameDetails?.releaseDate || undefined,
+        trailerUrl: metadata.trailerUrl || metadata.gameDetails?.trailerUrl || undefined,
+        genres: Array.isArray(metadata.genres) ? metadata.genres : Array.isArray(metadata.gameDetails?.genres) ? metadata.gameDetails.genres : [],
+        platforms: Array.isArray(metadata.platforms)
+            ? metadata.platforms
+            : Array.isArray(metadata.gameDetails?.platforms)
+                ? metadata.gameDetails.platforms
+                : Array.isArray(metadata.digitalDelivery?.supportedPlatforms)
+                    ? metadata.digitalDelivery.supportedPlatforms
+                    : [],
+        modes: Array.isArray(metadata.modes) ? metadata.modes : Array.isArray(metadata.gameDetails?.modes) ? metadata.gameDetails.modes : [],
+        tags: Array.isArray(metadata.tags) ? metadata.tags : Array.isArray(metadata.gameDetails?.tags) ? metadata.gameDetails.tags : [],
         digitalFileUrl: metadata.digitalFileUrl || undefined,
+        digitalDelivery: metadata.digitalDelivery || undefined,
+        gameDetails: metadata.gameDetails || undefined,
         licenseType: metadata.licenseType || undefined,
         licenseDescription: metadata.licenseDescription || undefined,
         supplierInfo: metadata.supplierInfo || undefined,
+        dropshipProfile: metadata.dropshipProfile || undefined,
+        podProfile: metadata.podProfile || undefined,
         status,
         createdAt: row?.created_at || metadata.createdAt || new Date().toISOString()
     } as Item;
@@ -834,8 +943,8 @@ const getAllActiveUsers = async (): Promise<User[]> => {
     return [];
 };
 
-const CHAT_THREAD_SELECT = 'id,item_id,buyer_id,seller_id,buyer_persona_id,seller_persona_id,last_message_at,created_at';
-const CHAT_MESSAGE_SELECT = 'id,thread_id,sender_id,message_type,body,image_url,offer_id,created_at';
+const CHAT_THREAD_SELECT = 'id,item_id,buyer_id,seller_id,buyer_persona_id,seller_persona_id,last_message_at,created_at,inbox_label';
+const CHAT_MESSAGE_SELECT = 'id,thread_id,sender_id,message_type,body,image_url,offer_id,reply_to_message_id,reactions,edited_at,deleted_at,created_at';
 const CHAT_OFFER_SELECT = 'id,thread_id,sender_id,title,description,price,duration_days,status,created_at';
 const VOICE_NOTE_PREFIX = '__voice_note__:';
 const ENCRYPTED_MESSAGE_PREFIX = '__enc_v1__:';
@@ -853,6 +962,22 @@ const VOICE_EXTENSION_BY_MIME: Record<string, string> = {
 
 const isUuidLike = (value?: string | null) =>
     typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const shouldEnforceCanonicalCheckout = (items: CartItem[]) =>
+    isBackendConfigured() &&
+    items.length > 0 &&
+    items.every((line) => isUuidLike(String(line.id || '').trim()));
+
+const isCanonicalBookingRecord = (booking?: Partial<Booking> | null) =>
+    Boolean(
+        booking &&
+        (
+            booking.source === 'commerce' ||
+            (typeof booking.canonicalRentalBookingId === 'string' && booking.canonicalRentalBookingId.trim()) ||
+            isUuidLike(String(booking.orderId || '').trim()) ||
+            isUuidLike(String(booking.orderItemId || '').trim())
+        )
+    );
 
 const toIsoTimestamp = (value?: string | Date | null) => {
     if (!value) return new Date().toISOString();
@@ -893,6 +1018,11 @@ const parseVoiceNotePayload = (value: unknown): { url: string; durationMs?: numb
 
 const isEncryptedMessagePayload = (value: unknown) =>
     typeof value === 'string' && value.startsWith(ENCRYPTED_MESSAGE_PREFIX);
+
+const normalizeChatInboxLabel = (value: unknown): 'primary' | 'general' | null => {
+    if (value === 'primary' || value === 'general') return value;
+    return null;
+};
 
 const encodeTypingCollection = (threadId: string) => `${CHAT_TYPING_COLLECTION_PREFIX}${threadId}`;
 const encodeReadCollection = (threadId: string) => `${CHAT_READ_COLLECTION_PREFIX}${threadId}`;
@@ -947,6 +1077,19 @@ const mapBackendMessageRowToChatMessage = (
         return bodyText;
     })();
 
+    const normalizedReactions = (() => {
+        const raw = row?.reactions;
+        if (!raw || typeof raw !== 'object') return {};
+        return Object.entries(raw as Record<string, unknown>).reduce<Record<string, string[]>>((accumulator, [emoji, userIds]) => {
+            if (!emoji) return accumulator;
+            const normalizedIds = Array.isArray(userIds)
+                ? userIds.map((entry) => firebaseUidBySupabaseUserId.get(String(entry || '')) || String(entry || '')).filter(Boolean)
+                : [];
+            if (normalizedIds.length > 0) accumulator[emoji] = normalizedIds;
+            return accumulator;
+        }, {});
+    })();
+
     return {
         id: String(row?.id || ''),
         senderId: firebaseUidBySupabaseUserId.get(String(row?.sender_id || '')) || String(row?.sender_id || ''),
@@ -957,7 +1100,11 @@ const mapBackendMessageRowToChatMessage = (
         audioDurationMs: voicePayload?.durationMs,
         content: encrypted ? { encrypted: true, payload: bodyText } : undefined,
         timestamp: toIsoTimestamp(row?.created_at),
-        offer: offerId ? offerById.get(offerId) : undefined
+        offer: offerId ? offerById.get(offerId) : undefined,
+        replyToMessageId: row?.reply_to_message_id ? String(row.reply_to_message_id) : undefined,
+        reactions: normalizedReactions,
+        editedAt: row?.edited_at ? toIsoTimestamp(row.edited_at) : undefined,
+        deletedAt: row?.deleted_at ? toIsoTimestamp(row.deleted_at) : undefined
     };
 };
 
@@ -1176,6 +1323,97 @@ const formatBookingStatusLabel = (status: string) => {
         .split('_')
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
+};
+
+const mapCanonicalRentalStatusToLegacyStatus = (status: string): Booking['status'] => {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'pending_confirmation') return 'pending';
+    if (normalized === 'ready_for_handoff') return 'confirmed';
+    if (normalized === 'in_transit') return 'shipped';
+    if (normalized === 'active') return 'delivered';
+    if (normalized === 'return_in_transit') return 'returned';
+    if (normalized === 'returned') return 'returned';
+    if (normalized === 'completed') return 'completed';
+    if (normalized === 'cancelled') return 'cancelled';
+    if (normalized === 'confirmed') return 'confirmed';
+    return 'pending';
+};
+
+const mapCanonicalRentalToLegacyBooking = (row: any): Booking => {
+    const rentalId = String(row?.id || row?.rental_booking_id || row?.rentalBookingId || '');
+    const metadata = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const securityDepositAmount = Number(row?.security_deposit_amount || row?.securityDepositAmount || metadata?.quote?.securityDeposit || 0);
+    const claimAmount = Number(row?.claim_amount || row?.claimAmount || 0);
+    const claimReason = String(row?.claim_reason || row?.claimReason || '');
+    const claimEvidence = String(row?.claim_evidence_url || row?.claimEvidenceUrl || '');
+    const canonicalStatus = String(row?.status || 'pending_confirmation');
+    const legacyStatus = mapCanonicalRentalStatusToLegacyStatus(canonicalStatus);
+    const securityDepositStatusRaw = String(row?.security_deposit_status || row?.securityDepositStatus || '').toLowerCase();
+    const depositStatus: Booking['depositStatus'] =
+        securityDepositStatusRaw === 'claimed'
+            ? 'claimed'
+            : securityDepositStatusRaw === 'held'
+                ? 'held'
+                : 'released';
+    return {
+        id: rentalId,
+        orderId: String(row?.order_id || row?.orderId || ''),
+        itemId: String(row?.item_id || row?.itemId || ''),
+        itemTitle: String(row?.item_title || row?.itemTitle || metadata?.itemTitle || 'Item'),
+        renterId: String(row?.buyer_firebase_uid || row?.buyerFirebaseUid || row?.buyer_id || row?.buyerId || ''),
+        renterName: String(metadata?.renterName || row?.renter_name || row?.renterName || 'Renter'),
+        provider: { id: String(row?.seller_firebase_uid || row?.sellerFirebaseUid || row?.seller_id || row?.sellerId || '') },
+        startDate: String(row?.rental_start || row?.rentalStart || row?.startDate || new Date().toISOString()),
+        endDate: String(row?.rental_end || row?.rentalEnd || row?.endDate || new Date().toISOString()),
+        totalPrice: Number(row?.total_price || row?.totalPrice || metadata?.quote?.subtotal || metadata?.server_priced_quote?.subtotal || 0),
+        status: legacyStatus,
+        trackingNumber: String(row?.tracking_number || row?.trackingNumber || ''),
+        paymentStatus:
+            depositStatus === 'held'
+                ? 'escrow'
+                : depositStatus === 'claimed'
+                    ? 'released'
+                    : 'released',
+        type: 'rent',
+        currency: String(row?.currency || metadata?.quote?.currency || 'PKR'),
+        securityDeposit: securityDepositAmount,
+        depositStatus,
+        claimDetails:
+            claimAmount > 0
+                ? {
+                    amount: claimAmount,
+                    reason: claimReason,
+                    proofImage: claimEvidence
+                }
+                : undefined
+    };
+};
+
+const mapCommerceHistoryLineToRentalHistory = (line: any): RentalHistoryItem => {
+    const normalizedType = String(line?.type || '').toLowerCase() === 'rent' ? 'rent' : 'sale';
+    const podSelection = line?.podSelection || line?.pod_selection || line?.metadata?.podSelection || null;
+    const podVariantLabel = [podSelection?.color, podSelection?.size].filter(Boolean).join(' / ');
+    const itemType = String(
+        line?.itemType ||
+        line?.item_type ||
+        (String(line?.deliveryMode || line?.delivery_mode || '').toLowerCase() === 'digital' ? 'digital' : '')
+    ).trim().toLowerCase();
+    return {
+        id: String(line?.id || line?.orderItemId || line?.order_id || ''),
+        itemId: String(line?.itemId || line?.item_id || ''),
+        itemTitle: String(line?.itemTitle || line?.item_title || 'Item'),
+        itemImageUrl: String(line?.itemImageUrl || line?.item_image_url || '/icons/urbanprime.svg'),
+        startDate: String(line?.startDate || line?.start_date || line?.created_at || new Date().toISOString()),
+        endDate: String(line?.endDate || line?.end_date || line?.startDate || line?.created_at || new Date().toISOString()),
+        totalPrice: Number(line?.totalPrice || line?.total_price || 0),
+        status: String(line?.legacyStatus || line?.legacy_status || line?.status || 'pending').toLowerCase(),
+        type: normalizedType,
+        itemType: itemType || undefined,
+        source: 'commerce',
+        orderId: String(line?.orderId || line?.order_id || ''),
+        podJobStatus: line?.podJobStatus || line?.pod_job_status || undefined,
+        podVariantLabel: podVariantLabel || undefined
+    } as RentalHistoryItem;
 };
 
 const buildBookingStatusNotifications = (
@@ -1433,6 +1671,15 @@ export const authService = {
                 name: 'Urban Prime Admin',
                 email: 'admin@urbanprime.com',
                 avatar: '/icons/urbanprime.svg',
+                following: [],
+                followers: [],
+                wishlist: [],
+                cart: [],
+                badges: [],
+                memberSince: new Date().toISOString(),
+                phone: '',
+                city: '',
+                country: '',
                 isAdmin: true,
                 status: 'active',
                 accountLifecycle: 'member',
@@ -1552,6 +1799,45 @@ export const authService = {
             return;
         }
         await confirmPasswordReset(auth, token, newPass);
+    },
+    deleteCurrentAccount: async (password: string) => {
+        if (isFirebaseDisabled()) {
+            await ensureLocalDb();
+            const currentUser = (await localDb.list<User>('users'))[0];
+            if (currentUser?.id) {
+                await localDb.delete('users', currentUser.id);
+            }
+            return;
+        }
+        const currentUser = auth.currentUser;
+        if (!currentUser || !currentUser.email) {
+            throw new Error('Sign in again before deleting this account.');
+        }
+
+        const hasPasswordProvider = currentUser.providerData.some((entry) => entry.providerId === 'password') || currentUser.providerData.length === 0;
+        if (!hasPasswordProvider) {
+            throw new Error('This account does not use a password sign-in method.');
+        }
+
+        const normalizedPassword = String(password || '').trim();
+        if (!normalizedPassword) {
+            throw new Error('Enter your password to delete this account.');
+        }
+
+        const credential = EmailAuthProvider.credential(currentUser.email, normalizedPassword);
+        await reauthenticateWithCredential(currentUser, credential);
+
+        const token = await currentUser.getIdToken(true);
+        await backendFetch(
+            '/pixe/studio/account',
+            {
+                method: 'DELETE',
+                backendNoQueue: true
+            },
+            token
+        );
+
+        await deleteFirebaseUser(currentUser);
     }
 };
 
@@ -1560,6 +1846,78 @@ export const userService = {
     getUserById: async (uid: string): Promise<User | null> => {
         const token = await getBackendToken();
         const canUseBackend = Boolean(token || hasBackendApiKey);
+
+        const mergeSupplementalUserState = async (baseUser: User | null): Promise<User | null> => {
+            let supplemental: Partial<User> = {};
+
+            if (isBackendConfigured() && canUseBackend) {
+                try {
+                    const affiliateProfileLookupKeys = await resolveBackendUserLookupKeys(uid);
+                    const affiliateProfileResponses = await Promise.all(
+                        affiliateProfileLookupKeys.map((lookupUserId) =>
+                            backendFetch(
+                                `/api/affiliate_profiles?eq.user_id=${encodeURIComponent(lookupUserId)}&limit=1`,
+                                {},
+                                token
+                            ).catch(() => null)
+                        )
+                    );
+                    const affiliateProfileRow = affiliateProfileResponses
+                        .flatMap((response) =>
+                            Array.isArray(response?.data) ? response.data : response?.data ? [response.data] : []
+                        )[0];
+                    if (affiliateProfileRow) {
+                        supplemental = { ...supplemental, ...mapBackendAffiliateProfileRow(affiliateProfileRow) };
+                    }
+                } catch (error) {
+                    console.warn('Backend affiliate profile merge failed:', error);
+                }
+            }
+
+            if (supabaseMirror.enabled) {
+                try {
+                    const mirrored = await supabaseMirror.get<User>('users', uid);
+                    if (mirrored) {
+                        supplemental = { ...supplemental, ...mirrored };
+                    }
+                } catch (error) {
+                    console.warn('Supabase mirrored user merge failed:', error);
+                }
+            }
+
+            if (shouldUseFirestoreFallback()) {
+                try {
+                    const docSnap = await getDoc(doc(db, 'users', uid));
+                    if (docSnap.exists()) {
+                        supplemental = { ...supplemental, ...(docSnap.data() as Partial<User>) };
+                    }
+                } catch (error) {
+                    console.warn('Firestore supplemental user fetch failed:', error);
+                }
+            }
+
+            if (shouldUseLocalMockFallback()) {
+                try {
+                    await ensureLocalDb();
+                    const localUser = await localDb.getById<User>('users', uid);
+                    if (localUser) {
+                        supplemental = { ...supplemental, ...localUser };
+                    }
+                } catch (error) {
+                    console.warn('Local supplemental user fetch failed:', error);
+                }
+            }
+
+            if (!baseUser && !Object.keys(supplemental).length) {
+                return null;
+            }
+
+            return enforceAvatarIdentity({
+                ...(baseUser || {}),
+                ...supplemental,
+                id: baseUser?.id || supplemental.id || uid
+            } as User);
+        };
 
         if (isBackendConfigured() && canUseBackend) {
             try {
@@ -1573,7 +1931,7 @@ export const userService = {
                 for (const response of responses) {
                     const rows = Array.isArray(response?.data) ? response?.data : [];
                     if (rows.length > 0) {
-                        return mapBackendUserRow(rows[0]);
+                        return mergeSupplementalUserState(mapBackendUserRow(rows[0]));
                     }
                 }
             } catch (error) {
@@ -1658,6 +2016,7 @@ export const userService = {
             updates.gender !== undefined ||
             updates.avatar !== undefined;
         const normalizedUpdates: Partial<User> = { ...updates };
+        let lastBackendError: unknown = null;
         if (shouldNormalizeIdentity) {
             const enforced = enforceAvatarIdentity({
                 name: updates.name,
@@ -1680,7 +2039,9 @@ export const userService = {
         if (isBackendConfigured()) {
             try {
                 const token = await getBackendToken();
+                const affiliateBackendUserId = await resolveBackendUserId(uid);
                 const payload: Record<string, any> = {};
+                const affiliatePayload = buildAffiliateProfileBackendPayload(affiliateBackendUserId || uid, normalizedUpdates);
                 if (normalizedUpdates.name !== undefined) payload.name = normalizedUpdates.name;
                 if (normalizedUpdates.email !== undefined) payload.email = normalizedUpdates.email;
                 if (normalizedUpdates.avatar !== undefined) payload.avatar = normalizedUpdates.avatar;
@@ -1697,28 +2058,51 @@ export const userService = {
                 if (normalizedUpdates.gender !== undefined) payload.gender = normalizedUpdates.gender;
                 if (normalizedUpdates.purpose !== undefined) payload.purpose = normalizedUpdates.purpose;
 
+                let mapped: User | null = null;
                 if (Object.keys(payload).length > 0) {
                     const patched = await backendFetch('/profile/me', {
                         method: 'PATCH',
                         body: JSON.stringify(payload)
                     }, token);
-                    const mapped = mapUnifiedProfilePayloadToUser(patched, uid);
-                    if (mapped) {
-                        const merged = enforceAvatarIdentity({ ...mapped, ...normalizedUpdates, id: uid });
-                        if (supabaseMirror.enabled) {
-                            await supabaseMirror.upsert('users', uid, merged);
-                        }
-                        return merged;
+                    mapped = mapUnifiedProfilePayloadToUser(patched, uid);
+                }
+
+                if (affiliatePayload) {
+                    await backendFetch('/api/affiliate_profiles?upsert=1&onConflict=user_id', {
+                        method: 'POST',
+                        body: JSON.stringify(affiliatePayload)
+                    }, token);
+                }
+
+                if (mapped || affiliatePayload) {
+                    const fallbackExisting = mapped ? null : await userService.getUserById(uid);
+                    const merged = enforceAvatarIdentity({
+                        ...(fallbackExisting || mapped || { id: uid, name: normalizedUpdates.name || 'User', email: normalizedUpdates.email || '' }),
+                        ...normalizedUpdates,
+                        id: uid
+                    } as User);
+                    if (supabaseMirror.enabled) {
+                        await supabaseMirror.upsert('users', uid, merged);
                     }
+                    if (shouldUseFirestoreFallback()) {
+                        await setDoc(doc(db, 'users', uid), normalizedUpdates, { merge: true });
+                    }
+                    if (shouldUseLocalMockFallback()) {
+                        await ensureLocalDb();
+                        const existingLocalUser = await localDb.getById<User>('users', uid);
+                        await localDb.upsert('users', enforceAvatarIdentity({ ...(existingLocalUser || merged), ...merged, ...normalizedUpdates, id: uid }));
+                    }
+                    return merged;
                 }
             } catch (error) {
+                lastBackendError = error;
                 console.warn('Backend user update failed:', error);
             }
         }
 
         if (shouldUseFirestoreFallback()) {
             const userRef = doc(db, 'users', uid);
-            await updateDoc(userRef, normalizedUpdates);
+            await setDoc(userRef, normalizedUpdates, { merge: true });
             if (supabaseMirror.enabled) {
                 await supabaseMirror.mergeUpdate<User>('users', uid, normalizedUpdates);
             }
@@ -1726,10 +2110,51 @@ export const userService = {
             return enforceAvatarIdentity(fromFirestore<User>(updatedDoc));
         }
 
+        if (canUseDirectSupabaseTables()) {
+            try {
+                const existingDirectUser = await userService.getUserById(uid).catch(() => null);
+                const mergedDirectUser = enforceAvatarIdentity({
+                    ...(existingDirectUser || { id: uid, name: normalizedUpdates.name || 'User', email: normalizedUpdates.email || '' }),
+                    ...normalizedUpdates,
+                    id: uid
+                } as User);
+                const directUserRow = await ensureSupabaseUserRecord(mergedDirectUser);
+                await syncSupabaseUserProfile(directUserRow.id, mergedDirectUser);
+                if (supabaseMirror.enabled) {
+                    await supabaseMirror.upsert('users', uid, mergedDirectUser);
+                }
+                return mergedDirectUser;
+            } catch (error) {
+                lastBackendError = lastBackendError || error;
+                console.warn('Direct Supabase user update failed:', error);
+            }
+        }
+
+        if (shouldUseLocalMockFallback()) {
+            if (lastBackendError && !shouldUseFirestoreFallback()) {
+                throw lastBackendError instanceof Error ? lastBackendError : new Error('Backend user update failed.');
+            }
+            await ensureLocalDb();
+            const existingLocalUser = await localDb.getById<User>('users', uid);
+            if (!existingLocalUser) {
+                throw new Error('Unable to update profile: user not found in local data.');
+            }
+            const mergedLocalUser = enforceAvatarIdentity({ ...existingLocalUser, ...normalizedUpdates, id: uid });
+            await localDb.upsert('users', mergedLocalUser);
+            if (supabaseMirror.enabled) {
+                await supabaseMirror.upsert('users', uid, mergedLocalUser);
+            }
+            return mergedLocalUser;
+        }
+
         if (supabaseMirror.enabled) {
             await supabaseMirror.mergeUpdate<User>('users', uid, normalizedUpdates);
             const mirrored = await supabaseMirror.get<User>('users', uid);
             if (mirrored) return enforceAvatarIdentity(mirrored);
+        }
+
+        if (lastBackendError) {
+            throw lastBackendError instanceof Error ? lastBackendError : new Error('Backend user update failed.');
         }
 
         throw new Error('Unable to update profile: no active data source available.');
@@ -2017,8 +2442,9 @@ export const userService = {
     addWishlistComment: async (_ownerId: string, _itemId: string, _user: User, _text: string) => {
         // TODO: implement wishlist comments.
     },
-    getBadges: async (badgeIds: string[]): Promise<Badge[]> => {
-        return badgeIds.map((id) => ({ id, name: id, icon: 'star', description: 'Badge' }));
+    getBadges: async (badgeIds: string[] = []): Promise<Badge[]> => {
+        const normalizedBadgeIds = Array.isArray(badgeIds) ? badgeIds : [];
+        return normalizedBadgeIds.map((id) => ({ id, name: id, icon: 'star', description: 'Badge' }));
     },
     getCollectionsForUser: async (userId: string): Promise<ItemCollection[]> => {
         if (!shouldUseFirestoreFallback()) {
@@ -2357,15 +2783,17 @@ export const userService = {
         }
         await addDoc(collection(db, 'users', userId, 'paymentMethods'), method);
     },
-    completeAffiliateOnboarding: async (userId: string, profile: AffiliateProfile) => {
-        if (!shouldUseFirestoreFallback()) {
-            return;
-        }
-        await updateDoc(doc(db, 'users', userId), {
+    completeAffiliateOnboarding: async (userId: string, profile: AffiliateProfile): Promise<User> => {
+        const updatedUser = await userService.updateUserProfile(userId, {
             affiliateProfile: profile,
             affiliateOnboardingCompleted: true,
             isAffiliate: true
         });
+
+        await personaService.ensureRolePersonas(updatedUser);
+        await affiliateCommissionService.ensureAffiliateStarterExperience(userId, profile);
+
+        return updatedUser;
     }
 };
 
@@ -2854,6 +3282,7 @@ export const itemService = {
                 rental_price: itemData.rentalPrice ?? (itemData.listingType !== 'sale' ? itemData.price ?? null : null),
                 auction_start_price: itemData.listingType === 'auction' ? (itemData.auctionDetails?.startingBid ?? itemData.price ?? null) : null,
                 auction_reserve_price: itemData.reservePrice ?? null,
+                auction_end_at: itemData.listingType === 'auction' ? (itemData.auctionDetails?.endTime || null) : null,
                 stock: itemData.stock ?? 0,
                 is_featured: Boolean(itemData.isFeatured),
                 is_verified: Boolean(itemData.isVerified),
@@ -2955,6 +3384,7 @@ export const itemService = {
             if (updates.rentalPrice !== undefined) payload.rental_price = updates.rentalPrice;
             if (updates.reservePrice !== undefined) payload.auction_reserve_price = updates.reservePrice;
             if (updates.auctionDetails?.startingBid !== undefined) payload.auction_start_price = updates.auctionDetails.startingBid;
+            if (updates.auctionDetails?.endTime !== undefined) payload.auction_end_at = updates.auctionDetails.endTime || null;
             if (updates.stock !== undefined) payload.stock = updates.stock;
             if (updates.isFeatured !== undefined) payload.is_featured = Boolean(updates.isFeatured);
             if (updates.isVerified !== undefined) payload.is_verified = Boolean(updates.isVerified);
@@ -3134,27 +3564,79 @@ export const itemService = {
         // Implementation would update nested question in Firestore
     },
     importDropshipItem: async (supplierProduct: SupplierProduct, salePrice: number, user: User): Promise<Item> => {
-         const newItem: Partial<Item> = {
-             title: supplierProduct.title,
-             description: supplierProduct.description,
-             category: supplierProduct.category,
-             imageUrls: supplierProduct.imageUrls,
-             productType: 'dropship',
-             salePrice: salePrice,
-             wholesalePrice: supplierProduct.wholesalePrice,
-             supplierInfo: {
-                 id: supplierProduct.id,
-                 name: supplierProduct.supplierName,
-                 shippingCost: supplierProduct.shippingInfo.cost
-             },
-             stock: 999, // Assumed dropship stock
-             listingType: 'sale',
-             condition: 'new',
-             status: 'published'
-         };
-         return itemService.addItem(newItem, user);
+        if (commerceService.enabled()) {
+            const imported = await commerceService.importDropshipProduct({
+                supplierProductId: supplierProduct.id,
+                salePrice,
+                title: supplierProduct.title,
+                description: supplierProduct.description,
+                category: supplierProduct.category,
+                imageUrls: supplierProduct.imageUrls,
+                routingMode: 'seller_approve',
+                blindDropship: true,
+                autoFulfill: false,
+                minMarginPercent: 20
+            });
+            const itemId = String((imported as any)?.item?.id || '');
+            if (itemId) {
+                const created = await itemService.getItemById(itemId);
+                if (created) return created;
+            }
+        }
+
+        const newItem: Partial<Item> = {
+            title: supplierProduct.title,
+            description: supplierProduct.description,
+            category: supplierProduct.category,
+            imageUrls: supplierProduct.imageUrls,
+            productType: 'dropship',
+            fulfillmentType: 'dropship',
+            salePrice: salePrice,
+            wholesalePrice: supplierProduct.wholesalePrice,
+            supplierInfo: {
+                id: supplierProduct.id,
+                supplierId: supplierProduct.supplierId,
+                supplierProductId: supplierProduct.id,
+                name: supplierProduct.supplierName,
+                shippingCost: supplierProduct.shippingInfo.cost,
+                processingTimeDays: supplierProduct.processingTimeDays,
+                blindDropship: true
+            },
+            dropshipProfile: {
+                supplierId: supplierProduct.supplierId,
+                supplierProductId: supplierProduct.id,
+                supplierSku: supplierProduct.supplierSku,
+                supplierName: supplierProduct.supplierName,
+                routingMode: 'seller_approve',
+                blindDropship: true,
+                autoFulfill: false,
+                minMarginPercent: 20,
+                manualSupplierLinkRequired: false,
+                processingTimeDays: supplierProduct.processingTimeDays
+            },
+            stock: supplierProduct.stock || 999,
+            listingType: 'sale',
+            condition: 'new',
+            status: 'published'
+        };
+        return itemService.addItem(newItem, user);
     },
     checkAvailability: async (itemId: string, startDate: string, endDate: string): Promise<boolean> => {
+        if (isBackendConfigured() && isUuidLike(String(itemId || '').trim())) {
+            try {
+                const quote = await commerceService.quoteRental({
+                    itemId,
+                    rentalStart: startDate,
+                    rentalEnd: endDate
+                });
+                return Boolean(quote.available);
+            } catch (error) {
+                if (!shouldUseFirestoreFallback()) {
+                    throw error;
+                }
+            }
+        }
+
         // 1. Check item's manual blackout dates
         const item = await itemService.getItemById(itemId);
         if (item && item.bookedDates) {
@@ -3198,6 +3680,45 @@ export const itemService = {
         const normalizedBidderName = String(bidder?.name || '').trim() || 'Bidder';
         if (!normalizedBidderId) {
             throw new Error('Missing bidder account.');
+        }
+
+        if (isBackendConfigured() && isUuidLike(String(itemId || '').trim())) {
+            try {
+                const response = await commerceService.placeBid(itemId, bidAmount);
+                const refreshed = await itemService.getItemById(itemId);
+                if (refreshed) {
+                    return {
+                        ...refreshed,
+                        auctionDetails: {
+                            startingBid: response.auction.startingBid,
+                            currentBid: response.auction.currentBid,
+                            endTime: response.auction.endTime,
+                            bidCount: response.auction.bidCount,
+                            bids: response.auction.history
+                        },
+                        buyNowPrice: response.auction.buyNowPrice || refreshed.buyNowPrice,
+                        reservePrice: response.auction.reservePrice || refreshed.reservePrice
+                    };
+                }
+
+                const currentItem = await itemService.getItemById(itemId);
+                if (currentItem) {
+                    return {
+                        ...currentItem,
+                        auctionDetails: {
+                            startingBid: response.auction.startingBid,
+                            currentBid: response.auction.currentBid,
+                            endTime: response.auction.endTime,
+                            bidCount: response.auction.bidCount,
+                            bids: response.auction.history
+                        },
+                        buyNowPrice: response.auction.buyNowPrice || currentItem.buyNowPrice,
+                        reservePrice: response.auction.reservePrice || currentItem.reservePrice
+                    };
+                }
+            } catch (error) {
+                throw error;
+            }
         }
 
         const currentItem = await itemService.getItemById(itemId);
@@ -3312,9 +3833,16 @@ export const itemService = {
             auctionDetails: nextAuctionDetails
         };
     },
-    createOrder: async (userId: string, items: CartItem[], shippingInfo: any, paymentMethod: string, options?: { actorPersonaId?: string | null; actorName?: string }): Promise<string> => {
+    createOrder: async (
+        userId: string,
+        items: CartItem[],
+        shippingInfo: CheckoutShippingInfo,
+        paymentMethod: string,
+        options?: CheckoutSubmissionOptions
+    ): Promise<string> => {
         const isRentMode = (item: CartItem) =>
             item.listingType === 'rent' || (item.listingType === 'both' && item.transactionMode === 'rent');
+        const enforceCanonicalCheckout = shouldEnforceCanonicalCheckout(items);
 
         const tryCanonicalCheckout = async (): Promise<string | null> => {
             if (!isBackendConfigured() || !items.length) return null;
@@ -3322,7 +3850,12 @@ export const itemService = {
             if (!allUuid) return null;
             try {
                 const token = await getBackendToken();
-                if (!token) return null;
+                if (!token) {
+                    if (enforceCanonicalCheckout) {
+                        throw new Error('Authentication is required to complete this checkout.');
+                    }
+                    return null;
+                }
                 const legacyRef = `UP-${Math.floor(100000 + Math.random() * 900000)}`;
                 const res = await backendFetch(
                     '/commerce/orders/checkout',
@@ -3343,14 +3876,21 @@ export const itemService = {
                                 phone: shippingInfo?.phone
                             },
                             payment_method: paymentMethod,
+                            payment_details: options?.paymentDetails || null,
                             actor_persona_id: options?.actorPersonaId ?? null,
-                            actor_name: options?.actorName || shippingInfo?.name
+                            actor_name: options?.actorName || shippingInfo?.name,
+                            coupon_code: options?.couponCode || null
                         })
                     },
                     token
                 );
                 const ref = String(res?.legacy_order_ref || '').trim();
-                if (!res?.ok || !ref) return null;
+                if (!res?.ok || !ref) {
+                    if (enforceCanonicalCheckout) {
+                        throw new Error('Canonical checkout did not return a valid order reference.');
+                    }
+                    return null;
+                }
 
                 const buyerName = String(options?.actorName || shippingInfo?.name || 'Customer').trim() || 'Customer';
                 await Promise.all(
@@ -3429,8 +3969,19 @@ export const itemService = {
                         }
                     })
                 );
+                await affiliateCommissionService.recordOrderAttribution({
+                    orderId: ref,
+                    buyerUserId: userId,
+                    items: items.map((item) => ({ item })),
+                    couponCode: options?.couponCode || null
+                }).catch((error) => {
+                    console.warn('Affiliate attribution recording failed:', error);
+                });
                 return ref;
             } catch (error) {
+                if (enforceCanonicalCheckout) {
+                    throw error;
+                }
                 console.warn('Canonical checkout unavailable, using Firestore path:', error);
                 return null;
             }
@@ -3438,11 +3989,15 @@ export const itemService = {
 
         const canonicalRef = await tryCanonicalCheckout();
         if (canonicalRef) return canonicalRef;
+        if (enforceCanonicalCheckout) {
+            throw new Error('Live marketplace checkout is required for this order. Reconnect to the backend and try again.');
+        }
 
         const batch = writeBatch(db);
         const orderId = `UP-${Math.floor(100000 + Math.random() * 900000)}`; // Simple ID generation
         const orderRef = doc(db, 'orders', orderId);
         const sellerOrderSummary = new Map<string, { listingCount: number; saleCount: number; rentCount: number; bookingIds: string[] }>();
+        const affiliateOrderItems: Array<{ item: CartItem; bookingId?: string | null }> = [];
 
         // 1. Create Main Order Document
         const totalAmount = items.reduce((sum, item) => {
@@ -3540,6 +4095,7 @@ export const itemService = {
                 depositStatus: depositAmount > 0 ? 'held' : undefined,
                 spotlightAttribution: item.spotlightAttribution || null
             });
+            affiliateOrderItems.push({ item, bookingId: bookingRef.id });
 
             const sellerId = String(item.owner?.id || '').trim();
             if (sellerId) {
@@ -3626,6 +4182,14 @@ export const itemService = {
                 }
             }
         }));
+        await affiliateCommissionService.recordOrderAttribution({
+            orderId,
+            buyerUserId: userId,
+            items: affiliateOrderItems,
+            couponCode: options?.couponCode || null
+        }).catch((error) => {
+            console.warn('Affiliate attribution recording failed:', error);
+        });
 
         const buyerName = String(options?.actorName || shippingInfo?.name || 'Customer').trim() || 'Customer';
         const buyerItemCount = items.length;
@@ -3663,6 +4227,26 @@ export const itemService = {
          return itemService.createOrder(user.id, cartItems, shippingInfo, 'card');
     },
     completeOrder: async (bookingId: string) => {
+        if (isBackendConfigured()) {
+            const canonicalBooking = await listerService.getBookingById(bookingId).catch(() => undefined);
+            const enforceCanonicalReceipt = isCanonicalBookingRecord(canonicalBooking) || isUuidLike(String(bookingId || '').trim());
+            try {
+                await commerceService.confirmReceipt(bookingId);
+                await affiliateCommissionService.approveCommissionsForOrderCompletion({
+                    bookingId,
+                    completedAt: new Date().toISOString()
+                }).catch((error) => {
+                    console.warn('Affiliate commission approval failed:', error);
+                });
+                return;
+            } catch (error) {
+                if (enforceCanonicalReceipt || !shouldUseFirestoreFallback()) {
+                    throw error;
+                }
+                console.warn('Canonical receipt confirmation failed, falling back to Firestore path:', error);
+            }
+        }
+
         const batch = writeBatch(db);
         
         const bookingRef = doc(db, 'bookings', bookingId);
@@ -3712,6 +4296,13 @@ export const itemService = {
         }
 
         await batch.commit();
+        await affiliateCommissionService.approveCommissionsForOrderCompletion({
+            orderId: booking.orderId || null,
+            bookingId,
+            completedAt
+        }).catch((error) => {
+            console.warn('Affiliate commission approval failed:', error);
+        });
 
         const notifications: Promise<void>[] = [];
         if (sellerId) {
@@ -3741,6 +4332,27 @@ export const itemService = {
         }
     },
     releaseSecurityDeposit: async (bookingId: string) => {
+         if (isBackendConfigured()) {
+             let enforceCanonicalDeposit = isUuidLike(String(bookingId || '').trim());
+             try {
+                 const booking = await listerService.getBookingById(bookingId);
+                 enforceCanonicalDeposit = enforceCanonicalDeposit || isCanonicalBookingRecord(booking);
+                 const canonicalRentalBookingId = String(booking?.canonicalRentalBookingId || '').trim();
+                 if (booking?.source === 'commerce' && canonicalRentalBookingId) {
+                     await commerceService.releaseRentalDeposit(canonicalRentalBookingId);
+                     return;
+                 }
+                 if (enforceCanonicalDeposit) {
+                     throw new Error('Canonical rental booking is required for deposit release.');
+                 }
+             } catch (error) {
+                 if (enforceCanonicalDeposit || !shouldUseFirestoreFallback()) {
+                     throw error;
+                 }
+                 console.warn('Canonical deposit release failed, falling back to Firestore path:', error);
+             }
+         }
+
          const batch = writeBatch(db);
          const bookingRef = doc(db, 'bookings', bookingId);
          const bookingSnap = await getDoc(bookingRef);
@@ -3787,6 +4399,31 @@ export const itemService = {
          }
     },
     claimSecurityDeposit: async (bookingId: string, amount: number, reason: string, proofImage: string) => {
+         if (isBackendConfigured()) {
+             let enforceCanonicalDeposit = isUuidLike(String(bookingId || '').trim());
+             try {
+                 const booking = await listerService.getBookingById(bookingId);
+                 enforceCanonicalDeposit = enforceCanonicalDeposit || isCanonicalBookingRecord(booking);
+                 const canonicalRentalBookingId = String(booking?.canonicalRentalBookingId || '').trim();
+                 if (booking?.source === 'commerce' && canonicalRentalBookingId) {
+                     await commerceService.claimRentalDeposit(canonicalRentalBookingId, {
+                         amount,
+                         reason,
+                         evidenceUrl: proofImage
+                     });
+                     return;
+                 }
+                 if (enforceCanonicalDeposit) {
+                     throw new Error('Canonical rental booking is required for deposit claims.');
+                 }
+             } catch (error) {
+                 if (enforceCanonicalDeposit || !shouldUseFirestoreFallback()) {
+                     throw error;
+                 }
+                 console.warn('Canonical deposit claim failed, falling back to Firestore path:', error);
+             }
+         }
+
          const batch = writeBatch(db);
          const bookingRef = doc(db, 'bookings', bookingId);
          const bookingSnap = await getDoc(bookingRef);
@@ -4008,6 +4645,7 @@ export const itemService = {
                 buyer_id: buyerSupabaseId,
                 seller_id: sellerSupabaseId,
                 item_id: normalizedItemId,
+                inbox_label: null,
                 last_message_at: new Date().toISOString()
             };
 
@@ -4038,6 +4676,7 @@ export const itemService = {
                 itemId: normalizedItemId,
                 buyerId,
                 sellerId,
+                inboxLabel: null,
                 participants: [buyerId, sellerId],
                 lastMessage: '',
                 lastUpdated: new Date().toISOString(),
@@ -4138,6 +4777,7 @@ export const itemService = {
                         sellerId: firebaseUidBySupabaseUserId.get(String(row?.seller_id || '')) || String(row?.seller_id || ''),
                         buyerPersonaId: row?.buyer_persona_id || undefined,
                         sellerPersonaId: row?.seller_persona_id || undefined,
+                        inboxLabel: normalizeChatInboxLabel(row?.inbox_label),
                         lastMessage: lastMessage?.type === 'offer' ? 'Sent an offer' : (lastMessage?.text || ''),
                         lastUpdated: toIsoTimestamp(row?.last_message_at || row?.created_at || lastMessage?.timestamp),
                         messages: lastMessage ? [lastMessage] : []
@@ -4171,6 +4811,7 @@ export const itemService = {
                         itemId: row?.itemId || '',
                         buyerId,
                         sellerId,
+                        inboxLabel: normalizeChatInboxLabel(row?.inboxLabel),
                         lastMessage: row?.lastMessage || (lastMessage?.type === 'offer' ? 'Sent an offer' : (lastMessage?.text || '')),
                         lastUpdated: row?.lastUpdated || toIsoTimestamp(lastMessage?.timestamp),
                         messages
@@ -4185,8 +4826,13 @@ export const itemService = {
 
         return [];
     },
-    getChatMessagesForThread: async (threadId: string): Promise<ChatMessage[]> => {
+    getChatMessagesForThread: async (
+        threadId: string,
+        options?: { limit?: number; before?: string }
+    ): Promise<ChatMessage[]> => {
         if (!threadId) return [];
+        const limitCount = Math.max(40, Math.min(400, Number(options?.limit || 180)));
+        const before = options?.before ? new Date(options.before).toISOString() : '';
 
         if (isBackendConfigured()) {
             try {
@@ -4194,8 +4840,11 @@ export const itemService = {
                 const messageParams = new URLSearchParams();
                 messageParams.set('eq.thread_id', threadId);
                 messageParams.set('select', CHAT_MESSAGE_SELECT);
-                messageParams.set('order', 'created_at.asc');
-                messageParams.set('limit', '600');
+                messageParams.set('order', 'created_at.desc');
+                messageParams.set('limit', String(limitCount));
+                if (before) {
+                    messageParams.set('lt.created_at', before);
+                }
                 const messageRes = await backendFetch(`/api/chat_messages?${messageParams.toString()}`, {}, token);
                 const messageRows = Array.isArray(messageRes?.data) ? messageRes.data : [];
                 if (messageRows.length === 0) return [];
@@ -4211,6 +4860,7 @@ export const itemService = {
                 const offerMap = await fetchOffersByIds(offerIds, firebaseUidBySupabaseUserId, token);
                 return messageRows
                     .map((row: any) => mapBackendMessageRowToChatMessage(row, firebaseUidBySupabaseUserId, offerMap))
+                    .reverse()
                     .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
             } catch (error) {
                 console.warn('Backend message fetch failed:', error);
@@ -4218,14 +4868,28 @@ export const itemService = {
         }
 
         if (shouldUseFirestoreFallback()) {
-            const messagesQuery = query(collection(db, 'chatThreads', threadId, 'messages'), orderBy('timestamp', 'asc'));
+            const constraints = [];
+            if (before) {
+                constraints.push(where('timestamp', '<', before));
+            }
+            constraints.push(orderBy('timestamp', 'desc'));
+            constraints.push(limit(limitCount));
+            const messagesQuery = query(collection(db, 'chatThreads', threadId, 'messages'), ...constraints as any);
             const messagesSnap = await getDocs(messagesQuery);
-            return messagesSnap.docs.map((messageDoc) => ({ id: messageDoc.id, ...(messageDoc.data() as any) } as ChatMessage));
+            return messagesSnap.docs
+                .map((messageDoc) => ({ id: messageDoc.id, ...(messageDoc.data() as any) } as ChatMessage))
+                .reverse();
         }
 
         return [];
     },
-    sendMessageToThread: async (threadId: string, senderId: string, text: string, imageUrl?: string) => {
+    sendMessageToThread: async (
+        threadId: string,
+        senderId: string,
+        text: string,
+        imageUrl?: string,
+        options?: { replyToMessageId?: string }
+    ) => {
         if (isBackendConfigured()) {
             const token = await getBackendToken();
             const senderSupabaseId = await resolveSupabaseUserId(senderId);
@@ -4251,6 +4915,7 @@ export const itemService = {
                     message_type: imageUrl ? 'image' : 'text',
                     body: text?.trim() || null,
                     image_url: imageUrl || null,
+                    reply_to_message_id: options?.replyToMessageId || null,
                     created_at: now
                 })
             }, token);
@@ -4295,6 +4960,10 @@ export const itemService = {
                 text: text?.trim() || '',
                 imageUrl: imageUrl || null,
                 type: imageUrl ? 'image' : 'text',
+                replyToMessageId: options?.replyToMessageId || null,
+                reactions: {},
+                editedAt: null,
+                deletedAt: null,
                 timestamp: new Date().toISOString()
             });
             await updateDoc(doc(db, 'chatThreads', threadId), {
@@ -4470,7 +5139,8 @@ export const itemService = {
         threadId: string,
         senderId: string,
         voiceBlob: Blob,
-        durationMs: number
+        durationMs: number,
+        options?: { replyToMessageId?: string }
     ) => {
         if (!voiceBlob || voiceBlob.size <= 0) {
             throw new Error('Voice note is empty.');
@@ -4520,6 +5190,7 @@ export const itemService = {
                         durationMs: Math.max(0, Math.round(durationMs || 0)),
                         mimeType
                     }),
+                    reply_to_message_id: options?.replyToMessageId || null,
                     created_at: now
                 })
             }, token);
@@ -4543,6 +5214,10 @@ export const itemService = {
                 type: 'voice',
                 audioUrl: audioDataUrl,
                 audioDurationMs: Math.max(0, Math.round(durationMs || 0)),
+                replyToMessageId: options?.replyToMessageId || null,
+                reactions: {},
+                editedAt: null,
+                deletedAt: null,
                 timestamp: new Date().toISOString()
             });
             await updateDoc(doc(db, 'chatThreads', threadId), {
@@ -4553,6 +5228,135 @@ export const itemService = {
         }
 
         throw new Error('Voice messaging is unavailable.');
+    },
+    editThreadMessage: async (
+        threadId: string,
+        messageId: string,
+        nextText: string
+    ) => {
+        const trimmedText = String(nextText || '').trim();
+        if (!threadId || !messageId || !trimmedText) {
+            throw new Error('Message text is required.');
+        }
+
+        const editedAt = new Date().toISOString();
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            await backendFetch(`/api/chat_messages/${messageId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    body: trimmedText,
+                    edited_at: editedAt,
+                    deleted_at: null
+                })
+            }, token);
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await updateDoc(doc(db, 'chatThreads', threadId, 'messages', messageId), {
+                text: trimmedText,
+                editedAt,
+                deletedAt: null
+            });
+            return;
+        }
+
+        throw new Error('Message editing is unavailable.');
+    },
+    deleteThreadMessage: async (
+        threadId: string,
+        messageId: string
+    ) => {
+        if (!threadId || !messageId) {
+            throw new Error('Message not found.');
+        }
+
+        const deletedAt = new Date().toISOString();
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            await backendFetch(`/api/chat_messages/${messageId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    body: null,
+                    image_url: null,
+                    offer_id: null,
+                    deleted_at: deletedAt,
+                    edited_at: null,
+                    reactions: {}
+                })
+            }, token);
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await updateDoc(doc(db, 'chatThreads', threadId, 'messages', messageId), {
+                text: '',
+                imageUrl: null,
+                audioUrl: null,
+                offer: null,
+                reactions: {},
+                deletedAt,
+                editedAt: null
+            });
+            return;
+        }
+
+        throw new Error('Message deletion is unavailable.');
+    },
+    setThreadMessageReactions: async (
+        threadId: string,
+        messageId: string,
+        reactions: Record<string, string[]>
+    ) => {
+        if (!threadId || !messageId) {
+            throw new Error('Message not found.');
+        }
+
+        const normalizedReactions = Object.entries(reactions || {}).reduce<Record<string, string[]>>((accumulator, [emoji, userIds]) => {
+            const normalizedIds = Array.isArray(userIds)
+                ? userIds.map((entry) => String(entry || '').trim()).filter(Boolean)
+                : [];
+            if (emoji && normalizedIds.length > 0) accumulator[emoji] = normalizedIds;
+            return accumulator;
+        }, {});
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const firebaseIds = [...new Set(Object.values(normalizedReactions).flat())];
+            const supabaseIdByFirebaseId = new Map<string, string>();
+            await Promise.all(firebaseIds.map(async (firebaseId) => {
+                const resolved = await resolveSupabaseUserId(firebaseId);
+                if (resolved) supabaseIdByFirebaseId.set(firebaseId, resolved);
+            }));
+
+            const backendReactions = Object.entries(normalizedReactions).reduce<Record<string, string[]>>((accumulator, [emoji, userIds]) => {
+                const mappedIds = userIds
+                    .map((firebaseId) => supabaseIdByFirebaseId.get(firebaseId) || '')
+                    .filter(Boolean);
+                if (mappedIds.length > 0) accumulator[emoji] = mappedIds;
+                return accumulator;
+            }, {});
+
+            await backendFetch(`/api/chat_messages/${messageId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    reactions: backendReactions
+                })
+            }, token);
+            return;
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await updateDoc(doc(db, 'chatThreads', threadId, 'messages', messageId), {
+                reactions: normalizedReactions
+            });
+            return;
+        }
+
+        throw new Error('Message reactions are unavailable.');
     },
     setThreadTypingState: async (threadId: string, userId: string, isTyping: boolean) => {
         if (!threadId || !userId || !isBackendConfigured()) return;
@@ -4637,6 +5441,61 @@ export const itemService = {
         } catch {
             return {};
         }
+    },
+    getReadReceiptsForThreads: async (threadIds: string[]): Promise<Record<string, Record<string, string>>> => {
+        const normalizedThreadIds = Array.from(new Set((threadIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+        if (normalizedThreadIds.length === 0 || !isBackendConfigured()) return {};
+        try {
+            const token = await getBackendToken();
+            const encodedCollections = normalizedThreadIds.map((threadId) => encodeReadCollection(threadId));
+            const params = new URLSearchParams();
+            params.set('in.collection', encodedCollections.join(','));
+            params.set('select', 'collection,doc_id,data,updated_at');
+            params.set('order', 'updated_at.desc');
+            params.set('limit', String(Math.min(Math.max(encodedCollections.length * 6, 80), 900)));
+            const response = await backendFetch(`/api/mirror_documents?${params.toString()}`, {}, token);
+            const rows = Array.isArray(response?.data) ? response.data : [];
+            return rows.reduce((acc, row: any) => {
+                const collectionName = String(row?.collection || '');
+                const threadId = collectionName.startsWith(CHAT_READ_COLLECTION_PREFIX)
+                    ? collectionName.slice(CHAT_READ_COLLECTION_PREFIX.length)
+                    : '';
+                if (!threadId) return acc;
+                const data = row?.data || {};
+                const userId = String(data?.userId || row?.doc_id || '');
+                const lastReadAt = String(data?.lastReadAt || '');
+                if (!userId || !lastReadAt) return acc;
+                if (!acc[threadId]) acc[threadId] = {};
+                acc[threadId][userId] = lastReadAt;
+                return acc;
+            }, {} as Record<string, Record<string, string>>);
+        } catch {
+            return {};
+        }
+    },
+    setThreadInboxLabel: async (threadId: string, label: 'primary' | 'general' | null) => {
+        if (!threadId) return null;
+        const normalizedLabel = normalizeChatInboxLabel(label);
+
+        if (isBackendConfigured()) {
+            const token = await getBackendToken();
+            const response = await backendFetch(`/api/chat_threads/${threadId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    inbox_label: normalizedLabel
+                })
+            }, token);
+            return normalizeChatInboxLabel(response?.data?.inbox_label);
+        }
+
+        if (shouldUseFirestoreFallback()) {
+            await updateDoc(doc(db, 'chatThreads', threadId), {
+                inboxLabel: normalizedLabel
+            });
+            return normalizedLabel;
+        }
+
+        return normalizedLabel;
     },
     startThreadCall: async (
         threadId: string,
@@ -4842,16 +5701,155 @@ export const listerService = {
         };
     },
     getBookings: async (userId: string): Promise<Booking[]> => {
+         const merged: Booking[] = [];
+         const seen = new Set<string>();
+         let canonicalLoaded = false;
+
+         if (isBackendConfigured()) {
+             try {
+                 const canonical = await commerceService.getSellerBookings();
+                 canonicalLoaded = true;
+                 canonical.forEach((booking) => {
+                     if (!seen.has(booking.id)) {
+                         seen.add(booking.id);
+                         merged.push(booking);
+                     }
+                 });
+             } catch (error) {
+                 throw error;
+             }
+         }
+
+         if (!shouldUseFirestoreFallback()) {
+             return merged;
+         }
          const q = query(collection(db, 'bookings'), where('provider.id', '==', userId));
          const snapshot = await getDocs(q);
-         return snapshot.docs.map(doc => fromFirestore<Booking>(doc));
+         snapshot.docs
+             .map(doc => fromFirestore<Booking>(doc))
+             .filter((booking) => !(canonicalLoaded && booking.source === 'commerce'))
+             .forEach((booking) => {
+             if (!seen.has(booking.id)) {
+                 seen.add(booking.id);
+                 merged.push(booking);
+             }
+         });
+         return merged;
     },
     getBookingById: async (bookingId: string): Promise<Booking | undefined> => {
+        if (isBackendConfigured()) {
+            let lastCanonicalError: unknown = null;
+            const loaders = [
+                () => commerceService.getOrderDetail(bookingId),
+                () => commerceService.getSellerBookingDetail(bookingId)
+            ];
+
+            for (const load of loaders) {
+                try {
+                    const detail = await load();
+                    if (detail) return mapCommerceDetailToBooking(detail);
+                } catch (error) {
+                    lastCanonicalError = error;
+                }
+            }
+
+            if (!shouldUseFirestoreFallback() && lastCanonicalError) {
+                throw lastCanonicalError;
+            }
+        }
+
         const docRef = doc(db, 'bookings', bookingId);
         const snap = await getDoc(docRef);
         return snap.exists() ? fromFirestore<Booking>(snap) : undefined;
     },
     updateBooking: async (bookingId: string, updates: Partial<Booking>) => {
+        if (isBackendConfigured()) {
+            let enforceCanonicalUpdate = isUuidLike(String(bookingId || '').trim());
+            try {
+                const booking = await listerService.getBookingById(bookingId);
+                enforceCanonicalUpdate = enforceCanonicalUpdate || isCanonicalBookingRecord(booking);
+                if (booking?.source === 'commerce') {
+                    const nextStatus = typeof updates.status === 'string' ? updates.status : booking.status;
+                    const trackingNumber =
+                        typeof updates.trackingNumber === 'string'
+                            ? updates.trackingNumber.trim()
+                            : String(booking.trackingNumber || '').trim();
+
+                    if (booking.canonicalRentalBookingId) {
+                        if (
+                            nextStatus === 'confirmed' ||
+                            nextStatus === 'cancelled' ||
+                            updates.pickupInstructions !== undefined ||
+                            updates.pickupCode !== undefined ||
+                            updates.pickupWindowStart !== undefined ||
+                            updates.pickupWindowEnd !== undefined
+                        ) {
+                            await commerceService.confirmRental(booking.canonicalRentalBookingId, {
+                                cancel: nextStatus === 'cancelled',
+                                pickupInstructions: updates.pickupInstructions,
+                                pickupCode: updates.pickupCode,
+                                pickupWindowStart: updates.pickupWindowStart,
+                                pickupWindowEnd: updates.pickupWindowEnd
+                            });
+                            return;
+                        }
+
+                        if (nextStatus === 'shipped' || nextStatus === 'delivered' || trackingNumber) {
+                            await commerceService.handoffRental(booking.canonicalRentalBookingId, {
+                                action: nextStatus === 'delivered' ? 'activate' : 'ship',
+                                trackingNumber: trackingNumber || undefined
+                            });
+                            return;
+                        }
+
+                        if (nextStatus === 'returned' || nextStatus === 'completed') {
+                            await commerceService.returnRental(booking.canonicalRentalBookingId, {
+                                action: nextStatus === 'completed' ? 'complete' : 'received',
+                                returnTrackingNumber: trackingNumber || undefined
+                            });
+                            return;
+                        }
+                    } else {
+                        const carrier = trackingNumber.includes(':')
+                            ? trackingNumber.split(':')[0].trim()
+                            : '';
+                        const cleanTrackingNumber = trackingNumber.includes(':')
+                            ? trackingNumber.split(':').slice(1).join(':').trim()
+                            : trackingNumber;
+
+                        if (nextStatus === 'shipped' || trackingNumber) {
+                            await commerceService.updateFulfillment(bookingId, {
+                                action: 'ship',
+                                carrier: carrier || undefined,
+                                trackingNumber: cleanTrackingNumber || undefined
+                            });
+                            return;
+                        }
+
+                        if (nextStatus === 'delivered') {
+                            await commerceService.updateFulfillment(bookingId, {
+                                action: 'deliver',
+                                trackingNumber: cleanTrackingNumber || undefined
+                            });
+                            return;
+                        }
+
+                        if (nextStatus === 'completed') {
+                            await commerceService.updateFulfillment(bookingId, {
+                                action: 'complete'
+                            });
+                            return;
+                        }
+                    }
+                }
+            } catch (error) {
+                if (enforceCanonicalUpdate || !shouldUseFirestoreFallback()) {
+                    throw error;
+                }
+                console.warn('Canonical booking update failed, falling back to Firestore:', error);
+            }
+        }
+
         const bookingRef = doc(db, 'bookings', bookingId);
         const bookingSnap = await getDoc(bookingRef);
         if (!bookingSnap.exists()) {
@@ -4926,24 +5924,61 @@ export const listerService = {
         await listerService.updateBooking(bookingId, { status: status as Booking['status'] });
     },
     getRentalHistory: async (userId: string): Promise<RentalHistoryItem[]> => {
-        // Combine bookings where user is renter or provider
-        const q = query(collection(db, 'bookings')); // Simplified
+        const rows: RentalHistoryItem[] = [];
+        const seen = new Set<string>();
+        let canonicalLoaded = false;
+
+        if (isBackendConfigured()) {
+            try {
+                const token = await getBackendToken();
+                if (token) {
+                    canonicalLoaded = true;
+                    const res = await backendFetch('/commerce/orders/history?limit=80', {}, token);
+                    const lines = Array.isArray(res?.lines) ? res.lines : [];
+                    lines.forEach((line: Record<string, unknown>) => {
+                        const row = mapCommerceHistoryLineToRentalHistory(line);
+                        const key = `${row.source}|${row.id}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            rows.push(row);
+                        }
+                    });
+                }
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        if (!shouldUseFirestoreFallback()) {
+            return rows;
+        }
+        const q = query(collection(db, 'bookings'));
         const snapshot = await getDocs(q);
         const allBookings = snapshot.docs.map(doc => fromFirestore<Booking>(doc));
-        // Filter and map to RentalHistoryItem
-        return allBookings
-            .filter(b => b.renterId === userId || b.provider.id === userId)
-            .map(b => ({
-                id: b.id,
-                itemId: b.itemId,
-                itemTitle: b.itemTitle,
-                itemImageUrl: 'https://picsum.photos/200', // Mock
-                startDate: b.startDate,
-                endDate: b.endDate,
-                totalPrice: b.totalPrice,
-                status: b.status,
-                type: 'rent' // or derived from booking
-            }));
+        allBookings
+            .filter(b => (b.renterId === userId || b.provider.id === userId) && !(canonicalLoaded && b.source === 'commerce'))
+            .forEach((b) => {
+                const row: RentalHistoryItem = {
+                    id: b.id,
+                    itemId: b.itemId,
+                    itemTitle: b.itemTitle,
+                    itemImageUrl: 'https://picsum.photos/200',
+                    startDate: b.startDate,
+                    endDate: b.endDate,
+                    totalPrice: b.totalPrice,
+                    status: b.status,
+                    type: b.type || 'rent',
+                    source: 'firestore',
+                    orderId: b.orderId
+                };
+                const key = `${row.source}|${row.id}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    rows.push(row);
+                }
+            });
+
+        return rows;
     },
     getDiscountCodes: async (userId: string): Promise<DiscountCode[]> => {
         const q = query(collection(db, 'discountCodes'), where('userId', '==', userId));
@@ -4994,36 +6029,104 @@ export const listerService = {
         const snapshot = await getDocs(q);
         return snapshot.docs.map(doc => fromFirestore(doc));
     },
-    getAffiliateData: async (userId: string) => {
-        const affiliate = { userId, referralCode: 'USER123', clicks: 150, signups: 5, commissionRate: 0.05, earnings: 250, balance: 50 };
-        return { affiliate, earnings: [] };
-    },
-    getAffiliateLinks: async (userId: string): Promise<AffiliateLink[]> => [],
-    getAffiliateCoupons: async (userId: string): Promise<AffiliateCoupon[]> => [],
-    getCreativeAssets: async (): Promise<CreativeAsset[]> => [],
-    getAffiliateLeaderboard: async (): Promise<any[]> => [],
+    getAffiliateData: async (userId: string) => affiliateCommissionService.getAffiliateData(userId),
+    getAffiliateDashboard: async (userId: string) => affiliateCommissionService.getAffiliateDashboard(userId),
+    getAffiliateLinks: async (userId: string): Promise<AffiliateLink[]> => affiliateCommissionService.getAffiliateLinks(userId),
+    getAffiliateCoupons: async (userId: string): Promise<AffiliateCoupon[]> => affiliateCommissionService.getAffiliateCoupons(userId),
+    getCreativeAssets: async (): Promise<CreativeAsset[]> => affiliateCommissionService.getCreativeAssets(),
+    getAffiliateLeaderboard: async (): Promise<any[]> => affiliateCommissionService.getAffiliateLeaderboard(),
     joinAffiliateProgram: async (userId: string): Promise<User> => {
-        const updates = { isAffiliate: true, affiliateOnboardingCompleted: false };
-        await updateDoc(doc(db, 'users', userId), updates);
-        const u = await userService.getUserById(userId);
-        return u!;
-    },
-    generateAffiliateLink: async (userId: string, url: string): Promise<AffiliateLink> => {
-        return { id: 'link-1', userId, originalUrl: url, shortCode: 'xyz', clicks: 0 };
-    },
-    createAffiliateCoupon: async (userId: string, code: string, percentage: number): Promise<AffiliateCoupon> => {
-        return { id: 'coup-1', userId, code, discountPercentage: percentage, uses: 0, commissionRate: 0.05 };
-    },
-    transferEarningsToWallet: async (userId: string): Promise<User> => {
-        // Mock transfer
-        return (await userService.getUserById(userId))!;
-    },
-    submitExternalProduct: async (userId: string, url: string) => {},
-    submitContentReview: async (userId: string, url: string) => {},
-    requestPayout: async (userId: string, amount: number, method: any) => {
-        await addDoc(collection(db, 'payout_requests'), {
-            userId, amount, method, status: 'pending', createdAt: new Date().toISOString()
+        const updatedUser = await userService.updateUserProfile(userId, {
+            isAffiliate: true,
+            affiliateOnboardingCompleted: false
         });
+        await personaService.ensureRolePersonas(updatedUser);
+        return updatedUser;
+    },
+    generateAffiliateLink: async (userId: string, url: string): Promise<AffiliateLink> => affiliateCommissionService.generateAffiliateLink(userId, url),
+    createAffiliateCoupon: async (userId: string, code: string, percentage: number, storeId?: string | null): Promise<AffiliateCoupon> =>
+        affiliateCommissionService.createAffiliateCoupon(userId, code, percentage, storeId),
+    transferEarningsToWallet: async (userId: string): Promise<User> => affiliateCommissionService.transferApprovedCommissionsToWallet(userId),
+    submitExternalProduct: async (userId: string, url: string) => affiliateCommissionService.submitExternalProduct(userId, url),
+    submitContentReview: async (userId: string, url: string) => affiliateCommissionService.submitContentReview(userId, url),
+    requestPayout: async (userId: string, amount: number, method: any) => {
+        const user = await userService.getUserById(userId);
+        if (!user) {
+            throw new Error('User not found.');
+        }
+        if (amount <= 0) {
+            throw new Error('Amount must be greater than zero.');
+        }
+        if (amount > (user.walletBalance || 0)) {
+            throw new Error('Insufficient wallet balance.');
+        }
+
+        const createdAt = new Date().toISOString();
+
+        if (!shouldUseFirestoreFallback()) {
+            await ensureLocalDb();
+            await localDb.upsert('users', {
+                ...user,
+                id: user.id,
+                walletBalance: Math.max(0, (user.walletBalance || 0) - amount),
+                processingBalance: (user.processingBalance || 0) + amount
+            });
+            await localDb.upsert('payouts', {
+                userId,
+                amount,
+                method,
+                status: 'pending',
+                createdAt,
+                type: 'withdrawal_request'
+            });
+            return;
+        }
+
+        const batch = writeBatch(db);
+        const userRef = doc(db, 'users', userId);
+        const payoutRef = doc(collection(db, 'payout_requests'));
+        const transactionRef = doc(collection(db, 'walletTransactions'));
+        const payoutRecord = {
+            id: payoutRef.id,
+            userId,
+            amount,
+            method,
+            status: 'pending',
+            createdAt,
+            walletTransactionId: transactionRef.id
+        };
+        const transactionRecord = {
+            id: transactionRef.id,
+            userId,
+            amount,
+            type: 'debit',
+            description: `Withdrawal request via ${String(method?.type || 'payout').replace('_', ' ')}`,
+            date: createdAt,
+            status: 'pending'
+        };
+
+        batch.update(userRef, {
+            walletBalance: increment(-amount),
+            processingBalance: increment(amount)
+        });
+        batch.set(transactionRef, transactionRecord);
+        batch.set(payoutRef, payoutRecord);
+        await batch.commit();
+
+        if (supabaseMirror.enabled) {
+            await Promise.all([
+                supabaseMirror.upsert('walletTransactions', transactionRef.id, transactionRecord),
+                supabaseMirror.upsert('payout_requests', payoutRef.id, payoutRecord)
+            ]);
+            const mirroredUser = await supabaseMirror.get<User>('users', userId).catch(() => null);
+            if (mirroredUser) {
+                await supabaseMirror.upsert('users', userId, {
+                    ...mirroredUser,
+                    walletBalance: Math.max(0, (user.walletBalance || 0) - amount),
+                    processingBalance: (user.processingBalance || 0) + amount
+                });
+            }
+        }
     },
     getSellerPerformanceStats: async (userId: string): Promise<SellerPerformanceStats> => {
          return {
@@ -5099,17 +6202,59 @@ export const postService = {
 };
 
 // --- SERVICE SERVICE ---
+const isPublishedService = (service?: Partial<Service> | null) => {
+    if (!service?.id) return false;
+    const status = String(service.status || 'published').toLowerCase();
+    return !status || status === 'published';
+};
+
+const dedupePublicServices = (services: Service[]) => {
+    const map = new Map<string, Service>();
+    services.forEach((service) => {
+        if (!isPublishedService(service)) return;
+        if (!map.has(service.id)) {
+            map.set(service.id, service);
+        }
+    });
+    return Array.from(map.values());
+};
+
+const loadCanonicalServiceCatalog = async (params: ListWorkListingsParams = {}): Promise<Service[]> => {
+    const pageSize = 200;
+    const maxPages = 10;
+    const collected: Service[] = [];
+
+    for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+        const offset = pageIndex * pageSize;
+        const listings = await workService.getListings({ ...params, limit: pageSize, offset });
+        if (!listings.length) break;
+        collected.push(...listings.map(mapWorkListingToService));
+        if (listings.length < pageSize) break;
+    }
+
+    return dedupePublicServices(collected);
+};
+
 export const serviceService = {
     getServices: async (): Promise<Service[]> => {
-        try {
-            const services = await workService.getLegacyServices({ status: 'published', limit: 200 });
-            if (services.length > 0) return services;
-        } catch (error) {
-            console.warn('workService.getLegacyServices failed, falling back to legacy services:', error);
-        }
+        const [canonicalServices, legacySnapshot] = await Promise.all([
+            loadCanonicalServiceCatalog({ status: 'published' }).catch((error) => {
+                console.warn('Canonical work service fetch failed, falling back to legacy services:', error);
+                return [] as Service[];
+            }),
+            getDocs(collection(db, 'services')).catch((error) => {
+                console.warn('Legacy service collection fetch failed:', error);
+                return null;
+            })
+        ]);
 
-        const snapshot = await getDocs(collection(db, 'services'));
-        return snapshot.docs.map((docSnap) => fromFirestore<Service>(docSnap));
+        const legacyServices = legacySnapshot
+            ? legacySnapshot.docs
+                .map((docSnap) => fromFirestore<Service>(docSnap))
+                .filter((service) => isPublishedService(service))
+            : [];
+
+        return dedupePublicServices([...canonicalServices, ...legacyServices]);
     },
     getServiceById: async (id: string): Promise<Service | undefined> => {
         try {
@@ -5123,8 +6268,9 @@ export const serviceService = {
         return docSnap.exists() ? fromFirestore<Service>(docSnap) : undefined;
     },
     addService: async (serviceData: Partial<Service>, user: User) => {
+        let createError: unknown = null;
         try {
-            await workService.createListing({
+            const listing = await workService.createListing({
                 title: serviceData.title || 'Untitled Service',
                 description: serviceData.description || '',
                 category: serviceData.category || 'general',
@@ -5144,6 +6290,8 @@ export const serviceService = {
                     type: model.type
                 })),
                 media: serviceData.imageUrls || [],
+                availability: serviceData.availability || {},
+                details: serviceData.details || {},
                 riskScore: serviceData.riskScore || 0,
                 providerSnapshot: {
                     id: user.id,
@@ -5152,20 +6300,32 @@ export const serviceService = {
                     rating: user.rating || 0,
                     reviews: []
                 },
-                status: 'published',
+                status: serviceData.status || 'draft',
                 visibility: 'public'
             }, user);
-            return;
+            return mapWorkListingToService(listing);
         } catch (error) {
+            createError = error;
             console.warn('workService.createListing failed, writing legacy service fallback:', error);
         }
 
-        await addDoc(collection(db, 'services'), {
+        if (!shouldUseFirestoreFallback()) {
+            throw createError instanceof Error ? createError : new Error('Unable to create service listing.');
+        }
+
+        const docRef = await addDoc(collection(db, 'services'), {
             ...serviceData,
             provider: { id: user.id, name: user.name, avatar: user.avatar, rating: 0, reviews: [] },
             avgRating: 0,
             reviews: []
         });
+        return {
+            id: docRef.id,
+            ...serviceData,
+            provider: { id: user.id, name: user.name, avatar: user.avatar, rating: 0, reviews: [] },
+            avgRating: 0,
+            reviews: []
+        } as Service;
     },
     updateService: async (serviceId: string, serviceData: Partial<Service>, user: User) => {
         if (!serviceId) throw new Error('Service ID is required for update.');
@@ -5190,6 +6350,8 @@ export const serviceService = {
                     type: model.type
                 })),
                 media: serviceData.imageUrls || [],
+                availability: serviceData.availability,
+                details: serviceData.details,
                 providerSnapshot: {
                     id: user.id,
                     name: user.name,
@@ -5197,8 +6359,8 @@ export const serviceService = {
                     rating: user.rating || 0,
                     reviews: []
                 },
-                status: 'published',
-                visibility: 'public',
+                status: serviceData.status,
+                visibility: serviceData.status === 'published' ? 'public' : undefined,
                 updatedAt: new Date().toISOString()
             });
             return mapWorkListingToService(listing);
@@ -5223,16 +6385,24 @@ export const serviceService = {
         }, { merge: true });
     },
     getServicesByProvider: async (userId: string): Promise<Service[]> => {
-        try {
-            const services = await workService.getLegacyServices({ sellerId: userId, limit: 200 });
-            if (services.length > 0) return services;
-        } catch (error) {
-            console.warn('workService provider query failed, falling back to legacy services:', error);
-        }
+        const [canonicalServices, legacySnapshot] = await Promise.all([
+            loadCanonicalServiceCatalog({ sellerId: userId, status: 'published' }).catch((error) => {
+                console.warn('Canonical provider service query failed, falling back to legacy services:', error);
+                return [] as Service[];
+            }),
+            getDocs(query(collection(db, 'services'), where('provider.id', '==', userId))).catch((error) => {
+                console.warn('Legacy provider service query failed:', error);
+                return null;
+            })
+        ]);
 
-        const q = query(collection(db, 'services'), where('provider.id', '==', userId));
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map((docSnap) => fromFirestore<Service>(docSnap));
+        const legacyServices = legacySnapshot
+            ? legacySnapshot.docs
+                .map((docSnap) => fromFirestore<Service>(docSnap))
+                .filter((service) => isPublishedService(service))
+            : [];
+
+        return dedupePublicServices([...canonicalServices, ...legacyServices]);
     }
 };
 
@@ -5294,46 +6464,17 @@ export const providerService = {
     },
     updateJobStatus: async (jobId: string, status: string) => {
         try {
-            if (status === 'confirmed' && isBackendConfigured()) {
-                const token = await getBackendToken();
-                const requestLookup = await backendFetch(`/api/work_requests/${jobId}`, {}, token).catch(() => null);
-                const requestRow = requestLookup?.data || null;
-                if (requestRow?.id) {
-                    await backendFetch(`/api/work_requests/${jobId}`, {
-                        method: 'PATCH',
-                        body: JSON.stringify({
-                            status: 'matched',
-                            updated_at: new Date().toISOString()
-                        })
-                    }, token).catch(() => undefined);
-
-                    if (requestRow.target_provider_id && requestRow.requester_id) {
-                        await contractService.createContract({
-                            requestId: requestRow.id,
-                            clientId: requestRow.requester_id,
-                            providerId: requestRow.target_provider_id,
-                            scope: requestRow.brief || requestRow.title || 'Service request',
-                            mode: requestRow.mode || 'hybrid',
-                            fulfillmentKind: requestRow.fulfillment_kind || 'hybrid',
-                            currency: requestRow.currency || 'USD',
-                            timezone: requestRow.timezone || 'UTC',
-                            totalAmount: Number(requestRow.budget_max || requestRow.budget_min || 0),
-                            status: 'active'
-                        }, {
-                            id: requestRow.target_provider_id,
-                            name: requestRow.provider_snapshot?.name || 'Provider',
-                            email: '',
-                            avatar: requestRow.provider_snapshot?.avatar || '/icons/urbanprime.svg',
-                            following: [],
-                            followers: [],
-                            wishlist: [],
-                            cart: [],
-                            badges: [],
-                            memberSince: new Date().toISOString()
-                        } as User);
-                    }
-                    return;
-                }
+            if (status === 'confirmed') {
+                await workService.acceptRequest(jobId);
+                return;
+            }
+            if (status === 'cancelled') {
+                await workService.declineRequest(jobId);
+                return;
+            }
+            if (status === 'completed') {
+                await contractService.completeContract(jobId);
+                return;
             }
 
             await contractService.updateContract(jobId, {

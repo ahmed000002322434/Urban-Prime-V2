@@ -7,6 +7,7 @@ import type { Item } from '../../types';
 import Spinner from '../../components/Spinner';
 import ItemCard from '../../components/ItemCard';
 import { useTheme } from '../../hooks/useTheme';
+import useLowEndMode from '../../hooks/useLowEndMode';
 import { useHeroStyle } from '../../context/HeroStyleContext';
 import Magnetic from '../../components/Magnetic';
 import HomePageMobile from './HomePageMobile';
@@ -105,7 +106,7 @@ const HOME_EXPLORE_OPTIONS: ExploreOption[] = [
     {
         id: 'pixe',
         label: 'Explore Pixe',
-        to: '/pixe',
+        to: '/pixe/explore',
         icon: 'play',
         image: '/explore-cards/pixe.png',
         detail: 'Scroll cinematic short videos and live visual shopping.'
@@ -157,12 +158,16 @@ const HomeExploreIcon: React.FC<{ type: ExploreOption['icon']; className?: strin
 
 // --- 1. HERO SECTION (Optimized Physics & Glass) ---
 const HeroSection: React.FC = () => {
-    const { theme } = useTheme();
+    const { theme, resolvedTheme } = useTheme();
+    const isLowEndMode = useLowEndMode();
+    const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
     // Removed heavy spring physics for mouse movement to improve performance
     // Using lighter CSS-based animations for background
     
     // Dynamic glass style based on theme
-    let glassClass = "bg-white/40 border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.05)] backdrop-blur-[20px] dark:bg-white/[0.02] dark:border-white/[0.1] dark:shadow-[0_0_60px_rgba(80,20,255,0.1)] dark:backdrop-blur-[30px]";
+    let glassClass = prefersNoirTuning
+        ? "bg-white/40 border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.05)] backdrop-blur-[20px] dark:bg-[#121216]/84 dark:border-white/[0.08] dark:shadow-[0_0_34px_rgba(80,20,255,0.08)] dark:backdrop-blur-[16px]"
+        : "bg-white/40 border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.05)] backdrop-blur-[20px] dark:bg-white/[0.02] dark:border-white/[0.1] dark:shadow-[0_0_60px_rgba(80,20,255,0.1)] dark:backdrop-blur-[30px]";
     
     if (theme === 'sandstone') {
         glassClass = "bg-[rgba(230,220,200,0.25)] border border-[rgba(255,255,255,0.2)] shadow-[0_20px_40px_rgba(62,39,35,0.08)] backdrop-blur-[25px]";
@@ -180,16 +185,20 @@ const HeroSection: React.FC = () => {
              {/* Optimized Background Gradients - Reduced blur radius for performance */}
              <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div 
-                    className="absolute top-[-10%] left-[-5%] w-[80%] h-[80%] rounded-full filter blur-3xl opacity-40 animate-pulse
+                    className={`absolute top-[-10%] left-[-5%] w-[80%] h-[80%] rounded-full ${
+                        prefersNoirTuning ? 'blur-2xl opacity-28' : 'filter blur-3xl opacity-40 animate-pulse'
+                    }
                     bg-gradient-to-tr from-blue-200 via-purple-200 to-indigo-100 
-                    dark:from-indigo-600/30 dark:via-violet-600/30 dark:to-blue-600/30"
-                    style={{ animationDuration: '8s' }}
+                    dark:from-indigo-600/30 dark:via-violet-600/30 dark:to-blue-600/30`}
+                    style={prefersNoirTuning ? undefined : { animationDuration: '8s' }}
                 />
                 <div 
-                    className="absolute bottom-[-10%] right-[-5%] w-[70%] h-[70%] rounded-full filter blur-3xl opacity-40 animate-pulse
+                    className={`absolute bottom-[-10%] right-[-5%] w-[70%] h-[70%] rounded-full ${
+                        prefersNoirTuning ? 'blur-2xl opacity-24' : 'filter blur-3xl opacity-40 animate-pulse'
+                    }
                     bg-gradient-to-bl from-rose-100 via-orange-100 to-amber-100 
-                    dark:from-fuchsia-600/30 dark:via-purple-600/30 dark:to-cyan-600/30"
-                     style={{ animationDuration: '10s', animationDelay: '1s' }}
+                    dark:from-fuchsia-600/30 dark:via-purple-600/30 dark:to-cyan-600/30`}
+                     style={prefersNoirTuning ? undefined : { animationDuration: '10s', animationDelay: '1s' }}
                 />
              </div>
 
@@ -212,7 +221,7 @@ const HeroSection: React.FC = () => {
                                     : theme === 'hydra'
                                         ? 'bg-[rgba(0,20,40,0.7)] border border-[rgba(0,229,255,0.3)] text-[#00E5FF]'
                                         : 'bg-white/60 border border-white/80 text-gray-600 dark:bg-black/40 dark:border-white/10 dark:text-gray-200'
-                            } backdrop-blur-md`}
+                            } ${prefersNoirTuning ? 'backdrop-blur-sm' : 'backdrop-blur-md'}`}
                         >
                             <span className="relative flex h-2 w-2">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
@@ -259,7 +268,7 @@ const HeroSection: React.FC = () => {
                     </motion.p>
                     
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5 }} className="flex flex-col sm:flex-row gap-5 items-center">
-                        <Magnetic strength={20} rotateStrength={2}>
+                        <Magnetic strength={20} disabled={prefersNoirTuning}>
                             <Link to="/browse" className={`group relative px-6 sm:px-8 py-3 sm:py-4 font-bold text-xs sm:text-sm uppercase tracking-widest rounded-full overflow-hidden transition-all duration-300
                                 ${theme === 'sandstone' 
                                     ? 'bg-[#3E2723] text-[#E6DCC8] shadow-lg hover:shadow-xl' 
@@ -275,8 +284,8 @@ const HeroSection: React.FC = () => {
                             </Link>
                         </Magnetic>
 
-                        <Magnetic strength={16} rotateStrength={1.5}>
-                            <Link to="/spotlight" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
+                        <Magnetic strength={16} disabled={prefersNoirTuning}>
+                            <Link to="/spotlight" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest ${prefersNoirTuning ? 'backdrop-blur-md' : 'backdrop-blur-xl'} transition-all shadow-lg
                                 ${theme === 'sandstone'
                                     ? 'bg-[rgba(230,220,200,0.55)] border border-[rgba(78,52,46,0.08)] text-[#3E2723] hover:bg-[rgba(230,220,200,0.82)]'
                                     : theme === 'icy'
@@ -298,8 +307,8 @@ const HeroSection: React.FC = () => {
                             </Link>
                         </Magnetic>
 
-                        <Magnetic strength={15} rotateStrength={1}>
-                            <Link to="/reels" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest backdrop-blur-xl transition-all shadow-lg
+                        <Magnetic strength={15} disabled={prefersNoirTuning}>
+                            <Link to="/reels" className={`group flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 rounded-full font-bold text-xs sm:text-sm uppercase tracking-widest ${prefersNoirTuning ? 'backdrop-blur-md' : 'backdrop-blur-xl'} transition-all shadow-lg
                                 ${theme === 'sandstone'
                                     ? 'bg-[rgba(230,220,200,0.5)] border border-[rgba(78,52,46,0.1)] text-[#3E2723] hover:bg-[rgba(230,220,200,0.8)]'
                                     : theme === 'icy'
@@ -325,8 +334,8 @@ const HeroSection: React.FC = () => {
 
             <motion.div 
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 0.6, y: [0, 8, 0] }}
-                transition={{ delay: 1.5, duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                animate={prefersNoirTuning ? { opacity: 0.42, y: 0 } : { opacity: 0.6, y: [0, 8, 0] }}
+                transition={prefersNoirTuning ? { delay: 1.1, duration: 0.5, ease: 'easeOut' } : { delay: 1.5, duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
                 className={`absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 pointer-events-none z-20
                     ${theme === 'sandstone' ? 'text-[#5D4037]' 
                     : theme === 'icy' ? 'text-[#023E8A]' 
@@ -383,7 +392,9 @@ const Marquee: React.FC<{ isBannerHero?: boolean }> = ({ isBannerHero = false })
 
 // --- 3. QUICK EXPLORE (MONOCHROME NAVIGATION) ---
 const CollectionDiscovery: React.FC = () => {
-    const { theme } = useTheme();
+    const { theme, resolvedTheme } = useTheme();
+    const isLowEndMode = useLowEndMode();
+    const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
     const [activeCardIndex, setActiveCardIndex] = useState(0);
     const [isDeckHovered, setIsDeckHovered] = useState(false);
     const [supportsWheelLock, setSupportsWheelLock] = useState(false);
@@ -418,7 +429,7 @@ const CollectionDiscovery: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (!(isDeckHovered && supportsWheelLock)) return;
+        if (!(isDeckHovered && supportsWheelLock && !prefersNoirTuning)) return;
 
         const previousOverflow = document.body.style.overflow;
         const previousOverscroll = document.body.style.overscrollBehavior;
@@ -429,16 +440,16 @@ const CollectionDiscovery: React.FC = () => {
             document.body.style.overflow = previousOverflow;
             document.body.style.overscrollBehavior = previousOverscroll;
         };
-    }, [isDeckHovered, supportsWheelLock]);
+    }, [isDeckHovered, prefersNoirTuning, supportsWheelLock]);
 
     useEffect(() => {
-        if (!(isDeckHovered && supportsWheelLock)) return;
+        if (!(isDeckHovered && supportsWheelLock && !prefersNoirTuning)) return;
         const interval = window.setInterval(() => rotateDeck(1), 2100);
         return () => window.clearInterval(interval);
-    }, [isDeckHovered, supportsWheelLock, rotateDeck]);
+    }, [isDeckHovered, prefersNoirTuning, rotateDeck, supportsWheelLock]);
 
     const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-        if (!supportsWheelLock) return;
+        if (!supportsWheelLock || prefersNoirTuning) return;
         event.preventDefault();
         event.stopPropagation();
 
@@ -446,9 +457,10 @@ const CollectionDiscovery: React.FC = () => {
         if (Math.abs(event.deltaY) < 10 || now - wheelGateRef.current < 460) return;
         wheelGateRef.current = now;
         rotateDeck(event.deltaY > 0 ? 1 : -1);
-    }, [rotateDeck, supportsWheelLock]);
+    }, [prefersNoirTuning, rotateDeck, supportsWheelLock]);
 
     const handleDeckMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        if (prefersNoirTuning) return;
         const rect = event.currentTarget.getBoundingClientRect();
         const relativeX = (event.clientX - rect.left) / Math.max(rect.width, 1);
         const relativeY = (event.clientY - rect.top) / Math.max(rect.height, 1);
@@ -458,7 +470,7 @@ const CollectionDiscovery: React.FC = () => {
         tiltX.set(-(yFromCenter * 6.5));
         tiltY.set(xFromCenter * 8);
         shineShift.set((relativeX - 0.5) * 28);
-    }, [shineShift, tiltX, tiltY]);
+    }, [prefersNoirTuning, shineShift, tiltX, tiltY]);
 
     const resetDeckMotion = useCallback(() => {
         tiltX.set(0);
@@ -518,10 +530,10 @@ const CollectionDiscovery: React.FC = () => {
 
     return (
         <section className="py-14 sm:py-16 md:py-20 bg-transparent text-text-primary relative overflow-hidden">
-            <div className={`absolute -top-24 left-[-6%] h-[320px] w-[320px] rounded-full bg-gradient-to-br blur-3xl pointer-events-none ${glowOne}`} />
-            <div className={`absolute -bottom-24 right-[-6%] h-[340px] w-[340px] rounded-full bg-gradient-to-tl blur-3xl pointer-events-none ${glowTwo}`} />
+            <div className={`absolute -top-24 left-[-6%] h-[320px] w-[320px] rounded-full bg-gradient-to-br pointer-events-none ${prefersNoirTuning ? 'blur-2xl opacity-75' : 'blur-3xl'} ${glowOne}`} />
+            <div className={`absolute -bottom-24 right-[-6%] h-[340px] w-[340px] rounded-full bg-gradient-to-tl pointer-events-none ${prefersNoirTuning ? 'blur-2xl opacity-70' : 'blur-3xl'} ${glowTwo}`} />
             <div className="container mx-auto px-4 md:px-8 relative z-10">
-                <div className={`relative overflow-hidden rounded-[2rem] border bg-gradient-to-br backdrop-blur-2xl px-5 py-8 md:px-10 md:py-12 ${sectionSurface}`}>
+                <div className={`relative overflow-hidden rounded-[2rem] border bg-gradient-to-br ${prefersNoirTuning ? 'backdrop-blur-lg' : 'backdrop-blur-2xl'} px-5 py-8 md:px-10 md:py-12 ${sectionSurface}`}>
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(255,255,255,0.35),transparent_55%)]" />
                     <div className="relative grid items-center gap-10 lg:grid-cols-[1fr_520px]">
                         <motion.div
@@ -540,21 +552,23 @@ const CollectionDiscovery: React.FC = () => {
                             <p className={`max-w-md text-base md:text-xl ${textSecondary}`}>
                                 Everything you need. One platform. Hover the deck and scroll to fluidly rotate Buyables, Rentables, Pixe, and Stores.
                             </p>
-                            <div className={`inline-flex rounded-xl border border-current/15 bg-white/30 px-4 py-2 text-xs uppercase tracking-[0.14em] backdrop-blur-xl dark:bg-black/25 ${hintTone}`}>
-                                {supportsWheelLock ? 'Hover Deck: Page Scroll Locks For Immersive Card Control' : 'Touch Device: Tap Dots Or Cards To Navigate'}
+                            <div className={`inline-flex rounded-xl border border-current/15 px-4 py-2 text-xs uppercase tracking-[0.14em] ${prefersNoirTuning ? 'bg-white/38 dark:bg-black/32' : 'bg-white/30 backdrop-blur-xl dark:bg-black/25'} ${hintTone}`}>
+                                {supportsWheelLock && !prefersNoirTuning ? 'Hover Deck: Page Scroll Locks For Immersive Card Control' : 'Touch Device: Tap Dots Or Cards To Navigate'}
                             </div>
                         </motion.div>
 
                         <div className="relative">
                             <div
                                 className="relative mx-auto h-[450px] w-full max-w-[500px]"
-                                onMouseEnter={() => setIsDeckHovered(true)}
+                                onMouseEnter={() => {
+                                    if (!prefersNoirTuning) setIsDeckHovered(true);
+                                }}
                                 onMouseLeave={() => {
                                     setIsDeckHovered(false);
                                     resetDeckMotion();
                                 }}
-                                onMouseMove={handleDeckMouseMove}
-                                onWheel={handleWheel}
+                                onMouseMove={prefersNoirTuning ? undefined : handleDeckMouseMove}
+                                onWheel={prefersNoirTuning ? undefined : handleWheel}
                             >
                                 {orderedCards
                                     .map((card, rank) => ({ card, rank }))
@@ -571,7 +585,7 @@ const CollectionDiscovery: React.FC = () => {
                                                     pointerEvents: isFront ? 'auto' : 'none',
                                                     transformStyle: 'preserve-3d',
                                                     perspective: 1800,
-                                                    ...(isFront ? { rotateX: smoothTiltX, rotateY: smoothTiltY } : {})
+                                                    ...(isFront && !prefersNoirTuning ? { rotateX: smoothTiltX, rotateY: smoothTiltY } : {})
                                                 }}
                                                 animate={{
                                                     x: transform.x,
@@ -579,13 +593,17 @@ const CollectionDiscovery: React.FC = () => {
                                                     rotate: transform.rotate,
                                                     scale: transform.scale,
                                                     opacity: transform.opacity,
-                                                    filter: `blur(${transform.blur}px)`
+                                                    ...(prefersNoirTuning ? {} : { filter: `blur(${transform.blur}px)` })
                                                 }}
                                                 transition={{ type: 'spring', stiffness: 120, damping: 20, mass: 0.95 }}
                                             >
                                                 <Link
                                                     to={card.to}
-                                                    className="group relative block h-[360px] overflow-hidden rounded-[2rem] border border-white/55 bg-white/25 p-3 shadow-[0_30px_78px_rgba(0,0,0,0.24)] backdrop-blur-3xl"
+                                                    className={`group relative block h-[360px] overflow-hidden rounded-[2rem] border border-white/55 p-3 ${
+                                                        prefersNoirTuning
+                                                            ? 'bg-white/38 shadow-[0_22px_52px_rgba(0,0,0,0.22)] backdrop-blur-xl'
+                                                            : 'bg-white/25 shadow-[0_30px_78px_rgba(0,0,0,0.24)] backdrop-blur-3xl'
+                                                    }`}
                                                     aria-label={card.label}
                                                 >
                                                     <div className="relative h-full overflow-hidden rounded-[1.5rem]">
@@ -609,30 +627,30 @@ const CollectionDiscovery: React.FC = () => {
                                                             />
                                                         )}
                                                         <div className={`absolute inset-0 bg-gradient-to-b ${imageOverlay}`} />
-                                                        {isFront && (
+                                                        {isFront && !prefersNoirTuning && (
                                                             <motion.div
                                                                 className="pointer-events-none absolute inset-y-0 left-[-25%] w-[38%] rotate-[14deg] bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.35)_55%,rgba(255,255,255,0)_100%)] mix-blend-screen"
                                                                 style={{ x: smoothShineShift }}
                                                             />
                                                         )}
                                                         <div className="absolute left-4 top-4 right-4 flex items-center justify-between">
-                                                            <span className="rounded-full bg-white/72 px-3 py-1 text-[1.35rem] font-serif italic tracking-tight text-slate-900 backdrop-blur-md">
+                                                            <span className={`rounded-full px-3 py-1 text-[1.35rem] font-serif italic tracking-tight text-slate-900 ${prefersNoirTuning ? 'bg-white/82' : 'bg-white/72 backdrop-blur-md'}`}>
                                                                 {card.label.replace('Explore ', '')}
                                                             </span>
-                                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/65 px-2.5 py-1 text-slate-700 backdrop-blur-md">
+                                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-slate-700 ${prefersNoirTuning ? 'bg-white/78' : 'bg-white/65 backdrop-blur-md'}`}>
                                                                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
                                                                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
                                                                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
                                                             </span>
                                                         </div>
                                                         <div className="absolute right-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 text-white/85">
-                                                            <span className="rounded-full border border-white/55 bg-white/20 p-2 backdrop-blur-md"><HomeExploreIcon type={card.icon} className="h-4 w-4" /></span>
+                                                            <span className={`rounded-full border border-white/55 p-2 ${prefersNoirTuning ? 'bg-white/30' : 'bg-white/20 backdrop-blur-md'}`}><HomeExploreIcon type={card.icon} className="h-4 w-4" /></span>
                                                             <span className="h-2 w-2 rounded-full bg-white/90" />
                                                             <span className="h-2 w-2 rounded-full bg-white/65" />
                                                             <span className="h-2 w-2 rounded-full bg-white/50" />
                                                         </div>
                                                         <div className="absolute inset-x-0 bottom-0 p-5">
-                                                            <p className="max-w-[84%] rounded-xl bg-white/72 px-3 py-2 text-[12px] leading-relaxed text-slate-800 backdrop-blur-md">
+                                                            <p className={`max-w-[84%] rounded-xl px-3 py-2 text-[12px] leading-relaxed text-slate-800 ${prefersNoirTuning ? 'bg-white/82' : 'bg-white/72 backdrop-blur-md'}`}>
                                                                 {card.detail}
                                                             </p>
                                                         </div>

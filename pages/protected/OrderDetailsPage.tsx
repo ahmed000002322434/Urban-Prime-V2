@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { listerService, itemService, userService } from '../../services/itemService';
 import type { Booking, Item, User } from '../../types';
 import Spinner from '../../components/Spinner';
+import { CommerceOrderDetailSkeleton } from '../../components/commerce/CommerceSkeleton';
 import { useNotification } from '../../context/NotificationContext';
 import ReviewSystem from '../../components/ReviewSystem';
 import LottieAnimation from '../../components/LottieAnimation';
@@ -19,6 +20,18 @@ const FormCard: React.FC<{title: string, children: React.ReactNode, className?: 
 
 const UploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>;
 const ShieldCheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>;
+
+const normalizeTimelineStatus = (booking: Booking) => {
+    const normalized = String(booking.status || '').toLowerCase();
+    if (booking.type === 'rent') {
+        if (normalized === 'shipped') return 'in_transit';
+        if (normalized === 'delivered') return 'active';
+        return normalized || 'pending_confirmation';
+    }
+
+    if (normalized === 'delivered') return 'completed';
+    return normalized || 'pending';
+};
 
 const OrderDetailsPage: React.FC = () => {
     const { bookingId } = useParams<{ bookingId: string }>();
@@ -77,13 +90,21 @@ const OrderDetailsPage: React.FC = () => {
 
     const handleConfirmReceipt = async () => {
         if (!bookingId) return;
-        if (!window.confirm("Confirm you have received the item? This will release funds to the seller.")) return;
+        const message =
+            booking?.source === 'commerce' && booking?.type === 'rent'
+                ? 'Confirm you have received the rental handoff?'
+                : 'Confirm you have received the item? This will finalize the order.';
+        if (!window.confirm(message)) return;
         
         setIsProcessing(true);
         try {
             await itemService.completeOrder(bookingId);
-            setBooking(prev => prev ? { ...prev, status: 'completed', paymentStatus: 'released' } : null);
-            showNotification("Order completed! Funds released.");
+            await fetchDetails();
+            showNotification(
+                booking?.source === 'commerce' && booking?.type === 'rent'
+                    ? 'Rental handoff confirmed.'
+                    : 'Order completed successfully.'
+            );
         } catch (error) {
             showNotification(typeof error === 'string' ? error : "Transaction failed.");
         } finally {
@@ -169,7 +190,7 @@ const OrderDetailsPage: React.FC = () => {
         }
     };
 
-    if (isLoading) return <Spinner size="lg" className="m-auto" />;
+    if (isLoading) return <CommerceOrderDetailSkeleton />;
     if (!booking || !item) {
         return (
             <div className="text-center p-8">
@@ -182,6 +203,48 @@ const OrderDetailsPage: React.FC = () => {
     const isSeller = user?.id === item.owner.id;
     const isBuyer = user?.id === booking.renterId;
     const hasDeposit = booking.securityDeposit && booking.securityDeposit > 0;
+    const isRental = booking.type === 'rent';
+    const isPodOrder = Boolean(booking.podJob) || item.productType === 'pod' || item.fulfillmentType === 'pod' || Boolean(item.podProfile);
+    const podVariantLabel = [booking.podJob?.variantSnapshot?.color, booking.podJob?.variantSnapshot?.size].filter(Boolean).join(' / ');
+    const podTracking = booking.podJob?.trackingNumber || booking.trackingNumber || '';
+    const podStatusLabel = String(booking.podJob?.status || '').replace(/_/g, ' ');
+    const displayStatus =
+        isRental && booking.status === 'shipped'
+            ? 'In transit'
+            : isRental && booking.status === 'delivered'
+                ? 'Active'
+                : booking.status.replace(/_/g, ' ');
+    const receiptHeading = isRental ? 'Rental handoff complete?' : 'Item received?';
+    const receiptDescription = isRental
+        ? 'Confirm the rental has reached you so the booking moves into its active period.'
+        : 'Please verify you have received your item to complete the order.';
+    const fulfillmentTitle = isSeller
+        ? isRental
+            ? 'Manage handoff, return, and deposit actions.'
+            : 'Manage shipping and delivery for this order.'
+        : isRental
+            ? 'Follow the rental handoff and return lifecycle here.'
+            : 'Follow shipping and delivery updates here.';
+    const summaryIdentifier = booking.orderId || booking.id;
+    const timelineSteps = isRental
+        ? [
+            { id: 'pending_confirmation', label: 'Pending', detail: 'Seller review or instant-book validation.' },
+            { id: 'confirmed', label: 'Confirmed', detail: 'Booking accepted and handoff prepared.' },
+            { id: 'ready_for_handoff', label: 'Ready', detail: 'Pickup instructions or handoff window is set.' },
+            { id: 'in_transit', label: 'Transit', detail: 'Rental is moving to the buyer.' },
+            { id: 'active', label: 'Active', detail: 'Rental is with the buyer.' },
+            { id: 'return_in_transit', label: 'Returning', detail: 'Return shipment or handback is in progress.' },
+            { id: 'returned', label: 'Returned', detail: 'Item received back and awaiting settlement.' },
+            { id: 'completed', label: 'Complete', detail: 'Deposit and booking lifecycle closed.' }
+        ]
+        : [
+            { id: 'pending', label: 'Pending', detail: 'Order created and payment review started.' },
+            { id: 'confirmed', label: 'Confirmed', detail: 'Seller accepted and is preparing fulfillment.' },
+            { id: 'shipped', label: 'Shipped', detail: 'Delivery is in progress.' },
+            { id: 'completed', label: 'Complete', detail: 'Buyer receipt confirmed.' }
+        ];
+    const normalizedTimeline = normalizeTimelineStatus(booking);
+    const timelineIndex = Math.max(timelineSteps.findIndex((step) => step.id === normalizedTimeline), 0);
 
     return (
         <div className="space-y-6 animate-fade-in-up">
@@ -193,7 +256,7 @@ const OrderDetailsPage: React.FC = () => {
                         <div className="flex justify-between items-center mb-4">
                             <div>
                                 <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Status</p>
-                                <p className="text-xl font-bold text-text-primary capitalize">{booking.status.replace('_', ' ')}</p>
+                                <p className="text-xl font-bold text-text-primary capitalize">{displayStatus}</p>
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Payment</p>
@@ -220,14 +283,14 @@ const OrderDetailsPage: React.FC = () => {
                         {/* Actions */}
                         {isBuyer && booking.status === 'shipped' && (
                              <div className="mt-6 pt-6 border-t border-gray-100">
-                                <h4 className="font-bold mb-2">Item Received?</h4>
-                                <p className="text-sm text-gray-600 mb-4">Please verify you have received your item to complete the order.</p>
+                                <h4 className="font-bold mb-2">{receiptHeading}</h4>
+                                <p className="text-sm text-gray-600 mb-4">{receiptDescription}</p>
                                 <button 
                                     onClick={handleConfirmReceipt} 
                                     disabled={isProcessing}
                                     className="clay-button clay-button-primary clay-size-lg is-interactive w-full justify-center"
                                 >
-                                    {isProcessing ? <Spinner size="sm" className="text-white"/> : 'I Have Received My Item'}
+                                    {isProcessing ? <Spinner size="sm" className="text-white"/> : booking.source === 'commerce' && booking.type === 'rent' ? 'Confirm Rental Handoff' : 'I Have Received My Item'}
                                 </button>
                              </div>
                         )}
@@ -292,6 +355,15 @@ const OrderDetailsPage: React.FC = () => {
                                 Order/Rental cycle active or completed
                             </div>
                         )}
+
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                            <Link
+                                to={`/profile/disputes?orderId=${encodeURIComponent(booking.orderId || '')}&orderItemId=${encodeURIComponent(booking.orderItemId || '')}&bookingId=${encodeURIComponent(booking.canonicalRentalBookingId || booking.id)}&itemTitle=${encodeURIComponent(item.title)}`}
+                                className="text-sm font-bold text-primary hover:underline"
+                            >
+                                Open dispute for this order
+                            </Link>
+                        </div>
                     </div>
                     
                     {/* Review System - Only show for buyer if completed and not reviewed */}
@@ -299,14 +371,95 @@ const OrderDetailsPage: React.FC = () => {
                         <ReviewSystem onSubmit={handleSubmitReview} />
                     )}
 
+                    <div className="clay-card clay-size-lg">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.22em] text-text-secondary">Lifecycle timeline</p>
+                                <h3 className="mt-2 text-lg font-semibold text-text-primary">
+                                    {isRental ? 'Rental status progression' : 'Order fulfillment progression'}
+                                </h3>
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">
+                                {displayStatus}
+                            </span>
+                        </div>
+                        <div className="mt-5 grid gap-3">
+                            {timelineSteps.map((step, index) => {
+                                const reached = timelineIndex >= index && booking.status !== 'cancelled';
+                                const current = timelineIndex === index && booking.status !== 'cancelled';
+                                return (
+                                    <div
+                                        key={step.id}
+                                        className={`rounded-2xl border px-4 py-4 transition-colors ${
+                                            current
+                                                ? 'border-primary bg-primary/5'
+                                                : reached
+                                                    ? 'border-emerald-200 bg-emerald-50'
+                                                    : 'border-border bg-surface-soft'
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div
+                                                className={`mt-1 flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+                                                    current
+                                                        ? 'bg-primary text-white'
+                                                        : reached
+                                                            ? 'bg-emerald-500 text-white'
+                                                            : 'bg-slate-200 text-slate-600'
+                                                }`}
+                                            >
+                                                {index + 1}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-black uppercase tracking-[0.18em] text-text-primary">{step.label}</p>
+                                                <p className="mt-1 text-sm text-text-secondary">{step.detail}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {booking.status === 'cancelled' ? (
+                            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                This workflow was cancelled before completion.
+                            </div>
+                        ) : null}
+                    </div>
+
                     <FormCard title="Fulfillment Status">
+                        {isPodOrder ? (
+                            <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">
+                                <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-700">POD Production</p>
+                                <p className="mt-2 text-lg font-bold capitalize">{podStatusLabel || booking.status.replace(/_/g, ' ')}</p>
+                                {podVariantLabel ? <p className="mt-2">Variant: <strong>{podVariantLabel}</strong></p> : null}
+                                {podTracking ? <p className="mt-2">Tracking: <strong>{podTracking}</strong></p> : null}
+                                <p className="mt-3 text-violet-800">
+                                    {isSeller
+                                        ? 'Use POD Studio Orders to move this job through review, production, packing, and shipping.'
+                                        : 'Production and shipping updates from the seller appear here as the POD job moves forward.'}
+                                </p>
+                                {isSeller ? (
+                                    <div className="mt-4">
+                                        <Link to="/profile/pod-studio/orders" className="clay-button clay-button-primary clay-size-md is-interactive inline-flex">
+                                            Open POD queue
+                                        </Link>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {isSeller ? (
                             <>
-                                <p className="text-sm">Manage shipping and returns for this order.</p>
+                                <p className="text-sm">{fulfillmentTitle}</p>
                                 <div className="flex gap-2">
-                                    <input value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder="Enter tracking number" className="clay-input w-full" />
-                                    <button onClick={handleAddTracking} className="clay-button clay-button-primary clay-size-md is-interactive whitespace-nowrap">Save Tracking</button>
+                                    <input value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder={isRental ? "Carrier: tracking number or pickup reference" : "Enter tracking number"} className="clay-input w-full" />
+                                    <button onClick={handleAddTracking} className="clay-button clay-button-primary clay-size-md is-interactive whitespace-nowrap">Save</button>
                                 </div>
+                                {isRental && booking.deliveryMode === 'pickup' && booking.pickupInstructions ? (
+                                    <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                                        <p className="font-semibold text-slate-900">Pickup instructions</p>
+                                        <p className="mt-1">{booking.pickupInstructions}</p>
+                                    </div>
+                                ) : null}
                             </>
                         ) : (
                             <div>
@@ -337,9 +490,10 @@ const OrderDetailsPage: React.FC = () => {
                                 <p className="text-lg font-bold">${booking.totalPrice.toFixed(2)}</p>
                             </div>
                         </div>
-                         <p className="text-sm"><strong>Order ID:</strong> {booking.id.split('-')[1]}</p>
+                         <p className="text-sm"><strong>{isRental ? 'Reference' : 'Order ID'}:</strong> {summaryIdentifier}</p>
                          <p className="text-sm"><strong>Date:</strong> {new Date(booking.startDate).toLocaleDateString()}</p>
                          <p className="text-sm"><strong>{isSeller ? 'Buyer' : 'Seller'}:</strong> {otherUser?.name || 'N/A'}</p>
+                         {isRental && booking.deliveryMode ? <p className="text-sm"><strong>Delivery Mode:</strong> {booking.deliveryMode}</p> : null}
                          <div className="mt-4 pt-4 border-t border-gray-200">
                              <div className="flex justify-between text-sm mb-1">
                                  <span>Subtotal</span>

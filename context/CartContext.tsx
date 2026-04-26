@@ -5,9 +5,11 @@ import { useAuth } from '../hooks/useAuth';
 
 type ItemServiceModule = typeof import('../services/itemService');
 type SpotlightServiceModule = typeof import('../services/spotlightService');
+type AffiliateServiceModule = typeof import('../services/affiliateCommissionService');
 
 let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
 let spotlightServiceModulePromise: Promise<SpotlightServiceModule> | null = null;
+let affiliateServiceModulePromise: Promise<AffiliateServiceModule> | null = null;
 
 const loadItemServiceModule = () => {
   if (!itemServiceModulePromise) {
@@ -23,6 +25,13 @@ const loadSpotlightServiceModule = () => {
   return spotlightServiceModulePromise;
 };
 
+const loadAffiliateServiceModule = () => {
+  if (!affiliateServiceModulePromise) {
+    affiliateServiceModulePromise = import('../services/affiliateCommissionService');
+  }
+  return affiliateServiceModulePromise;
+};
+
 const withItemService = async <T,>(
   callback: (service: ItemServiceModule['itemService']) => Promise<T> | T
 ): Promise<T> => callback((await loadItemServiceModule()).itemService);
@@ -30,6 +39,10 @@ const withItemService = async <T,>(
 const withSpotlightService = async <T,>(
   callback: (service: SpotlightServiceModule['spotlightService']) => Promise<T> | T
 ): Promise<T> => callback((await loadSpotlightServiceModule()).spotlightService);
+
+const withAffiliateService = async <T,>(
+  callback: (service: AffiliateServiceModule['affiliateCommissionService']) => Promise<T> | T
+): Promise<T> => callback((await loadAffiliateServiceModule()).affiliateCommissionService);
 
 interface CartContextType {
   cartGroups: CartGroup[];
@@ -47,7 +60,7 @@ interface CartContextType {
   moveToCart: (itemId: string) => void;
   removeSavedItem: (itemId: string) => void;
   clearCart: () => void;
-  applyCoupon: (code: string) => boolean;
+  applyCoupon: (code: string) => Promise<boolean>;
   couponCode: string | null;
   discountAmount: number;
   cartCount: number;
@@ -211,8 +224,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (existingItem) {
           const existingMode = resolveTransactionMode(existingItem);
+          const existingPodVariantId = String(existingItem.podSelection?.variantId || '');
+          const incomingPodVariantId = String(incomingItem.podSelection?.variantId || '');
           if (item.listingType === 'both' && existingMode !== resolvedMode) {
             showNotification(`Listing mode switched to ${resolvedMode}.`);
+            return prev.map((i) => (i.id === item.id ? { ...incomingItem, quantity: Math.max(1, quantity) } : i));
+          }
+          if (
+            resolvedMode === 'sale' &&
+            (existingPodVariantId || incomingPodVariantId) &&
+            existingPodVariantId !== incomingPodVariantId
+          ) {
+            showNotification('POD variant updated in your cart.');
             return prev.map((i) => (i.id === item.id ? { ...incomingItem, quantity: Math.max(1, quantity) } : i));
           }
           if (resolvedMode === 'rent') {
@@ -336,19 +359,35 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const applyCoupon = useCallback(
-    (code: string) => {
-      if (code.toUpperCase() === 'WELCOME10') {
+    async (code: string) => {
+      const normalized = code.trim().toUpperCase();
+      if (!normalized) return false;
+
+      if (normalized === 'WELCOME10') {
         setCouponCode('WELCOME10');
         setDiscountPercent(0.1);
         showNotification('Coupon applied: 10% Off!');
         return true;
       }
+
+      try {
+        const validation = await withAffiliateService((service) => service.validateCoupon(normalized, cartItems));
+        if (validation.valid) {
+          setCouponCode(normalized);
+          setDiscountPercent((validation.discountPercentage || 0) / 100);
+          showNotification(`Coupon applied: ${validation.discountPercentage}% off!`);
+          return true;
+        }
+      } catch (error) {
+        console.warn('Coupon validation failed:', error);
+      }
+
       setCouponCode(null);
       setDiscountPercent(0);
       showNotification('Invalid coupon code.');
       return false;
     },
-    [showNotification]
+    [cartItems, showNotification]
   );
 
   const cartGroups = useMemo(() => {

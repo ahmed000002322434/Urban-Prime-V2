@@ -70,6 +70,7 @@ interface NotificationContextType {
   notificationSettings: NotificationSettings;
   updateNotificationSettings: (patch: Partial<NotificationSettings>) => void;
   unreadNotificationCount: number;
+  refreshUnreadNotificationCount: () => Promise<void>;
   desktopPermission: NotificationPermission | 'unsupported';
   requestDesktopPermission: () => Promise<NotificationPermission | 'unsupported'>;
 }
@@ -281,6 +282,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setDesktopPermission(permission);
     return permission;
   }, []);
+
+  const refreshUnreadNotificationCount = useCallback(async () => {
+    if (!authUserId) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    try {
+      const notifications = await withItemService((itemService) =>
+        itemService.getNotificationsForUser(authUserId, { includePersona: false, limit: 100 })
+      );
+      setUnreadNotificationCount(notifications.filter((entry) => !entry.isRead).length);
+    } catch {
+      setUnreadNotificationCount(0);
+    }
+  }, [authUserId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -597,34 +614,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [authUserId, location.pathname, notificationSettings, dismissNotification, navigate, showMessageBanner, triggerFloatingAnimation]);
 
   useEffect(() => {
-    if (!authUserId) {
-      setUnreadNotificationCount(0);
-      return;
-    }
-
-    let cancelled = false;
-    const refreshUnreadNotifications = async () => {
-      try {
-        const notifications = await withItemService((itemService) =>
-          itemService.getNotificationsForUser(authUserId, { limit: 100 })
-        );
-        if (cancelled) return;
-        setUnreadNotificationCount(notifications.filter((entry) => !entry.isRead).length);
-      } catch {
-        if (!cancelled) setUnreadNotificationCount(0);
-      }
-    };
-
-    void refreshUnreadNotifications();
+    void refreshUnreadNotificationCount();
     const intervalId = window.setInterval(() => {
-      void refreshUnreadNotifications();
+      void refreshUnreadNotificationCount();
     }, 15000);
 
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [authUserId]);
+  }, [refreshUnreadNotificationCount]);
 
   const contextValue = useMemo<NotificationContextType>(() => ({
     showNotification,
@@ -633,6 +631,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     notificationSettings,
     updateNotificationSettings,
     unreadNotificationCount,
+    refreshUnreadNotificationCount,
     desktopPermission,
     requestDesktopPermission
   }), [
@@ -642,6 +641,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     notificationSettings,
     updateNotificationSettings,
     unreadNotificationCount,
+    refreshUnreadNotificationCount,
     desktopPermission,
     requestDesktopPermission
   ]);

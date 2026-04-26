@@ -99,8 +99,12 @@ const suggestions: Suggestion[] = [
   // Pages - Core
   { id: 'home', label: 'Home', category: 'page', icon: HomeIcon, path: '/profile', keywords: ['home', 'dashboard', 'overview', 'start'], description: 'Back to dashboard' },
   { id: 'orders', label: 'My Orders', category: 'page', icon: OrdersIcon, path: '/profile/orders', keywords: ['order', 'orders', 'purchase', 'buy', 'history'], description: 'View your orders' },
+  { id: 'bids', label: 'My Bids', category: 'page', icon: TrendIcon, path: '/profile/bids', keywords: ['bid', 'bids', 'auction offers', 'auction history'], description: 'Track auction bids' },
+  { id: 'disputes', label: 'Disputes', category: 'page', icon: BellIcon, path: '/profile/disputes', keywords: ['dispute', 'claims', 'case', 'issue', 'resolution'], description: 'Open or review cases' },
   { id: 'messages', label: 'Messages', category: 'page', icon: SearchIcon, path: '/profile/messages', keywords: ['message', 'messages', 'chat', 'inbox', 'communication'], description: 'See your messages' },
   { id: 'wishlist', label: 'Wishlist', category: 'page', icon: HeartIcon, path: '/profile/wishlist', keywords: ['wish', 'wishlist', 'saved', 'favorite', 'like'], description: 'Saved items' },
+  { id: 'rentals-public', label: 'Rentals', category: 'feature', icon: ProductIcon, path: '/rentals', keywords: ['rentals', 'rent marketplace', 'rental listings', 'pickup', 'shipping'], description: 'Explore rental listings' },
+  { id: 'auctions-public', label: 'Auctions', category: 'feature', icon: TrendIcon, path: '/auctions', keywords: ['auctions', 'auction listings', 'bid marketplace', 'buy now'], description: 'Explore live auctions' },
 
   // Pages - Seller only
   { id: 'products', label: 'Products', category: 'page', icon: ProductIcon, path: '/profile/products', keywords: ['product', 'products', 'catalog', 'items', 'listings'], description: 'Manage your products', requiresSeller: true },
@@ -122,7 +126,7 @@ const suggestions: Suggestion[] = [
   { id: 'reviews', label: 'My Reviews', category: 'page', icon: StarIcon, path: '/profile/reviews', keywords: ['review', 'reviews', 'rating', 'feedback', 'rate'], description: 'Your reviews' },
   { id: 'addresses', label: 'Addresses', category: 'page', icon: MapPinIcon, path: '/profile/settings/addresses', keywords: ['address', 'addresses', 'shipping', 'delivery', 'location'], description: 'Delivery addresses' },
   { id: 'payments', label: 'Payment Methods', category: 'page', icon: CreditCardIcon, path: '/payment-options', keywords: ['payment', 'payment method', 'card', 'billing', 'credit'], description: 'Payment options' },
-  { id: 'notifications', label: 'Notifications', category: 'page', icon: BellIcon, path: '/profile/settings/notifications', keywords: ['notification', 'notifications', 'alert', 'alert settings'], description: 'Notification preferences' },
+  { id: 'notifications', label: 'Notifications', category: 'page', icon: BellIcon, path: '/profile/notifications', keywords: ['notification', 'notifications', 'alert', 'inbox', 'activity feed'], description: 'Alerts and activity feed' },
   { id: 'settings', label: 'Settings', category: 'page', icon: SettingsIcon, path: '/profile/settings', keywords: ['setting', 'settings', 'preference', 'config', 'configuration'], description: 'Account settings' },
 
   // Features/Actions
@@ -130,6 +134,20 @@ const suggestions: Suggestion[] = [
   { id: 'help', label: 'Help & Support', category: 'feature', icon: BellIcon, path: '/help', keywords: ['help', 'support', 'assist', 'question', 'faq'], description: 'Get help' },
   { id: 'marketplace', label: 'Browse Marketplace', category: 'feature', icon: SearchIcon, path: '/', keywords: ['marketplace', 'browse', 'shop', 'explore', 'store'], description: 'Marketplace' },
 ];
+
+const quickAccessIds = new Set([
+  'home',
+  'orders',
+  'bids',
+  'disputes',
+  'messages',
+  'wishlist',
+  'rentals-public',
+  'auctions-public',
+  'products',
+  'sales',
+  'create-product'
+]);
 
 interface SearchSuggestionsDropdownProps {
   query: string;
@@ -156,9 +174,9 @@ export const SearchSuggestionsDropdown: React.FC<SearchSuggestionsDropdownProps>
         .filter(s => {
           if (s.requiresSeller && !hasCapability('sell')) return false;
           if (s.requiresProvider && !hasCapability('provide_service')) return false;
-          return s.category === 'page';
+          return quickAccessIds.has(s.id);
         })
-        .slice(0, 8);
+        .slice(0, 10);
     }
 
     const searchTerm = query.toLowerCase();

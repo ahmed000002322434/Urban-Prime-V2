@@ -38,10 +38,10 @@ const OrderSummaryCard: React.FC<OrderSummaryCardProps> = ({ isCheckout = false,
     const grandTotal = cartTotal + finalShipping + taxEstimate - discountAmount + totalDeposit;
     const hasOutOfStock = cartItems.some(item => item.stock <= 0);
 
-    const handleApplyPromo = (e: React.FormEvent) => {
+    const handleApplyPromo = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!promoInput.trim()) return;
-        if (applyCoupon(promoInput)) {
+        if (await applyCoupon(promoInput)) {
             setPromoInput('');
         }
     };

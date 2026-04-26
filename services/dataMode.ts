@@ -44,8 +44,9 @@ const rawMode = normalizeDataMode(import.meta.env.VITE_DATA_MODE as string | und
 const DATA_MODE = rawMode === 'auto' ? resolveAutoMode() : rawMode;
 
 const ENABLE_FIRESTORE_FALLBACK = toBool(import.meta.env.VITE_ENABLE_FIRESTORE_FALLBACK as string | undefined, false);
-const ENABLE_LOCAL_MOCK_FALLBACK = toBool(import.meta.env.VITE_ENABLE_LOCAL_MOCK_FALLBACK as string | undefined, true);
+const ENABLE_LOCAL_MOCK_FALLBACK = toBool(import.meta.env.VITE_ENABLE_LOCAL_MOCK_FALLBACK as string | undefined, false);
 const REQUIRE_BACKEND = toBool(import.meta.env.VITE_REQUIRE_BACKEND as string | undefined, false);
+const ENABLE_LOCAL_FALLBACK = !REQUIRE_BACKEND && (ENABLE_LOCAL_MOCK_FALLBACK || DATA_MODE === 'local');
 
 export interface DataModeConfig {
   mode: DataMode;
@@ -65,8 +66,8 @@ export const prefersSupabase = () => DATA_MODE === 'supabase' || DATA_MODE === '
 export const prefersFirebase = () => DATA_MODE === 'firebase';
 export const shouldUseFirestoreFallback = () =>
   !isFirebaseDisabled && (ENABLE_FIRESTORE_FALLBACK || DATA_MODE === 'firebase' || DATA_MODE === 'hybrid');
-export const shouldUseLocalMockFallback = () => ENABLE_LOCAL_MOCK_FALLBACK || DATA_MODE === 'local';
-export const shouldUseLocalDb = () => shouldUseLocalMockFallback() || DATA_MODE === 'local';
+export const shouldUseLocalMockFallback = () => ENABLE_LOCAL_FALLBACK;
+export const shouldUseLocalDb = () => ENABLE_LOCAL_FALLBACK;
 
 export const getDataModeSummary = () =>
   `${dataModeConfig.mode} (backend required: ${dataModeConfig.requireBackend ? 'yes' : 'no'}, firestore fallback: ${

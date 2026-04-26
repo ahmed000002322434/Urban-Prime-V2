@@ -18,14 +18,33 @@ interface EmptyStateProps {
   buttonLink: string;
   icon?: keyof typeof icons;
   animation?: keyof typeof uiLottieAnimations;
+  imageSrc?: string;
+  imageAlt?: string;
+  imageClassName?: string;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = ({ title, message, buttonText, buttonLink, icon, animation }) => {
+const EmptyState: React.FC<EmptyStateProps> = ({
+  title,
+  message,
+  buttonText,
+  buttonLink,
+  icon,
+  animation,
+  imageSrc,
+  imageAlt,
+  imageClassName = 'h-52 w-auto max-w-full object-contain'
+}) => {
   const resolvedAnimation = animation || (icon === 'cart' ? 'nothing' : undefined);
   return (
     <div className="flex items-center justify-center py-10">
       <div className="bg-white dark:bg-dark-surface p-12 rounded-2xl shadow-soft border border-gray-200 dark:border-gray-700 text-center max-w-lg mx-auto">
-        {resolvedAnimation ? (
+        {imageSrc ? (
+          <div className="mb-6 flex justify-center">
+            <div className="relative overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.96),rgba(255,255,255,0.72)_48%,rgba(255,242,249,0.7)_100%),linear-gradient(180deg,rgba(255,251,249,0.95),rgba(251,244,255,0.92))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_48px_rgba(227,169,190,0.14)] dark:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.07),rgba(255,255,255,0.03)_48%,rgba(255,207,164,0.04)_100%),linear-gradient(180deg,rgba(34,30,43,0.98),rgba(27,24,35,0.96))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_48px_rgba(0,0,0,0.24)]">
+              <img src={imageSrc} alt={imageAlt || ''} className={imageClassName} />
+            </div>
+          </div>
+        ) : resolvedAnimation ? (
           <div className="flex justify-center mb-4">
             <LottieAnimation src={uiLottieAnimations[resolvedAnimation]} className="h-40 w-40" loop autoplay />
           </div>

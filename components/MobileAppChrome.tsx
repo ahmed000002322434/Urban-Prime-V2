@@ -267,6 +267,7 @@ const MobileAppChrome: React.FC = () => {
     return threadMessages[activeMessageThread.id] || activeMessageThread.messages || [];
   }, [activeMessageThread, threadMessages]);
   const isDarkTheme = resolvedTheme === 'obsidian' || resolvedTheme === 'noir' || resolvedTheme === 'hydra';
+  const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
   const navShellClass = isDarkTheme
     ? 'border-white/15 bg-[linear-gradient(135deg,rgba(20,27,38,0.95),rgba(10,16,25,0.92))] shadow-[0_20px_40px_rgba(0,0,0,0.5)]'
     : 'border-white/80 bg-[linear-gradient(135deg,rgba(250,252,255,0.95),rgba(232,239,247,0.9))] shadow-[0_20px_40px_rgba(15,23,42,0.24)]';
@@ -274,7 +275,7 @@ const MobileAppChrome: React.FC = () => {
     ? 'border-white/15 bg-[linear-gradient(160deg,rgba(20,27,38,0.96),rgba(12,18,28,0.92))] shadow-[0_28px_55px_rgba(0,0,0,0.55)]'
     : 'border-white/85 bg-[linear-gradient(160deg,rgba(255,255,255,0.92),rgba(238,246,255,0.78))] shadow-[0_28px_55px_rgba(15,23,42,0.28)]';
   const overlayBackdropClass = isDarkTheme
-    ? (isLowEndMode ? 'bg-black/55' : 'bg-black/55 backdrop-blur-md')
+    ? (prefersNoirTuning ? 'bg-black/58' : 'bg-black/55 backdrop-blur-md')
     : (isLowEndMode ? 'bg-[#0f172a]/35' : 'bg-[#0f172a]/30 backdrop-blur-md');
   const panelSurfaceClass = isDarkTheme
     ? 'border-t border-white/15 bg-[linear-gradient(160deg,rgba(15,21,32,0.98),rgba(8,12,20,0.95))] shadow-[0_-20px_50px_rgba(0,0,0,0.58)]'
@@ -487,8 +488,8 @@ const MobileAppChrome: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={isLowEndMode ? { duration: 0.16 } : { duration: 0.35, ease: 'easeOut' }}
-        className={`fixed inset-x-0 bottom-3 z-[120] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 md:hidden ${isLowEndMode ? '' : 'backdrop-blur-xl'} ${navShellClass}`}
+        transition={prefersNoirTuning ? { duration: 0.2 } : { duration: 0.35, ease: 'easeOut' }}
+        className={`fixed inset-x-0 bottom-3 z-[120] mx-auto flex w-[calc(100vw-2rem)] max-w-[430px] items-center justify-between rounded-full border px-6 py-2.5 md:hidden ${prefersNoirTuning ? 'backdrop-blur-md' : 'backdrop-blur-xl'} ${navShellClass}`}
       >
         <button
           onClick={() => navigate('/')}
@@ -512,8 +513,8 @@ const MobileAppChrome: React.FC = () => {
 
         <div className="relative -mt-8">
           <motion.button
-            whileTap={isLowEndMode ? undefined : { scale: 0.9 }}
-            whileHover={isLowEndMode ? undefined : { scale: 1.05 }}
+            whileTap={prefersNoirTuning ? undefined : { scale: 0.9 }}
+            whileHover={prefersNoirTuning ? undefined : { scale: 1.05 }}
             onClick={() => setIsCreateOpen((prev) => !prev)}
             className="flex h-14 w-14 items-center justify-center rounded-full border border-white/35 bg-[radial-gradient(circle_at_20%_20%,#6f7d8c,#4a5663_58%,#3e4854)] p-4 text-white shadow-[0_16px_36px_rgba(15,23,42,0.42)]"
           >
@@ -527,7 +528,7 @@ const MobileAppChrome: React.FC = () => {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20, scale: 0.9 }}
                 transition={{ type: 'spring', stiffness: 220, damping: 20 }}
-                className={`absolute bottom-20 left-1/2 w-64 -translate-x-1/2 rounded-3xl border p-2.5 ${isLowEndMode ? '' : 'backdrop-blur-2xl'} ${floatingSheetClass}`}
+                className={`absolute bottom-20 left-1/2 w-64 -translate-x-1/2 rounded-3xl border p-2.5 ${prefersNoirTuning ? 'backdrop-blur-lg' : 'backdrop-blur-2xl'} ${floatingSheetClass}`}
               >
                 {createActions.map((action) => (
                   <button
@@ -599,7 +600,7 @@ const MobileAppChrome: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className={`absolute inset-x-0 bottom-0 max-h-[84vh] overflow-y-auto rounded-t-3xl p-6 pt-2 backdrop-blur-2xl ${panelSurfaceClass}`}
+              className={`absolute inset-x-0 bottom-0 max-h-[84vh] overflow-y-auto rounded-t-3xl p-6 pt-2 ${prefersNoirTuning ? 'backdrop-blur-lg' : 'backdrop-blur-2xl'} ${panelSurfaceClass}`}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mx-auto my-4 h-1.5 w-12 rounded-full bg-[#cbd5e1]" />
@@ -613,7 +614,7 @@ const MobileAppChrome: React.FC = () => {
                     exit={{ opacity: 0, y: 8 }}
                     transition={{ duration: 0.24 }}
                   >
-                    <div className={`mb-3 flex items-center justify-between rounded-2xl border px-3 py-2 backdrop-blur-xl ${softCardClass}`}>
+                    <div className={`mb-3 flex items-center justify-between rounded-2xl border px-3 py-2 ${prefersNoirTuning ? '' : 'backdrop-blur-xl'} ${softCardClass}`}>
                       <button
                         type="button"
                         onClick={() => setIsMessagesOpen(false)}
@@ -666,7 +667,7 @@ const MobileAppChrome: React.FC = () => {
                       })}
                     </div>
 
-                    <div className={`rounded-3xl border p-3 shadow-[0_14px_26px_rgba(15,23,42,0.14)] backdrop-blur-xl ${softCardClass}`}>
+                    <div className={`rounded-3xl border p-3 shadow-[0_14px_26px_rgba(15,23,42,0.14)] ${prefersNoirTuning ? '' : 'backdrop-blur-xl'} ${softCardClass}`}>
                       <div className="max-h-[34vh] space-y-2 overflow-y-auto pr-1">
                         {isMessagesLoading ? (
                           <p className={`py-8 text-center text-xs font-medium ${secondaryTextClass}`}>Loading messages...</p>
@@ -722,7 +723,7 @@ const MobileAppChrome: React.FC = () => {
                     exit={{ opacity: 0, y: 8 }}
                     transition={{ duration: 0.24 }}
                   >
-                    <div className={`mb-6 flex items-center gap-4 rounded-3xl border p-4 shadow-[0_14px_26px_rgba(15,23,42,0.14)] backdrop-blur-xl ${softCardClass}`}>
+                    <div className={`mb-6 flex items-center gap-4 rounded-3xl border p-4 shadow-[0_14px_26px_rgba(15,23,42,0.14)] ${prefersNoirTuning ? '' : 'backdrop-blur-xl'} ${softCardClass}`}>
                       <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#3f4c5b] to-[#6b7785] p-0.5">
                         <div className="h-full w-full overflow-hidden rounded-full border-2 border-white bg-white">
                           {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[#475569]"><UserGlyph /></div>}

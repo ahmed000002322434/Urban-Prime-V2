@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { AffiliateProfile } from '../types';
+import type { AffiliateProfile, User } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useNotification } from '../context/NotificationContext';
 import { userService } from '../services/itemService';
@@ -8,7 +8,7 @@ import ProgressBar from './ProgressBar';
 import Spinner from './Spinner';
 
 interface AffiliateOnboardingProps {
-  onComplete: () => void;
+  onComplete: (updatedUser: User) => void | Promise<void>;
 }
 
 const steps = [
@@ -73,9 +73,9 @@ const AffiliateOnboarding: React.FC<AffiliateOnboardingProps> = ({ onComplete })
         if (!user) return;
         setIsLoading(true);
         try {
-            await userService.completeAffiliateOnboarding(user.id, formData as AffiliateProfile);
-            showNotification("Your affiliate profile is set up!");
-            onComplete();
+            const updatedUser = await userService.completeAffiliateOnboarding(user.id, formData as AffiliateProfile);
+            showNotification("Your affiliate profile is ready and your dashboard has been personalized.");
+            await onComplete(updatedUser);
         } catch (error) {
             console.error(error);
             showNotification("Could not save your preferences.");

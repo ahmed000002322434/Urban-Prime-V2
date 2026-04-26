@@ -69,7 +69,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const [wishlistData, badgesData, storefrontData, collectionsData] = await Promise.all([
           withUserService((userService) => userService.getWishlistForUser(user.id)),
-          withUserService((userService) => userService.getBadges(user.badges)),
+          withUserService((userService) => userService.getBadges(user.badges || [])),
           withStorefrontService((storefrontService) => storefrontService.getStorefrontByUserId(user.id)),
           withUserService((userService) => userService.getCollectionsForUser(user.id)),
         ]);

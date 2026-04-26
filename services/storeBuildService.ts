@@ -20,8 +20,11 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { backendFetch, isBackendConfigured, shouldUseBackend } from './backendClient';
+import { resolveBackendUserId, resolveFrontendUserId } from './backendUserIdentity';
 import { shouldUseFirestoreFallback } from './dataMode';
 import { localDb } from './localDb';
+import { toCamelCaseDeep, toSnakeCaseDeep } from '../utils/caseTransform';
 
 // ============================================================================
 // TYPES
@@ -74,6 +77,10 @@ export interface AffiliateProgram {
   enableCookies: boolean;
   cookieDuration: number;
   isActive: boolean;
+  minPayout?: number;
+  approvalMode?: 'manual' | 'automatic';
+  supportedSurfaces?: ('link' | 'coupon' | 'spotlight' | 'pixe' | 'seller_referral')[];
+  sellerBonusAmount?: number;
   createdAt: any;
   updatedAt: any;
 }
@@ -103,8 +110,27 @@ class StoreBuildService {
   private readonly AFFILIATES_COLLECTION = 'affiliate_programs';
   private readonly ANALYTICS_COLLECTION = 'store_analytics';
 
+  private shouldUseBackendPersistence() {
+    return shouldUseBackend() && isBackendConfigured();
+  }
+
   private shouldUseLocalFallback() {
-    return !shouldUseFirestoreFallback();
+    return !this.shouldUseBackendPersistence() && !shouldUseFirestoreFallback();
+  }
+
+  private async hydrateBackendOwnedRecord<T extends { userId?: string }>(record: T | null): Promise<T | null> {
+    if (!this.shouldUseBackendPersistence() || !record) return record;
+
+    const currentUserId = String(record.userId || '').trim();
+    if (!currentUserId) return record;
+
+    const frontendUserId = await resolveFrontendUserId(currentUserId);
+    if (!frontendUserId || frontendUserId === currentUserId) return record;
+
+    return {
+      ...record,
+      userId: frontendUserId
+    };
   }
 
   /**
@@ -112,6 +138,37 @@ class StoreBuildService {
    */
   async saveStoreSetup(userId: string, storeData: Omit<StoreBuildData, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoreBuildData> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        this.validateStoreSetup(storeData);
+        const existingStore = await this.getUserStore(userId);
+        const backendUserId = await resolveBackendUserId(userId);
+        const payload = toSnakeCaseDeep({
+          ...storeData,
+          userId: backendUserId || userId,
+          isPublished: existingStore?.isPublished || Boolean(storeData.isPublished),
+          updatedAt: new Date().toISOString(),
+          createdAt: existingStore?.createdAt || new Date().toISOString(),
+          publishedAt: existingStore?.publishedAt
+        });
+
+        if (existingStore?.id) {
+          const response = await backendFetch(`/api/${this.STORES_COLLECTION}/${encodeURIComponent(existingStore.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+          });
+          return (await this.hydrateBackendOwnedRecord(
+            toCamelCaseDeep(response?.data || { ...payload, id: existingStore.id }) as StoreBuildData
+          )) as StoreBuildData;
+        }
+
+        const response = await backendFetch(`/api/${this.STORES_COLLECTION}`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return (await this.hydrateBackendOwnedRecord(toCamelCaseDeep(rows[0] || payload) as StoreBuildData)) as StoreBuildData;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         this.validateStoreSetup(storeData);
@@ -160,6 +217,17 @@ class StoreBuildService {
    */
   async getUserStore(userId: string): Promise<StoreBuildData | null> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        const backendUserId = await resolveBackendUserId(userId);
+        const response = await backendFetch(
+          `/api/${this.STORES_COLLECTION}?eq.user_id=${encodeURIComponent(backendUserId || userId)}&limit=1`
+        );
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows[0]
+          ? ((await this.hydrateBackendOwnedRecord(toCamelCaseDeep(rows[0]) as StoreBuildData)) as StoreBuildData)
+          : null;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         const stores = await localDb.list<StoreBuildData>('stores');
@@ -189,6 +257,16 @@ class StoreBuildService {
    */
   async getStore(storeId: string): Promise<StoreBuildData | null> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        const response = await backendFetch(
+          `/api/${this.STORES_COLLECTION}?eq.id=${encodeURIComponent(storeId)}&limit=1`
+        );
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows[0]
+          ? ((await this.hydrateBackendOwnedRecord(toCamelCaseDeep(rows[0]) as StoreBuildData)) as StoreBuildData)
+          : null;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         return (await localDb.getById<StoreBuildData>('stores', storeId)) || null;
@@ -214,6 +292,31 @@ class StoreBuildService {
       // Validate sections
       if (!Array.isArray(sections) || sections.length === 0) {
         throw new Error('At least one section must be enabled');
+      }
+
+      if (this.shouldUseBackendPersistence()) {
+        const existingLayout = await this.getStoreLayout(storeId);
+        const payload = toSnakeCaseDeep({
+          storeId,
+          sections: sections.sort((a, b) => a.order - b.order),
+          updatedAt: new Date().toISOString(),
+          createdAt: existingLayout?.createdAt || new Date().toISOString()
+        });
+
+        if (existingLayout?.id) {
+          const response = await backendFetch(`/api/${this.LAYOUTS_COLLECTION}/${encodeURIComponent(existingLayout.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+          });
+          return toCamelCaseDeep(response?.data || { ...payload, id: existingLayout.id }) as StoreLayout;
+        }
+
+        const response = await backendFetch(`/api/${this.LAYOUTS_COLLECTION}`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return toCamelCaseDeep(rows[0] || payload) as StoreLayout;
       }
 
       if (this.shouldUseLocalFallback()) {
@@ -255,6 +358,14 @@ class StoreBuildService {
    */
   async getStoreLayout(storeId: string): Promise<StoreLayout | null> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        const response = await backendFetch(
+          `/api/${this.LAYOUTS_COLLECTION}?eq.store_id=${encodeURIComponent(storeId)}&limit=1`
+        );
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows[0] ? (toCamelCaseDeep(rows[0]) as StoreLayout) : null;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         const layouts = await localDb.list<StoreLayout>('storeLayouts');
@@ -290,6 +401,35 @@ class StoreBuildService {
       }
       if (!Array.isArray(affiliateData.platforms) || affiliateData.platforms.length === 0) {
         throw new Error('At least one platform must be selected');
+      }
+
+      if (this.shouldUseBackendPersistence()) {
+        const existingAffiliate = await this.getAffiliateProgram(storeId);
+        const backendUserId = await resolveBackendUserId(userId);
+        const payload = toSnakeCaseDeep({
+          storeId,
+          userId: backendUserId || userId,
+          ...affiliateData,
+          updatedAt: new Date().toISOString(),
+          createdAt: existingAffiliate?.createdAt || new Date().toISOString()
+        });
+
+        if (existingAffiliate?.id) {
+          const response = await backendFetch(`/api/${this.AFFILIATES_COLLECTION}/${encodeURIComponent(existingAffiliate.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+          });
+          return (await this.hydrateBackendOwnedRecord(
+            toCamelCaseDeep(response?.data || { ...payload, id: existingAffiliate.id }) as AffiliateProgram
+          )) as AffiliateProgram;
+        }
+
+        const response = await backendFetch(`/api/${this.AFFILIATES_COLLECTION}`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return (await this.hydrateBackendOwnedRecord(toCamelCaseDeep(rows[0] || payload) as AffiliateProgram)) as AffiliateProgram;
       }
 
       if (this.shouldUseLocalFallback()) {
@@ -333,6 +473,16 @@ class StoreBuildService {
    */
   async getAffiliateProgram(storeId: string): Promise<AffiliateProgram | null> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        const response = await backendFetch(
+          `/api/${this.AFFILIATES_COLLECTION}?eq.store_id=${encodeURIComponent(storeId)}&limit=1`
+        );
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        return rows[0]
+          ? ((await this.hydrateBackendOwnedRecord(toCamelCaseDeep(rows[0]) as AffiliateProgram)) as AffiliateProgram)
+          : null;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         const programs = await localDb.list<AffiliateProgram>('affiliatePrograms');
@@ -368,6 +518,18 @@ class StoreBuildService {
       // Validate store is complete
       this.validateStoreSetup(store);
 
+      if (this.shouldUseBackendPersistence()) {
+        const response = await backendFetch(`/api/${this.STORES_COLLECTION}/${encodeURIComponent(storeId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            is_published: true,
+            published_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        });
+        return toCamelCaseDeep(response?.data || { ...store, isPublished: true, publishedAt: new Date().toISOString() }) as StoreBuildData;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         const updated = await localDb.upsert('stores', {
@@ -397,6 +559,17 @@ class StoreBuildService {
    */
   async unpublishStore(storeId: string): Promise<void> {
     try {
+      if (this.shouldUseBackendPersistence()) {
+        await backendFetch(`/api/${this.STORES_COLLECTION}/${encodeURIComponent(storeId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            is_published: false,
+            updated_at: new Date().toISOString()
+          })
+        });
+        return;
+      }
+
       if (this.shouldUseLocalFallback()) {
         await localDb.init();
         const store = await this.getStore(storeId);

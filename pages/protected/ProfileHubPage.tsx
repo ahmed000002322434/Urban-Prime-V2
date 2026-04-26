@@ -5,7 +5,7 @@ import { CATEGORIES } from '../../constants';
 import profileOnboardingService from '../../services/profileOnboardingService';
 import type { OnboardingIntent, RoleSetupDraft } from '../../types';
 import { createRoleSetupDefaults } from '../../utils/onboardingRoleSetup';
-import { ClayButton, ClayCard, ClayInput, ClaySectionHeader } from '../../components/dashboard/clay';
+import { ClayButton, ClayInput } from '../../components/dashboard/clay';
 
 const intentOptions: Array<{ id: OnboardingIntent; label: string }> = [
   { id: 'buy', label: 'Buy' },
@@ -160,10 +160,35 @@ const ProfileHubPage: React.FC = () => {
   if (!user) return null;
 
   return (
-    <div className="space-y-6">
-      <ClayCard size="lg">
-        <ClaySectionHeader title="Profile Hub" subtitle="Edit all onboarding fields from one place." />
-      </ClayCard>
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-[30px] border border-[#ece2e7] bg-[linear-gradient(180deg,#ffffff,#fffefe)] p-5 shadow-[0_24px_48px_rgba(224,196,196,0.1),inset_0_1px_0_rgba(255,255,255,0.96)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(33,31,43,0.98),rgba(27,25,35,0.96))] dark:shadow-[0_24px_48px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-[0.7rem] font-black uppercase tracking-[0.3em] text-[#9d6f8c] dark:text-[#e5bc9e]">Profile hub</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-text-primary sm:text-[2rem]">
+              Keep every workspace ready to go
+            </h2>
+            <p className="mt-3 text-sm font-medium leading-7 text-text-secondary sm:text-[0.96rem]">
+              Update identity, interests, and role setup in one place so the rest of the dashboard stays personalized and complete.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-[22px] border border-[#ece2e7] bg-white/80 px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Intents</p>
+              <p className="mt-1 text-xl font-black text-text-primary">{selectedIntents.length}</p>
+            </div>
+            <div className="rounded-[22px] border border-[#ece2e7] bg-white/80 px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Interests</p>
+              <p className="mt-1 text-xl font-black text-text-primary">{interests.length}</p>
+            </div>
+            <div className="rounded-[22px] border border-[#ece2e7] bg-white/80 px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Role setup</p>
+              <p className="mt-1 text-xl font-black text-text-primary">{hasRoleIntent ? 'Live' : 'Basic'}</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="clay-card clay-size-lg">
         <h2 className="text-lg font-semibold text-text-primary">Intent</h2>
@@ -242,7 +267,11 @@ const ProfileHubPage: React.FC = () => {
         <ClayButton type="button" onClick={handleSave} disabled={isSaving} variant="primary">
           {isSaving ? <Spinner size="sm" /> : 'Save profile hub'}
         </ClayButton>
-        {status && <p className="text-sm text-text-secondary">{status}</p>}
+        {status ? (
+          <p className="rounded-full border border-[#ece2e7] bg-white/80 px-3 py-1.5 text-sm text-text-secondary dark:border-white/10 dark:bg-white/[0.04]">
+            {status}
+          </p>
+        ) : null}
       </div>
     </div>
   );

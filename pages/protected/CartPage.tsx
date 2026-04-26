@@ -22,6 +22,7 @@ const getEstimateLabel = (item: CartItem) => {
 };
 
 const getItemImage = (item: CartItem) => {
+    if (item.podSelection?.mockupImageUrl) return item.podSelection.mockupImageUrl;
     if (item.imageUrls && item.imageUrls.length > 0) return item.imageUrls[0];
     if (item.images && item.images.length > 0) return item.images[0];
     return `https://picsum.photos/seed/${item.id}/300/300`;
@@ -33,6 +34,7 @@ const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () =
     const itemPrice = isRental
         ? (item.rentalPrice || item.rentalRates?.daily || item.price || 0)
         : (item.salePrice || item.price || 0);
+    const podVariantLabel = [item.podSelection?.color, item.podSelection?.size].filter(Boolean).join(' / ');
     const returnWindow = item.returnPolicy?.windowDays || item.supplierInfo?.returnPolicy?.windowDays;
     const warranty = item.warranty?.coverage;
 
@@ -64,6 +66,11 @@ const CartItemRow: React.FC<{ item: CartItem, onRemove: () => void, onSave: () =
                 {isRental && item.rentalPeriod ? (
                     <p className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
                         Rental period: {new Date(item.rentalPeriod.startDate).toLocaleDateString()} - {new Date(item.rentalPeriod.endDate).toLocaleDateString()}
+                    </p>
+                ) : null}
+                {podVariantLabel ? (
+                    <p className="mt-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                        POD variant: {podVariantLabel}
                     </p>
                 ) : null}
 

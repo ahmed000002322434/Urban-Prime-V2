@@ -7,6 +7,8 @@ import EmptyState from '../../components/EmptyState';
 import QuickViewModal from '../../components/QuickViewModal';
 import type { Item } from '../../types';
 
+const wishlistArtwork = new URL('../../dashboard images/empty wishlist state.png', import.meta.url).href;
+
 const WishlistPage: React.FC = () => {
   const { wishlistItems, isLoading } = useUserData();
   const [quickViewItem, setQuickViewItem] = useState<Item | null>(null);
@@ -34,7 +36,9 @@ const WishlistPage: React.FC = () => {
               message="Browse items and click the heart icon to save them for later."
               buttonText="Start Browsing"
               buttonLink="/browse"
-              icon="heart"
+              imageSrc={wishlistArtwork}
+              imageAlt="UrbanPrime wishlist illustration"
+              imageClassName="h-56 w-auto max-w-full object-contain"
           />
         )}
       </div>
