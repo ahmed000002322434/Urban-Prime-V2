@@ -1,33 +1,43 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { authService } from '../../services/itemService';
 import Spinner from '../../components/Spinner';
 import PasswordStrengthMeter from '../../components/PasswordStrengthMeter';
+import EmailInput from '../../components/EmailInput';
 import BackButton from '../../components/BackButton';
 import AuthVideoBackdrop from '../../components/auth/AuthVideoBackdrop';
 
 const ResetPasswordPage: React.FC = () => {
     const [searchParams] = useSearchParams();
-    const [token, setToken] = useState<string | null>(null);
+    const [email, setEmail] = useState(searchParams.get('email') || '');
+    const [pin, setPin] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        setToken(searchParams.get('token'));
-    }, [searchParams]);
+    const getResetErrorMessage = (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err || '');
+        if (/Firebase Admin credentials/i.test(message)) {
+            return 'Password reset is not configured yet. Add Firebase Admin credentials to the backend and try again.';
+        }
+        return message || 'An unknown error occurred.';
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (password !== confirmPassword) {
-            setError("Passwords do not match.");
+        if (!email.trim()) {
+            setError("Email is required.");
             return;
         }
-        if (!token) {
-            setError("Invalid or missing reset token.");
+        if (pin.replace(/\D/g, '').length !== 6) {
+            setError("Enter the 6-digit reset PIN.");
+            return;
+        }
+        if (password !== confirmPassword) {
+            setError("Passwords do not match.");
             return;
         }
 
@@ -35,30 +45,14 @@ const ResetPasswordPage: React.FC = () => {
         setError('');
         setMessage('');
         try {
-            // FIX: Expected 0 arguments, but got 2. This error originates from the service definition. The call here is correct based on application logic. The fix will be in itemService.ts.
-            await authService.resetPassword(token, password);
+            await authService.resetPasswordWithPin(email, pin, password);
             setMessage("Your password has been reset successfully!");
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            setError(getResetErrorMessage(err));
         } finally {
             setLoading(false);
         }
     };
-
-    if (!token) {
-        return (
-             <div className="auth-body relative overflow-hidden bg-transparent">
-                <AuthVideoBackdrop />
-                <div className="auth-container relative z-10" style={{ minHeight: '400px', width: '420px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <div className="text-center p-8">
-                        <h1 className="auth-h1 text-red-500">Invalid Link</h1>
-                        <p className="text-gray-500 dark:text-gray-400 my-4">The password reset link is missing or invalid. Please request a new one.</p>
-                        <Link to="/forgot-password"><button className="auth-button">Request Reset Link</button></Link>
-                    </div>
-                </div>
-            </div>
-        )
-    }
 
     return (
         <div className="auth-body relative overflow-hidden bg-transparent">
@@ -75,7 +69,27 @@ const ResetPasswordPage: React.FC = () => {
                             </div>
                         ) : (
                             <>
-                                <p className="text-gray-500 dark:text-gray-400 my-4">Please enter your new password.</p>
+                                <p className="text-gray-500 dark:text-gray-400 my-4">Enter the reset PIN and choose a new password.</p>
+                                <div className={`auth-input-group ${email ? 'is-filled' : ''}`}>
+                                    <EmailInput name="email" className="auth-input" value={email} onChange={e => setEmail(e.target.value)} required placeholder=" " />
+                                    <span className="bar"></span>
+                                    <label className="auth-label">Email</label>
+                                </div>
+                                <div className={`auth-input-group ${pin ? 'is-filled' : ''}`}>
+                                    <input
+                                        className="auth-input text-center tracking-[0.35em]"
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        maxLength={6}
+                                        value={pin}
+                                        onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        required
+                                        placeholder=" "
+                                    />
+                                    <span className="bar"></span>
+                                    <label className="auth-label">Reset PIN</label>
+                                </div>
                                 <div className={`auth-input-group ${password ? 'is-filled' : ''}`} style={{marginBottom: 4}}>
                                     <input className="auth-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder=" " />
                                     <span className="bar"></span>

@@ -22,12 +22,12 @@ export default defineConfig(({ mode }) => {
       'vendor-ai',
       'vendor-charts',
       'vendor-confetti',
-      'vendor-firebase-analytics',
-      'vendor-firebase-firestore',
-      'vendor-firebase-messaging',
-      'vendor-firebase-storage',
+      'vendor-firebase',
       'vendor-lottie',
-      'vendor-supabase'
+      'vendor-supabase',
+      'vendor-three-core',
+      'vendor-three-extras',
+      'vendor-three-fiber'
     ];
 
     return {
@@ -51,9 +51,16 @@ export default defineConfig(({ mode }) => {
             manualChunks(id) {
               if (id.includes('node_modules')) {
                 const packageName = getNodeModulePackageName(id);
-                if (id.includes('react-router')) return 'vendor-router';
-                if (id.includes('react-dom') || id.includes('react/jsx-runtime') || id.includes('/react/')) return 'vendor-react';
-                if (id.includes('framer-motion')) return 'vendor-motion';
+                if (
+                  packageName === 'react' ||
+                  packageName === 'react-dom' ||
+                  packageName === 'scheduler' ||
+                  packageName === 'react-router' ||
+                  packageName === 'react-router-dom' ||
+                  packageName === 'framer-motion'
+                ) {
+                  return 'vendor';
+                }
                 if (
                   packageName === '@dotlottie/player-component' ||
                   packageName === 'lottie-web' ||
@@ -66,15 +73,6 @@ export default defineConfig(({ mode }) => {
                 }
                 if (packageName?.startsWith('@supabase/')) return 'vendor-supabase';
                 if (id.includes('firebase')) {
-                  if (id.includes('firebase/auth')) return 'vendor-firebase-auth';
-                  if (id.includes('firebase/firestore')) return 'vendor-firebase-firestore';
-                  if (id.includes('firebase/storage')) return 'vendor-firebase-storage';
-                  if (id.includes('firebase/functions')) return 'vendor-firebase-functions';
-                  if (id.includes('firebase/messaging')) return 'vendor-firebase-messaging';
-                  if (id.includes('firebase/database')) return 'vendor-firebase-database';
-                  if (id.includes('firebase/analytics')) return 'vendor-firebase-analytics';
-                  if (id.includes('firebase/remote-config')) return 'vendor-firebase-remote-config';
-                  if (id.includes('firebase/app')) return 'vendor-firebase-app';
                   return 'vendor-firebase';
                 }
                 if (id.includes('recharts') || id.includes('d3')) return 'vendor-charts';

@@ -4,6 +4,7 @@ import BackButton from '../../components/BackButton';
 import Spinner from '../../components/Spinner';
 import { auth } from '../../firebase';
 import { useAuth } from '../../hooks/useAuth';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 const accountTips = [
   'Google sign-in now opens the account chooser so you can pick another Gmail session directly.',
@@ -27,7 +28,7 @@ const SwitchGoogleAccountPage: React.FC = () => {
       {
         title: 'Profile',
         description: 'Open your public profile page and review how the account looks to everyone else.',
-        href: user?.id ? `/user/${user.id}` : '/profile/settings'
+        href: user?.id ? buildPublicProfilePath(user) : '/profile/settings'
       },
       {
         title: 'Switch workplace',
@@ -35,7 +36,7 @@ const SwitchGoogleAccountPage: React.FC = () => {
         href: '/profile/switch-accounts'
       }
     ],
-    [user?.id]
+    [user]
   );
 
   const connectedAccounts = useMemo(() => {

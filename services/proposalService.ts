@@ -5,8 +5,7 @@ import {
   getDocs,
   orderBy,
   query,
-  setDoc,
-  where
+  setDoc
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { backendFetch, isBackendConfigured } from './backendClient';
@@ -22,9 +21,10 @@ import {
 } from './supabaseAppBridge';
 import supabaseMirror from './supabaseMirror';
 import supabase from '../utils/supabase';
-import type { Proposal, User } from '../types';
+import type { Proposal, ProposalComposerDraft, User } from '../types';
 
 interface ListProposalParams {
+  id?: string;
   requestId?: string;
   listingId?: string;
   providerId?: string;
@@ -102,6 +102,24 @@ const attachProposalFirebaseIds = async (rows: any[]) =>
     { sourceField: 'client_id', targetField: 'client_firebase_uid' }
   ]);
 
+const updateRequestStatusDirect = async (requestId: string, updates: Record<string, any>) => {
+  const normalizedRequestId = String(requestId || '').trim();
+  if (!normalizedRequestId || !canUseDirectSupabase()) return;
+  const payload = { ...updates };
+  if (!payload.updated_at) {
+    payload.updated_at = new Date().toISOString();
+  }
+  const res = await supabase
+    .from('work_requests')
+    .update(payload)
+    .eq('id', normalizedRequestId)
+    .select('id,status,accepted_at,declined_at,updated_at,details')
+    .maybeSingle();
+  if (res.error) {
+    throw toSupabaseError(getDirectSupabaseSetupMessage(), res.error);
+  }
+};
+
 const proposalService = {
   async createProposal(input: Partial<Proposal>, user: User): Promise<Proposal> {
     const payload = {
@@ -153,40 +171,117 @@ const proposalService = {
           avatar: input.clientId === user.id ? user.avatar : ''
         })).id;
       }
-      const res = await supabase
-        .from('work_proposals')
-        .insert({
-          request_id: payload.requestId || null,
-          listing_id: payload.listingId || null,
-          provider_id: currentUserRow.id,
-          provider_persona_id: payload.providerPersonaId || null,
-          provider_snapshot: payload.providerSnapshot || {
-            id: user.id,
-            name: user.name,
-            avatar: user.avatar,
-            rating: user.rating || 0
-          },
-          client_id: clientId || null,
-          client_persona_id: payload.clientPersonaId || null,
-          client_snapshot: payload.clientSnapshot || {
-            id: input.clientId || '',
-            name: 'Client'
-          },
-          title: payload.title,
-          cover_letter: payload.coverLetter,
-          price_total: payload.priceTotal,
-          currency: payload.currency,
-          delivery_days: payload.deliveryDays ?? 0,
-          milestones: payload.milestones || [],
-          terms: payload.terms || {},
-          revision_limit: payload.revisionLimit ?? 0,
-          risk_score: payload.riskScore ?? 0,
-          status: input.status || 'pending'
-        })
-        .select('*')
-        .single();
+      let requestRow: any = null;
+      if (payload.requestId) {
+        const requestLookup = await supabase
+          .from('work_requests')
+          .select('*')
+          .eq('id', payload.requestId)
+          .maybeSingle();
+        if (requestLookup.error) {
+          throw toSupabaseError(getDirectSupabaseSetupMessage(), requestLookup.error);
+        }
+        requestRow = requestLookup.data;
+        if (!requestRow) {
+          throw new Error('Work request not found.');
+        }
+        if (String(requestRow.target_provider_id || '') !== String(currentUserRow.id || '')) {
+          throw new Error('You do not have access to propose on this request.');
+        }
+        if (['matched', 'cancelled', 'closed'].includes(String(requestRow.status || '').toLowerCase())) {
+          throw new Error('This lead can no longer receive proposals.');
+        }
+        if (String(requestRow.request_type || '').toLowerCase() === 'booking') {
+          throw new Error('Booking leads should be accepted directly.');
+        }
+        const resolvedListingId = payload.listingId || requestRow.listing_id || undefined;
+        if (resolvedListingId) {
+          const listingLookup = await supabase
+            .from('work_listings')
+            .select('id,status')
+            .eq('id', resolvedListingId)
+            .maybeSingle();
+          if (listingLookup.error) {
+            throw toSupabaseError(getDirectSupabaseSetupMessage(), listingLookup.error);
+          }
+          if (!listingLookup.data || String(listingLookup.data.status || '') !== 'published') {
+            throw new Error('Linked listing is no longer available.');
+          }
+          payload.listingId = resolvedListingId;
+        }
+        clientId = clientId || String(requestRow.requester_id || '').trim() || clientId;
+      }
+
+      const proposalRow = {
+        request_id: payload.requestId || null,
+        listing_id: payload.listingId || requestRow?.listing_id || null,
+        provider_id: currentUserRow.id,
+        provider_persona_id: payload.providerPersonaId || null,
+        provider_snapshot: payload.providerSnapshot || {
+          id: user.id,
+          name: user.name,
+          avatar: user.avatar,
+          rating: user.rating || 0
+        },
+        client_id: clientId || null,
+        client_persona_id: payload.clientPersonaId || null,
+        client_snapshot: payload.clientSnapshot || requestRow?.requester_snapshot || {
+          id: input.clientId || requestRow?.requester_id || '',
+          name: requestRow?.requester_snapshot?.name || 'Client'
+        },
+        title: payload.title,
+        cover_letter: payload.coverLetter,
+        price_total: payload.priceTotal,
+        currency: payload.currency,
+        delivery_days: payload.deliveryDays ?? 0,
+        milestones: payload.milestones || [],
+        terms: payload.terms || {},
+        revision_limit: payload.revisionLimit ?? 0,
+        risk_score: payload.riskScore ?? 0,
+        status: input.status || 'pending'
+      };
+
+      let existingRow: any = null;
+      if (payload.requestId) {
+        const existingLookup = await supabase
+          .from('work_proposals')
+          .select('*')
+          .eq('request_id', payload.requestId)
+          .eq('provider_id', currentUserRow.id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existingLookup.error) {
+          throw toSupabaseError(getDirectSupabaseSetupMessage(), existingLookup.error);
+        }
+        existingRow = existingLookup.data || null;
+        if (existingRow?.status === 'accepted') {
+          throw new Error('This proposal has already been accepted.');
+        }
+      }
+
+      const res = existingRow?.id
+        ? await supabase
+            .from('work_proposals')
+            .update({
+              ...proposalRow,
+              responded_at: null
+            })
+            .eq('id', existingRow.id)
+            .select('*')
+            .single()
+        : await supabase
+            .from('work_proposals')
+            .insert(proposalRow)
+            .select('*')
+            .single();
       if (res.error || !res.data) {
         throw toSupabaseError(getDirectSupabaseSetupMessage(), res.error);
+      }
+      if (payload.requestId && proposalRow.status === 'pending') {
+        await updateRequestStatusDirect(payload.requestId, {
+          status: 'in_review'
+        });
       }
       const [normalizedRow] = await attachProposalFirebaseIds([res.data]);
       const proposal = mapProposalRow(normalizedRow);
@@ -260,6 +355,11 @@ const proposalService = {
       }
       const [normalizedRow] = await attachProposalFirebaseIds([res.data]);
       const proposal = mapProposalRow(normalizedRow);
+      if (proposal.requestId && updates.status === 'pending') {
+        await updateRequestStatusDirect(proposal.requestId, {
+          status: 'in_review'
+        });
+      }
       await supabaseMirror.mergeUpdate<Proposal>('work_proposals', proposal.id, proposal);
       if (shouldUseFirestoreFallback()) {
         await setDoc(doc(db, 'work_proposals', proposal.id), proposal, { merge: true });
@@ -288,6 +388,7 @@ const proposalService = {
       const providerId = await resolveBackendUserId(params.providerId);
       const clientId = await resolveBackendUserId(params.clientId);
       const queryParams = new URLSearchParams();
+      if (params.id) queryParams.set('eq.id', params.id);
       if (params.requestId) queryParams.set('eq.request_id', params.requestId);
       if (params.listingId) queryParams.set('eq.listing_id', params.listingId);
       if (providerId) queryParams.set('eq.provider_id', providerId);
@@ -304,6 +405,7 @@ const proposalService = {
       const providerId = await resolveSupabaseUserId(params.providerId);
       const clientId = await resolveSupabaseUserId(params.clientId);
       let queryBuilder = supabase.from('work_proposals').select('*').order('updated_at', { ascending: false });
+      if (params.id) queryBuilder = queryBuilder.eq('id', params.id);
       if (params.requestId) queryBuilder = queryBuilder.eq('request_id', params.requestId);
       if (params.listingId) queryBuilder = queryBuilder.eq('listing_id', params.listingId);
       if (providerId) queryBuilder = queryBuilder.eq('provider_id', providerId);
@@ -321,17 +423,28 @@ const proposalService = {
 
     if (!shouldUseFirestoreFallback()) return [];
 
-    let proposalQuery = query(collection(db, 'work_proposals'), orderBy('updatedAt', 'desc'));
-    if (params.providerId) {
-      proposalQuery = query(collection(db, 'work_proposals'), where('providerId', '==', params.providerId), orderBy('updatedAt', 'desc'));
-    } else if (params.clientId) {
-      proposalQuery = query(collection(db, 'work_proposals'), where('clientId', '==', params.clientId), orderBy('updatedAt', 'desc'));
-    } else if (params.status) {
-      proposalQuery = query(collection(db, 'work_proposals'), where('status', '==', params.status), orderBy('updatedAt', 'desc'));
+    if (params.id) {
+      const snap = await getDoc(doc(db, 'work_proposals', params.id));
+      if (!snap.exists()) return [];
+      const proposal = mapProposalRow({ id: snap.id, ...(snap.data() || {}) });
+      const matchesProvider = !params.providerId || proposal.providerId === params.providerId;
+      const matchesClient = !params.clientId || proposal.clientId === params.clientId;
+      const matchesRequest = !params.requestId || proposal.requestId === params.requestId;
+      const matchesListing = !params.listingId || proposal.listingId === params.listingId;
+      const matchesStatus = !params.status || proposal.status === params.status;
+      return matchesProvider && matchesClient && matchesRequest && matchesListing && matchesStatus ? [proposal] : [];
     }
 
-    const snapshot = await getDocs(proposalQuery);
-    return snapshot.docs.map((snap) => mapProposalRow({ id: snap.id, ...(snap.data() || {}) }));
+    const snapshot = await getDocs(query(collection(db, 'work_proposals'), orderBy('updatedAt', 'desc')));
+    const rows = snapshot.docs.map((snap) => mapProposalRow({ id: snap.id, ...(snap.data() || {}) }));
+    return rows.filter((proposal) => {
+      if (params.providerId && proposal.providerId !== params.providerId) return false;
+      if (params.clientId && proposal.clientId !== params.clientId) return false;
+      if (params.requestId && proposal.requestId !== params.requestId) return false;
+      if (params.listingId && proposal.listingId !== params.listingId) return false;
+      if (params.status && proposal.status !== params.status) return false;
+      return true;
+    });
   },
 
   async getProviderProposals(providerId: string): Promise<Proposal[]> {
@@ -340,6 +453,42 @@ const proposalService = {
 
   async getClientProposals(clientId: string): Promise<Proposal[]> {
     return proposalService.getProposals({ clientId });
+  },
+
+  async getProposalById(proposalId: string): Promise<Proposal | undefined> {
+    const normalizedId = String(proposalId || '').trim();
+    if (!normalizedId) return undefined;
+    const rows = await proposalService.getProposals({ id: normalizedId, limit: 1 });
+    return rows[0];
+  },
+
+  async getProposalByRequest(requestId: string, providerId: string): Promise<Proposal | undefined> {
+    const normalizedRequestId = String(requestId || '').trim();
+    const normalizedProviderId = String(providerId || '').trim();
+    if (!normalizedRequestId || !normalizedProviderId) return undefined;
+    const rows = await proposalService.getProposals({
+      requestId: normalizedRequestId,
+      providerId: normalizedProviderId,
+      limit: 1
+    });
+    return rows[0];
+  },
+
+  async sendProposalForRequest(input: ProposalComposerDraft, user: User): Promise<Proposal> {
+    return proposalService.createProposal({
+      requestId: input.requestId,
+      listingId: input.listingId,
+      clientId: input.clientId,
+      title: input.title,
+      coverLetter: input.coverLetter,
+      priceTotal: input.priceTotal,
+      currency: input.currency,
+      deliveryDays: input.deliveryDays,
+      revisionLimit: input.revisionLimit,
+      milestones: input.milestones,
+      terms: input.terms,
+      status: 'pending'
+    }, user);
   },
 
   async acceptProposal(proposalId: string): Promise<{ proposal: Proposal; contract?: any }> {
@@ -403,6 +552,13 @@ const proposalService = {
       }).catch(() => undefined);
     }
 
+    if (proposal.requestId) {
+      await updateRequestStatusDirect(proposal.requestId, {
+        status: 'matched',
+        accepted_at: new Date().toISOString()
+      }).catch(() => undefined);
+    }
+
     return { proposal, contract };
   },
 
@@ -418,13 +574,19 @@ const proposalService = {
       return proposal;
     }
 
-    return proposalService.updateProposal(proposalId, {
+    const proposal = await proposalService.updateProposal(proposalId, {
       status: 'declined',
       respondedAt: new Date().toISOString(),
       terms: {
         declineReason: reason
       }
     });
+    if (proposal.requestId) {
+      await updateRequestStatusDirect(proposal.requestId, {
+        status: 'open'
+      }).catch(() => undefined);
+    }
+    return proposal;
   }
 };
 

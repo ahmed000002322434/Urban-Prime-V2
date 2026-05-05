@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AuctionSnapshot, Item, PodVariantOption, RentalDeliveryMode, RentalQuote } from '../../types';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 type PurchaseMode = 'buy' | 'bid' | 'rent';
 type CheckoutMode = 'sale' | 'rent';
@@ -639,7 +640,7 @@ const LiquidGlassItemDetail: React.FC<LiquidGlassItemDetailProps> = ({
               <h3 className="mt-2 text-lg font-bold text-text-primary">{item.owner?.businessName || item.owner?.name || 'Urban Prime seller'}</h3>
               <p className="mt-2 text-sm text-text-secondary">{item.isVerified ? 'Verified seller on Urban Prime with clear catalog and fulfillment details.' : 'Seller profile available with shipping, policy, and fulfillment details before checkout.'}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link to={`/user/${encodeURIComponent(item.owner?.id || '')}`} className="inline-flex h-10 items-center justify-center rounded-full bg-primary px-4 text-xs font-black uppercase tracking-[0.2em] text-primary-text">View profile</Link>
+                <Link to={buildPublicProfilePath(item.owner)} className="inline-flex h-10 items-center justify-center rounded-full bg-primary px-4 text-xs font-black uppercase tracking-[0.2em] text-primary-text">View profile</Link>
                 <Link to="/messages" className="inline-flex h-10 items-center justify-center rounded-full border border-white/20 px-4 text-xs font-black uppercase tracking-[0.2em] text-text-primary">Message seller</Link>
               </div>
             </div>

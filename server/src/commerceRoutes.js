@@ -72,6 +72,7 @@ const jsonObject = (value) => {
   }
   return {};
 };
+const isOptionalDropshipSchemaError = (error) => ['42703', '42P01'].includes(String(error?.code || ''));
 const parseDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -1479,7 +1480,7 @@ const buildCommerceOrderDetail = async (supabase, target) => {
         .limit(1)
         .maybeSingle();
 
-  const [paymentRes, shipmentRes, userMap, itemRes, addressRes, supplierOrderRes] = await Promise.all([
+  const [paymentRes, shipmentRes, userMap, itemRes, addressRes, rawSupplierOrderRes] = await Promise.all([
     paymentPromise,
     shipmentPromise,
     usersPromise,
@@ -1487,6 +1488,9 @@ const buildCommerceOrderDetail = async (supabase, target) => {
     addressPromise,
     supplierOrderPromise
   ]);
+  const supplierOrderRes = isOptionalDropshipSchemaError(rawSupplierOrderRes.error)
+    ? { data: null, error: null }
+    : rawSupplierOrderRes;
 
   if (paymentRes.error) throw paymentRes.error;
   if (shipmentRes.error) throw shipmentRes.error;
@@ -3099,33 +3103,41 @@ export default function registerCommerceRoutes({
           .from('order_items')
           .select('*')
           .eq('seller_id', userCtx.user.id)
-          .neq('listing_type', 'rent')
           .order('created_at', { ascending: false })
           .limit(120)
       ]);
       if (rentalRes.error) throw rentalRes.error;
       if (orderItemRes.error) throw orderItemRes.error;
 
+      const rentalRows = rentalRes.data || [];
+      const rentalOrderItemIds = new Set(
+        rentalRows.map((row) => String(row.order_item_id || '')).filter(Boolean)
+      );
+      const sellerOrderItems = (orderItemRes.data || []).filter((row) => {
+        if (rentalOrderItemIds.has(String(row.id || ''))) return false;
+        return String(row.listing_type || '').trim().toLowerCase() !== 'rent';
+      });
+
       const orderIds = uniqueStrings([
-        ...(rentalRes.data || []).map((row) => row.order_id),
-        ...(orderItemRes.data || []).map((row) => row.order_id)
+        ...rentalRows.map((row) => row.order_id),
+        ...sellerOrderItems.map((row) => row.order_id)
       ]);
       const [orderRows, itemMap] = await Promise.all([
         fetchRowsByIds(supabase, 'orders', orderIds, '*'),
         fetchItemMap(supabase, [
-          ...(rentalRes.data || []).map((row) => row.item_id),
-          ...(orderItemRes.data || []).map((row) => row.item_id)
+          ...rentalRows.map((row) => row.item_id),
+          ...sellerOrderItems.map((row) => row.item_id)
         ])
       ]);
       const orderMap = new Map(orderRows.map((row) => [String(row.id), row]));
       const details = [];
-      for (const rental of rentalRes.data || []) {
+      for (const rental of rentalRows) {
         const orderItem = { id: rental.order_item_id, item_id: rental.item_id, order_id: rental.order_id, seller_id: rental.seller_id, quantity: 1, unit_price: 0, listing_type: 'rent', metadata: {} };
         const order = orderMap.get(String(rental.order_id || ''));
         if (!order) continue;
         details.push(await buildCommerceOrderDetail(supabase, { order, orderItem, booking: rental }));
       }
-      for (const orderItem of orderItemRes.data || []) {
+      for (const orderItem of sellerOrderItems) {
         const order = orderMap.get(String(orderItem.order_id || ''));
         if (!order) continue;
         details.push(await buildCommerceOrderDetail(supabase, { order, orderItem, booking: null }));

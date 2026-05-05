@@ -16,7 +16,9 @@ import PixeTopHeader from '../../components/pixe/PixeTopHeader';
 import { pixeLibraryHeaderLink } from '../../components/pixe/pixeHeaderConfig';
 import { PixeMiniRailSkeleton, PixeWatchPageSkeleton } from '../../components/pixe/PixeSkeleton';
 import { useAuth } from '../../hooks/useAuth';
+import useSeoMeta from '../../hooks/useSeoMeta';
 import { pixeService, type PixeComment, type PixeProductTag, type PixeVideo } from '../../services/pixeService';
+import { createBaseMeta, createPixeVideoSeoMeta, resolveStaticSeoMeta } from '../../seo/siteMetadata.js';
 
 const clampTextStyle = (lines: number): React.CSSProperties => ({
   display: '-webkit-box',
@@ -463,6 +465,26 @@ const PixeWatchPage: React.FC = () => {
       cancelled = true;
     };
   }, [video?.id, video?.channel?.handle]);
+
+  const seoMeta = useMemo(() => {
+    if (video) {
+      return createPixeVideoSeoMeta(video, `/pixe/watch/${encodeURIComponent(video.id)}`);
+    }
+
+    if (!loading) {
+      return createBaseMeta({
+        title: 'Pixe Video Unavailable | Urban Prime',
+        description: 'This Pixe video is unavailable or no longer public.',
+        path: `/pixe/watch/${encodeURIComponent(videoId || 'video')}`,
+        noIndex: true,
+        themeColor: '#08090d'
+      });
+    }
+
+    return resolveStaticSeoMeta(`/pixe/watch/${encodeURIComponent(videoId || 'video')}`);
+  }, [loading, video, videoId]);
+
+  useSeoMeta(seoMeta);
 
   const requireAuth = () => {
     navigate('/auth', { state: { from: `/pixe/watch/${videoId}` } });

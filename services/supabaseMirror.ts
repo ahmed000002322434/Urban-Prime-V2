@@ -8,7 +8,11 @@ const isSupabaseConfigured = () => {
   return Boolean(url && key);
 };
 
-const isDirectMirrorEnabled = () => (import.meta.env.VITE_ENABLE_DIRECT_SUPABASE_MIRROR as string | undefined) === 'true';
+const readDirectMirrorFlag = () =>
+  (import.meta.env.VITE_ENABLE_DIRECT_SUPABASE_MIRROR as string | undefined)
+  ?? (import.meta.env.VITE_ENABLE_SUPABASE_DIRECT_WRITE as string | undefined);
+
+const isDirectMirrorEnabled = () => readDirectMirrorFlag() === 'true';
 const MIRROR_UPSERT_MIN_INTERVAL_MS = 10_000;
 const MIRROR_BACKEND_SUSPEND_MS = 60_000;
 const MIRROR_BACKEND_SUSPEND_MS_404 = 5 * 60_000;

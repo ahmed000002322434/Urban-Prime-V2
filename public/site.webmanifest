@@ -1,0 +1,26 @@
+{
+  "name": "Urban Prime",
+  "short_name": "Urban Prime",
+  "description": "Urban Prime is a social marketplace for products, creator videos, Spotlight posts, stores, services, rentals, auctions, and local commerce.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071015",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "categories": ["shopping", "social", "entertainment", "business"],
+  "icons": [
+    {
+      "src": "/icons/urbanprime-square.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/urbanprime-square.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

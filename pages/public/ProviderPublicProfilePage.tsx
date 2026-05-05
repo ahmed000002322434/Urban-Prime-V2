@@ -179,6 +179,12 @@ const ProviderPublicProfilePage: React.FC = () => {
                 >
                   Message provider
                 </Link>
+                <Link
+                  to={`/services/concierge?providerId=${encodeURIComponent(user.id)}`}
+                  className="rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/86"
+                >
+                  Start with AI concierge
+                </Link>
                 <Link to="/services/marketplace" className="rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-center text-sm font-semibold text-white/86">
                   Browse more services
                 </Link>

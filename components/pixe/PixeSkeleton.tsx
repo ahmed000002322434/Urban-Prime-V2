@@ -19,38 +19,56 @@ export const PixeInlineSkeleton: React.FC<{ className?: string }> = ({ className
 );
 
 export const PixeFeedPageSkeleton: React.FC = () => (
-  <div className="pixe-noir-shell min-h-[100svh] px-4 pb-8 pt-20 text-white sm:px-6 lg:px-8">
-    <div className="mx-auto grid max-w-[112rem] gap-6 xl:grid-cols-[320px_minmax(0,1fr)_108px]">
-      <div className={`${shellClassName} hidden p-5 xl:block`}>
+  <div className="pixe-noir-shell min-h-[100svh] px-3 pb-8 pt-24 text-white sm:px-5 lg:px-6">
+    <div className="mx-auto flex max-w-[94rem] justify-center">
+      <div className="rounded-full bg-[#17171a]/84 p-1.5 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
+        <div className="flex gap-1.5">
+          <Block className="h-10 w-28 rounded-full" />
+          <Block className="h-10 w-28 rounded-full" />
+          <Block className="h-10 w-28 rounded-full" />
+        </div>
+      </div>
+    </div>
+    <div className="mx-auto mt-8 grid max-w-[94rem] items-center gap-7 xl:grid-cols-[320px_minmax(0,30rem)_88px]">
+      <div className={`${shellClassName} hidden rounded-[32px] p-6 xl:block`}>
         <Block className="h-12 w-12 rounded-full" />
         <div className="mt-4 space-y-3">
-          <Block className="h-5 w-40" />
-          <Block className="h-4 w-28" />
-          <Block className="h-8 w-24 rounded-full" />
+          <Block className="h-6 w-40" />
+          <Block className="h-4 w-24" />
+          <Block className="h-10 w-24 rounded-full" />
         </div>
-        <div className="mt-6 space-y-3">
-          <Block className="h-6 w-3/4" />
+        <div className="mt-8 space-y-3">
+          <Block className="h-7 w-4/5" />
           <Block className="h-4 w-full" />
           <Block className="h-4 w-5/6" />
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Block className="h-8 w-14 rounded-full" />
             <Block className="h-8 w-16 rounded-full" />
             <Block className="h-8 w-20 rounded-full" />
             <Block className="h-8 w-14 rounded-full" />
+          </div>
+          <div className="pt-4">
+            <Block className="h-12 w-full rounded-[22px]" />
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-center">
-        <div className={`${shellClassName} w-full max-w-[30rem] overflow-hidden p-3`}>
-          <Block className="aspect-[9/16] w-full rounded-[24px]" />
+        <div className="relative w-full max-w-[30rem]">
+          <div className="absolute inset-x-[10%] top-[10%] bottom-[8%] rounded-[42px] bg-[#222226] blur-[44px]" />
+          <div className={`${shellClassName} relative overflow-hidden p-3`}>
+            <Block className="aspect-[9/16] w-full rounded-[28px]" />
+          </div>
         </div>
       </div>
 
       <div className="hidden items-center justify-center xl:flex">
-        <div className="flex flex-col gap-4">
+        <div className="rounded-[30px] bg-[#17171a]/84 px-3 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
+          <div className="flex flex-col gap-3">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Block key={index} className="h-14 w-14 rounded-full" />
+              <Block key={index} className="h-12 w-12 rounded-[18px]" />
           ))}
+          </div>
         </div>
       </div>
     </div>

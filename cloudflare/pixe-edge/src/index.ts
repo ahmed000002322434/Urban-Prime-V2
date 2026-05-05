@@ -1,6 +1,7 @@
 export interface Env {
   ORIGIN_API: string;
   EDGE_BACKEND_KEY?: string;
+  ALLOWED_ORIGINS?: string;
 }
 
 type RequestCfBotManagement = {
@@ -18,11 +19,56 @@ type CachePolicy = {
   edgeTtl: number;
 };
 
+type CloudflareCacheRequestInit = RequestInit & {
+  cf?: {
+    cacheEverything?: boolean;
+    cacheTtlByStatus?: Record<string, number>;
+  };
+};
+
+const EDGE_RUNTIME = 'urban-prime-edge';
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://*.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
 const withTrailingSlashTrimmed = (value: string) => value.replace(/\/$/, '');
+
+const joinPathSegments = (...segments: string[]) => {
+  const parts = segments
+    .map((segment) => String(segment || '').trim())
+    .filter(Boolean)
+    .map((segment, index) => {
+      if (index === 0) return segment.replace(/\/+$/, '');
+      return segment.replace(/^\/+/, '').replace(/\/+$/, '');
+    });
+
+  if (parts.length === 0) return '/';
+  const joined = parts.join('/');
+  return joined.startsWith('/') ? joined : `/${joined}`;
+};
 
 const buildOriginUrl = (origin: string, request: Request) => {
   const incomingUrl = new URL(request.url);
-  return new URL(`${incomingUrl.pathname}${incomingUrl.search}`, withTrailingSlashTrimmed(origin));
+  const originUrl = new URL(withTrailingSlashTrimmed(origin));
+  const originPath = originUrl.pathname.replace(/\/$/, '');
+  const requestPath = incomingUrl.pathname.startsWith('/') ? incomingUrl.pathname : `/${incomingUrl.pathname}`;
+
+  if (requestPath === '/api' || requestPath.startsWith('/api/')) {
+    const normalizedPath = originPath && (requestPath === originPath || requestPath.startsWith(`${originPath}/`))
+      ? requestPath
+      : joinPathSegments(originPath, requestPath);
+
+    originUrl.pathname = normalizedPath || '/';
+    originUrl.search = incomingUrl.search;
+    return originUrl;
+  }
+
+  originUrl.pathname = joinPathSegments(originPath, '/api/backend');
+  originUrl.search = incomingUrl.search;
+  originUrl.searchParams.set('route', requestPath.replace(/^\/+/, ''));
+  return originUrl;
 };
 
 const shouldCache = (request: Request, url: URL) => {
@@ -60,9 +106,62 @@ const getCachePolicy = (url: URL): CachePolicy | null => {
   return null;
 };
 
-const applyResponseHeaders = (response: Response, cachePolicy: CachePolicy | null = null) => {
+const splitAllowedOrigins = (value?: string) => {
+  const source = value?.trim() ? value : DEFAULT_ALLOWED_ORIGINS.join(',');
+  return source
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const matchesAllowedOrigin = (origin: string, pattern: string) => {
+  if (pattern === '*') return true;
+  if (pattern.includes('*')) {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    return new RegExp(`^${escaped}$`, 'i').test(origin);
+  }
+  return origin.toLowerCase() === pattern.toLowerCase();
+};
+
+const resolveAllowedOrigin = (request: Request, env: Env) => {
+  const requestOrigin = request.headers.get('origin');
+  if (!requestOrigin) return null;
+  const allowedOrigins = splitAllowedOrigins(env.ALLOWED_ORIGINS);
+  return allowedOrigins.some((pattern) => matchesAllowedOrigin(requestOrigin, pattern))
+    ? requestOrigin
+    : null;
+};
+
+const applyCorsHeaders = (response: Response, request: Request, env: Env) => {
   const next = new Response(response.body, response);
-  next.headers.set('x-pixe-edge', 'cloudflare');
+  const allowedOrigin = resolveAllowedOrigin(request, env);
+  next.headers.append('vary', 'Origin');
+  if (allowedOrigin) {
+    next.headers.set('access-control-allow-origin', allowedOrigin);
+    next.headers.set('access-control-allow-credentials', 'true');
+    next.headers.set(
+      'access-control-allow-methods',
+      'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS'
+    );
+    next.headers.set(
+      'access-control-allow-headers',
+      request.headers.get('access-control-request-headers')
+        || 'authorization,content-type,x-requested-with'
+    );
+    next.headers.set('access-control-max-age', '86400');
+  } else {
+    next.headers.delete('access-control-allow-origin');
+    next.headers.delete('access-control-allow-credentials');
+    next.headers.delete('access-control-allow-methods');
+    next.headers.delete('access-control-allow-headers');
+    next.headers.delete('access-control-max-age');
+  }
+  return next;
+};
+
+const applyResponseHeaders = (response: Response, request: Request, env: Env, cachePolicy: CachePolicy | null = null) => {
+  const next = new Response(response.body, response);
+  next.headers.set('x-urban-prime-edge', 'cloudflare');
   next.headers.set('x-content-type-options', 'nosniff');
   next.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   if (cachePolicy) {
@@ -71,7 +170,7 @@ const applyResponseHeaders = (response: Response, cachePolicy: CachePolicy | nul
       `public, max-age=${cachePolicy.browserTtl}, s-maxage=${cachePolicy.edgeTtl}, stale-while-revalidate=${Math.max(cachePolicy.edgeTtl, 30)}`
     );
   }
-  return next;
+  return applyCorsHeaders(next, request, env);
 };
 
 export default {
@@ -81,8 +180,21 @@ export default {
       return new Response('ORIGIN_API is not configured.', { status: 500 });
     }
 
-    const originUrl = buildOriginUrl(origin, request);
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === '/edge-health') {
+      const response = Response.json({
+        ok: true,
+        edge: EDGE_RUNTIME,
+        originConfigured: true
+      });
+      return applyResponseHeaders(response, request, env);
+    }
+
+    if (request.method === 'OPTIONS') {
+      return applyResponseHeaders(new Response(null, { status: 204 }), request, env);
+    }
+
+    const originUrl = buildOriginUrl(origin, request);
     const backendHeaders = new Headers(request.headers);
     const requestCf = (request as Request & { cf?: RequestCfMetadata }).cf;
     backendHeaders.set('x-forwarded-host', requestUrl.host);
@@ -90,6 +202,9 @@ export default {
     const connectingIp = request.headers.get('cf-connecting-ip');
     if (connectingIp) {
       backendHeaders.set('cf-connecting-ip', connectingIp);
+      backendHeaders.set('x-real-ip', connectingIp);
+      const forwardedFor = request.headers.get('x-forwarded-for');
+      backendHeaders.set('x-forwarded-for', forwardedFor ? `${forwardedFor}, ${connectingIp}` : connectingIp);
     }
     if (request.headers.get('cf-ray')) {
       backendHeaders.set('cf-ray', request.headers.get('cf-ray') || '');
@@ -125,11 +240,11 @@ export default {
             '500-599': 0
           }
         }
-      });
-      return applyResponseHeaders(response, cachePolicy);
+      } as CloudflareCacheRequestInit);
+      return applyResponseHeaders(response, request, env, cachePolicy);
     }
 
     const response = await fetch(upstreamRequest);
-    return applyResponseHeaders(response);
+    return applyResponseHeaders(response, request, env);
   }
 };

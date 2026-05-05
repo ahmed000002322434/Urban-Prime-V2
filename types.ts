@@ -1,6 +1,7 @@
 
 export interface User {
   id: string;
+  username?: string;
   name: string;
   email: string;
   avatar: string;
@@ -119,6 +120,7 @@ export interface UploadAsset {
 
 export interface ProfileUpdatePayload {
   name?: string;
+  username?: string;
   email?: string;
   avatar?: string;
   phone?: string;
@@ -810,7 +812,7 @@ export interface Booking {
     startDate: string;
     endDate: string;
     totalPrice: number;
-    status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'returned' | 'completed' | 'cancelled';
+    status: 'pending' | 'processing' | 'confirmed' | 'shipped' | 'delivered' | 'returned' | 'completed' | 'cancelled';
     shippingAddress?: any;
     trackingNumber?: string;
     paymentStatus?: 'escrow' | 'released' | 'refunded';
@@ -2191,7 +2193,7 @@ export interface WishlistItemComment {
 export interface Notification {
     id: string;
     userId: string;
-    type?: 'SALE' | 'INFO' | 'ORDER';
+    type?: 'SALE' | 'INFO' | 'ORDER' | 'MESSAGE';
     message: string;
     link?: string;
     isRead: boolean;
@@ -2634,6 +2636,35 @@ export interface WorkRequestAnswer {
     value: string;
 }
 
+export interface ConciergeMilestoneSuggestion {
+    title: string;
+    amountPct: number;
+    description: string;
+}
+
+export interface ConciergeMetadata {
+    source: 'ai_concierge';
+    scopeConfidence?: number;
+    suggestedMilestones?: ConciergeMilestoneSuggestion[];
+    suggestedTimelineDays?: number;
+    selectedMatchScore?: number;
+    selectedMatchReasons?: string[];
+    selectedListingId?: string;
+}
+
+export interface ConciergeScopeDraft {
+    title: string;
+    brief: string;
+    category: string;
+    mode: WorkMode;
+    fulfillmentKind: WorkFulfillmentKind;
+    budgetMin?: number;
+    budgetMax?: number;
+    currency: string;
+    timezone?: string;
+    requirements: string[];
+}
+
 export interface WorkRequestDetails {
     requestType?: WorkRequestType;
     packageId?: string;
@@ -2649,6 +2680,7 @@ export interface WorkRequestDetails {
         postalCode?: string;
         addressLine2?: string;
     };
+    concierge?: ConciergeMetadata;
 }
 
 export interface ProviderApplicationDocument {
@@ -2792,6 +2824,38 @@ export interface WorkRequest {
     updatedAt?: string;
 }
 
+export interface ProposalMilestone {
+    title: string;
+    amount: number;
+    dueAt?: string;
+    description?: string;
+}
+
+export interface ProposalTerms {
+    scopeSummary?: string;
+    included?: string[];
+    excluded?: string[];
+    clientResponsibilities?: string[];
+    handoffItems?: string[];
+    assumptions?: string[];
+    declineReason?: string;
+    [key: string]: any;
+}
+
+export interface ProposalComposerDraft {
+    requestId: string;
+    listingId?: string;
+    clientId: string;
+    title: string;
+    coverLetter: string;
+    priceTotal: number;
+    currency: string;
+    deliveryDays?: number;
+    revisionLimit?: number;
+    milestones: ProposalMilestone[];
+    terms: ProposalTerms;
+}
+
 export interface Proposal {
     id: string;
     requestId?: string;
@@ -2807,8 +2871,8 @@ export interface Proposal {
     priceTotal: number;
     currency: string;
     deliveryDays?: number;
-    milestones?: Array<{ title: string; amount: number; dueAt?: string; description?: string }>;
-    terms?: Record<string, any>;
+    milestones?: ProposalMilestone[];
+    terms?: ProposalTerms;
     revisionLimit?: number;
     riskScore?: number;
     status: WorkProposalStatus;

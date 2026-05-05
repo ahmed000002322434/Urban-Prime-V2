@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useNotification } from '../../context/NotificationContext';
 import profileOnboardingService from '../../services/profileOnboardingService';
+import messagePreferencesService, { type WhatsAppPreferenceSnapshot } from '../../services/messagePreferencesService';
 import { useAuth } from '../../hooks/useAuth';
 
 const ToggleRow: React.FC<{
@@ -40,6 +41,15 @@ const NotificationsSettingsPage: React.FC = () => {
     showMessageBanner
   } = useNotification();
   const [presenceVisible, setPresenceVisible] = useState(true);
+  const [whatsAppPreferences, setWhatsAppPreferences] = useState<WhatsAppPreferenceSnapshot>({
+    authentication: false,
+    security: false,
+    utility: false,
+    marketing: false
+  });
+  const [whatsAppMaskedPhone, setWhatsAppMaskedPhone] = useState('');
+  const [whatsAppConfigured, setWhatsAppConfigured] = useState(false);
+  const [whatsAppSaving, setWhatsAppSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +73,28 @@ const NotificationsSettingsPage: React.FC = () => {
     };
   }, [user]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadWhatsAppPreferences = async () => {
+      if (!user) return;
+      try {
+        const response = await messagePreferencesService.getWhatsAppPreferences();
+        if (cancelled) return;
+        setWhatsAppPreferences(response.preferences);
+        setWhatsAppMaskedPhone(response.maskedPhone || '');
+        setWhatsAppConfigured(response.configured === true || response.dryRun === true);
+      } catch {
+        if (!cancelled) {
+          setWhatsAppConfigured(false);
+        }
+      }
+    };
+    void loadWhatsAppPreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const updatePresenceVisibility = async (value: boolean) => {
     setPresenceVisible(value);
     try {
@@ -77,6 +109,28 @@ const NotificationsSettingsPage: React.FC = () => {
   };
 
   const desktopSupported = desktopPermission !== 'unsupported';
+
+  const updateWhatsAppPreference = async (category: keyof WhatsAppPreferenceSnapshot, value: boolean) => {
+    const previous = whatsAppPreferences;
+    const next = { ...previous, [category]: value };
+    setWhatsAppPreferences(next);
+    setWhatsAppSaving(true);
+    try {
+      const response = await messagePreferencesService.updateWhatsAppPreferences({ [category]: value });
+      setWhatsAppPreferences(response.preferences);
+      setWhatsAppMaskedPhone(response.maskedPhone || '');
+      setWhatsAppConfigured(response.configured === true || response.dryRun === true);
+    } catch (error) {
+      setWhatsAppPreferences(previous);
+      showMessageBanner({
+        title: 'WhatsApp settings not saved',
+        message: error instanceof Error ? error.message : 'Unable to update WhatsApp notifications.',
+        tone: 'error'
+      });
+    } finally {
+      setWhatsAppSaving(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-soft dark:border-gray-700 dark:bg-dark-surface">
@@ -135,6 +189,52 @@ const NotificationsSettingsPage: React.FC = () => {
             void updatePresenceVisibility(value);
           }}
         />
+
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800/70 dark:bg-emerald-950/30">
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-100">WhatsApp Business alerts</h3>
+            <p className="mt-1 text-xs leading-5 text-emerald-800 dark:text-emerald-200">
+              Send Urban Prime OTPs, security notices, marketplace updates, and opted-in offers on WhatsApp
+              {whatsAppMaskedPhone ? ` to ${whatsAppMaskedPhone}` : ' after you add a phone number'}.
+            </p>
+            {!whatsAppConfigured && (
+              <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                WhatsApp Business is not configured on the backend yet. These preferences will save, but messages need Meta credentials before delivery.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <ToggleRow
+              title="Authentication PINs"
+              description="Receive sign-in and sign-up PINs on WhatsApp."
+              checked={whatsAppPreferences.authentication}
+              onChange={(value) => void updateWhatsAppPreference('authentication', value)}
+              disabled={whatsAppSaving}
+            />
+            <ToggleRow
+              title="Security alerts"
+              description="Receive login alerts and account protection notices."
+              checked={whatsAppPreferences.security}
+              onChange={(value) => void updateWhatsAppPreference('security', value)}
+              disabled={whatsAppSaving}
+            />
+            <ToggleRow
+              title="Marketplace updates"
+              description="Receive offers, seller updates, verification updates, and rental reminders."
+              checked={whatsAppPreferences.utility}
+              onChange={(value) => void updateWhatsAppPreference('utility', value)}
+              disabled={whatsAppSaving}
+            />
+            <ToggleRow
+              title="Offers and discounts"
+              description="Opt in to marketing messages for discounts, feed alerts, and promotions."
+              checked={whatsAppPreferences.marketing}
+              onChange={(value) => void updateWhatsAppPreference('marketing', value)}
+              disabled={whatsAppSaving}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">

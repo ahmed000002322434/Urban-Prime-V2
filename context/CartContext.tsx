@@ -2,6 +2,7 @@ import React, { createContext, useState, useMemo, useCallback, useEffect } from 
 import type { Item, SubscriptionDetails, CartGroup, CartItem } from '../types';
 import { useNotification } from './NotificationContext';
 import { useAuth } from '../hooks/useAuth';
+import analyticsService from '../services/analyticsService';
 
 type ItemServiceModule = typeof import('../services/itemService');
 type SpotlightServiceModule = typeof import('../services/spotlightService');
@@ -261,6 +262,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (!alreadyInCart && item.owner?.id && item.owner.id !== user?.id) {
+        if (!user?.id) {
+          void analyticsService.recordCartAdd(
+            item.id,
+            null,
+            user?.name || user?.email || 'Visitor',
+            quantity
+          );
+        }
+
         void withItemService((itemService) =>
           itemService.logItemEvent({
             action: 'cart_add',

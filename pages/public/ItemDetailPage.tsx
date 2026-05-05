@@ -2,11 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { itemService } from '../../services/itemService';
+import analyticsService from '../../services/analyticsService';
 import commerceService from '../../services/commerceService';
 import { spotlightService } from '../../services/spotlightService';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
+import useSeoMeta from '../../hooks/useSeoMeta';
 import { useNotification } from '../../context/NotificationContext';
+import { createBaseMeta, createItemSeoMeta, resolveStaticSeoMeta } from '../../seo/siteMetadata.js';
 import type { AuctionSnapshot, Item, PodVariantOption, RentalDeliveryMode, RentalQuote } from '../../types';
 import { CommerceDetailPageSkeleton } from '../../components/commerce/CommerceSkeleton';
 import LiquidGlassItemDetail from '../../components/gravity/LiquidGlassItemDetail';
@@ -35,6 +38,7 @@ const ItemDetailPage: React.FC = () => {
   const [bidSubmitting, setBidSubmitting] = useState(false);
   const [selectedPodVariantId, setSelectedPodVariantId] = useState('');
   const trackedSpotlightViewRef = useRef<string | null>(null);
+  const trackedAnalyticsViewRef = useRef<string | null>(null);
   const loadRequestIdRef = useRef(0);
 
   const podVariantOptions = useMemo(
@@ -60,6 +64,22 @@ const ItemDetailPage: React.FC = () => {
       stock: typeof selectedPodVariant.stock === 'number' ? selectedPodVariant.stock : item.stock
     };
   }, [item, selectedPodVariant]);
+  const seoMeta = useMemo(() => {
+    if (displayItem || item) {
+      return createItemSeoMeta(displayItem || item, location.pathname);
+    }
+
+    if (error) {
+      return createBaseMeta({
+        title: 'Item Unavailable | Urban Prime',
+        description: 'This Urban Prime product is unavailable or no longer published.',
+        path: location.pathname,
+        noIndex: true
+      });
+    }
+
+    return resolveStaticSeoMeta(location.pathname);
+  }, [displayItem, error, item, location.pathname]);
 
   const attributionStorageKey = useMemo(
     () => (resolvedItemId ? `urbanprime:spotlight:attribution:${resolvedItemId}` : ''),
@@ -109,6 +129,8 @@ const ItemDetailPage: React.FC = () => {
       return null;
     }
   }, [attributionStorageKey, location.search, resolvedItemId]);
+
+  useSeoMeta(seoMeta);
 
   useEffect(() => {
     if (!attributionStorageKey || !spotlightAttribution || typeof window === 'undefined') return;
@@ -257,6 +279,51 @@ const ItemDetailPage: React.FC = () => {
       cancelled = true;
     };
   }, [item?.id, location.pathname, spotlightAttribution, user?.id]);
+
+  useEffect(() => {
+    if (!item?.id) return;
+
+    const trackingKey = `${item.id}:${location.key}`;
+    if (trackedAnalyticsViewRef.current === trackingKey) return;
+
+    let flushed = false;
+    const startedAt = Date.now();
+
+    const flushView = () => {
+      if (flushed) return;
+      const durationMs = Date.now() - startedAt;
+      if (durationMs < 1000) return;
+
+      flushed = true;
+      trackedAnalyticsViewRef.current = trackingKey;
+      void analyticsService.recordView(
+        item.id,
+        user?.id || null,
+        user?.name || user?.email || null,
+        durationMs,
+        undefined,
+        spotlightAttribution?.spotlightContentId ? 'spotlight' : 'marketplace'
+      );
+    };
+
+    const timer = window.setTimeout(flushView, 1500);
+    const handlePageHide = () => flushView();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushView();
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      flushView();
+    };
+  }, [item?.id, location.key, spotlightAttribution?.spotlightContentId, user?.email, user?.id, user?.name]);
 
   useEffect(() => {
     if (!podVariantOptions.length) {

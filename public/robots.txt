@@ -7,4 +7,24 @@ Disallow: /checkout/
 Disallow: /profile/settings
 Disallow: /profile/edit
 Disallow: /profile/legacy-edit
-Sitemap: /sitemap.xml
+Disallow: /*?*token=
+Disallow: /*?*session=
+Disallow: /*?*code=
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Host: https://urbanprime.tech
+Sitemap: https://urbanprime.tech/sitemap.xml

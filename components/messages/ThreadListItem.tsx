@@ -22,8 +22,28 @@ const ThreadListItem: React.FC<ThreadListItemProps> = ({
   onMoveToPrimary,
   onMoveToGeneral
 }) => {
-  const { thread, previewText, previewTime, hasUnread, contextLabel, presence, latestMessage, bucket } = viewModel;
+  const { thread, previewText, previewTime, hasUnread, contextLabel, presence, latestMessage, bucket, isUserHydrating } = viewModel;
   const canMove = bucket !== 'requests';
+
+  if (isUserHydrating) {
+    return (
+      <div className="messages-thread-item w-full text-left" aria-hidden="true">
+        <div className="flex items-start gap-2.5 animate-pulse">
+          <div className="h-11 w-11 shrink-0 rounded-full bg-slate-200/85 dark:bg-slate-700/70" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3.5 w-32 rounded-full bg-slate-200/85 dark:bg-slate-700/70" />
+                <div className="h-3 w-20 rounded-full bg-slate-200/75 dark:bg-slate-700/60" />
+              </div>
+              <div className="h-3 w-10 rounded-full bg-slate-200/75 dark:bg-slate-700/60" />
+            </div>
+            <div className="mt-2 h-3.5 w-40 rounded-full bg-slate-200/80 dark:bg-slate-700/65" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -44,12 +64,12 @@ const ThreadListItem: React.FC<ThreadListItemProps> = ({
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <p className="truncate text-[13px] font-bold text-text-primary">{thread.otherUser.name}</p>
+                <p className="messages-thread-name truncate text-[13px] font-bold">{thread.otherUser.name}</p>
                 {contextLabel ? <span className="messages-thread-pin">{contextLabel}</span> : null}
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className={`text-[10px] font-semibold ${hasUnread ? 'text-primary' : 'text-text-secondary/80'}`}>{previewTime}</span>
+              <span className={`messages-thread-time-label text-[10px] font-semibold ${hasUnread ? 'is-unread' : ''}`}>{previewTime}</span>
               {canMove ? (
                 <div className="relative">
                   <button
@@ -74,7 +94,7 @@ const ThreadListItem: React.FC<ThreadListItemProps> = ({
             </div>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <p className={`min-w-0 flex-1 truncate text-[12px] leading-5 ${hasUnread ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
+            <p className={`messages-thread-preview min-w-0 flex-1 truncate text-[12px] leading-5 ${hasUnread ? 'is-unread font-semibold' : ''}`}>
               {previewText}
             </p>
             {!hasUnread && latestMessage?.type === 'offer' ? <span className="messages-thread-offer-badge">Offer</span> : null}

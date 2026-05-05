@@ -1,9 +1,9 @@
 import React from 'react';
 import type { PixeFeedMode } from '../../services/pixeService';
-import PixeFeedExperience from '../../components/pixe/PixeFeedExperience';
+import PixeMixedFeedExperience from '../../components/pixe/PixeMixedFeedExperience';
 
 const PixeFeedPage: React.FC<{ mode?: PixeFeedMode }> = ({ mode = 'for_you' }) => {
-  return <PixeFeedExperience mode={mode} />;
+  return <PixeMixedFeedExperience mode={mode} />;
 };
 
 export default PixeFeedPage;

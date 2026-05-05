@@ -4,6 +4,7 @@ import { userService } from '../../services/itemService';
 import type { User } from '../../types';
 import Spinner from '../../components/Spinner';
 import StarRating from '../../components/StarRating';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 const UserCard: React.FC<{ user: User }> = ({ user }) => (
     <div className="bg-surface rounded-lg shadow-soft border border-border p-6 text-center group hover:-translate-y-1 transition-transform">
@@ -13,7 +14,7 @@ const UserCard: React.FC<{ user: User }> = ({ user }) => (
             <StarRating rating={user.rating} />
         </div>
         <p className="text-xs text-text-secondary mt-2">Member since {new Date(user.memberSince).getFullYear()}</p>
-        <Link to={`/user/${user.id}`} className="mt-4 inline-block bg-primary text-white font-semibold text-sm px-6 py-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+        <Link to={buildPublicProfilePath(user)} className="mt-4 inline-block bg-primary text-white font-semibold text-sm px-6 py-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
             View Profile
         </Link>
     </div>

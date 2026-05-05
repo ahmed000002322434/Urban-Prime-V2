@@ -3,8 +3,11 @@ import { useAuth } from '../../hooks/useAuth';
 import Spinner from '../../components/Spinner';
 import { CATEGORIES } from '../../constants';
 import profileOnboardingService from '../../services/profileOnboardingService';
+import { userService } from '../../services/itemService';
+import { spotlightService } from '../../services/spotlightService';
 import type { OnboardingIntent, RoleSetupDraft } from '../../types';
 import { createRoleSetupDefaults } from '../../utils/onboardingRoleSetup';
+import { buildPublicProfilePath, deriveUsernameFromIdentity, sanitizeUsername } from '../../utils/profileIdentity';
 import { ClayButton, ClayInput } from '../../components/dashboard/clay';
 
 const intentOptions: Array<{ id: OnboardingIntent; label: string }> = [
@@ -16,15 +19,18 @@ const intentOptions: Array<{ id: OnboardingIntent; label: string }> = [
 ];
 
 const ProfileHubPage: React.FC = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, updateUser } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [selectedIntents, setSelectedIntents] = useState<OnboardingIntent[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
   const [roleSetup, setRoleSetup] = useState<RoleSetupDraft>(createRoleSetupDefaults());
 
   const [identity, setIdentity] = useState({
     name: '',
+    username: '',
     phone: '',
     city: '',
     country: '',
@@ -41,6 +47,7 @@ const ProfileHubPage: React.FC = () => {
     setIdentity((current) => ({
       ...current,
       name: user.name || '',
+      username: user.username || deriveUsernameFromIdentity(user),
       phone: user.phone || '',
       city: user.city || '',
       country: user.country || '',
@@ -101,7 +108,13 @@ const ProfileHubPage: React.FC = () => {
   const updateIdentity = (field: keyof typeof identity) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    setIdentity((current) => ({ ...current, [field]: event.target.value }));
+    setIdentity((current) => ({
+      ...current,
+      [field]: field === 'username' ? sanitizeUsername(event.target.value) : event.target.value
+    }));
+    if (field === 'username') {
+      setUsernameAvailable(null);
+    }
   };
 
   const updateRoleSetup = (field: keyof RoleSetupDraft) => (
@@ -110,11 +123,65 @@ const ProfileHubPage: React.FC = () => {
     setRoleSetup((current) => ({ ...current, [field]: event.target.value }));
   };
 
+  const checkUsername = async () => {
+    const normalizedUsername = sanitizeUsername(identity.username);
+    const currentUsername = sanitizeUsername(user?.username || deriveUsernameFromIdentity(user));
+    if (!normalizedUsername) {
+      setUsernameAvailable(false);
+      throw new Error('Username is required.');
+    }
+    if (normalizedUsername.length < 3) {
+      setUsernameAvailable(false);
+      throw new Error('Username must be at least 3 characters.');
+    }
+    if (normalizedUsername === currentUsername) {
+      setUsernameAvailable(true);
+      return normalizedUsername;
+    }
+
+    setCheckingUsername(true);
+    try {
+      const availability = await spotlightService.checkUsernameAvailability(normalizedUsername);
+      const isAvailable = Boolean(availability?.available);
+      setUsernameAvailable(isAvailable);
+      if (!isAvailable) {
+        throw new Error(availability?.reason || 'This username is already taken.');
+      }
+      return normalizedUsername;
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
+
   const handleSave = async () => {
     setStatus(null);
     setIsSaving(true);
 
     try {
+      const normalizedUsername = await checkUsername();
+      const updatedUser = await userService.updateUserProfile(user.id, {
+        name: identity.name,
+        username: normalizedUsername,
+        phone: identity.phone,
+        city: identity.city,
+        country: identity.country,
+        currencyPreference: identity.currencyPreference,
+        dob: identity.dob || undefined,
+        gender: identity.gender || undefined,
+        about: identity.about || undefined,
+        businessName: identity.businessName || undefined,
+        businessDescription: identity.businessDescription || undefined,
+        interests
+      });
+
+      await spotlightService.updateMyProfile({
+        name: identity.name,
+        username: normalizedUsername,
+        about: identity.about || null,
+        city: identity.city || null,
+        country: identity.country || null
+      }).catch(() => null);
+
       await profileOnboardingService.patchProfileMe({
         name: identity.name,
         phone: identity.phone,
@@ -148,7 +215,13 @@ const ProfileHubPage: React.FC = () => {
         }
       });
 
+      updateUser?.(updatedUser);
       await refreshProfile();
+      setIdentity((current) => ({
+        ...current,
+        username: updatedUser.username || current.username
+      }));
+      setUsernameAvailable(true);
       setStatus('Profile hub changes saved.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to save profile hub changes.');
@@ -213,6 +286,14 @@ const ProfileHubPage: React.FC = () => {
         <h2 className="text-lg font-semibold text-text-primary">Identity Basics</h2>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <ClayInput value={identity.name} onChange={updateIdentity('name')} placeholder="Name" />
+          <div className="space-y-2">
+            <ClayInput value={identity.username} onChange={updateIdentity('username')} onBlur={() => void checkUsername().catch((error) => setStatus(error instanceof Error ? error.message : 'Unable to validate username.'))} placeholder="Username" />
+            <p className={`text-xs ${usernameAvailable === false ? 'text-red-500' : usernameAvailable === true ? 'text-green-600' : 'text-text-secondary'}`}>
+              {checkingUsername
+                ? 'Checking username...'
+                : `Public profile link: urbanprime.tech${buildPublicProfilePath({ username: identity.username, id: user.id })}`}
+            </p>
+          </div>
           <ClayInput value={identity.phone} onChange={updateIdentity('phone')} placeholder="Phone (+14155552671)" />
           <ClayInput value={identity.city} onChange={updateIdentity('city')} placeholder="City" />
           <ClayInput value={identity.country} onChange={updateIdentity('country')} placeholder="Country" />

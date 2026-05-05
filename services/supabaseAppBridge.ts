@@ -2,6 +2,7 @@ import { auth } from '../firebase';
 import type { User } from '../types';
 import { prefersSupabase } from './dataMode';
 import supabase from '../utils/supabase';
+import { deriveDisplayNameFromEmail, resolveDisplayName } from '../utils/profileIdentity';
 
 export type SupabaseAppUserRow = {
   id: string;
@@ -58,7 +59,14 @@ const buildUserPayload = (user: Partial<User> & { id: string }) => {
   return {
     firebase_uid: firebaseUid,
     email: sanitizeText(user.email || auth.currentUser?.email),
-    name: sanitizeText(user.name || auth.currentUser?.displayName || 'Member'),
+    name: sanitizeText(
+      resolveDisplayName(
+        user.name,
+        auth.currentUser?.displayName,
+        deriveDisplayNameFromEmail(user.email || auth.currentUser?.email),
+        'Member'
+      )
+    ),
     avatar_url: sanitizeText(user.avatar || auth.currentUser?.photoURL),
     phone: sanitizeText(user.phone),
     status: sanitizeText(user.status) || 'active'

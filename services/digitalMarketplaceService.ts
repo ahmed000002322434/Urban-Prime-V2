@@ -1,5 +1,5 @@
 import { auth } from '../firebase';
-import { backendFetch, resolveBackendBaseUrl } from './backendClient';
+import { backendFetch, buildBackendRequestUrl, resolveBackendBaseUrl } from './backendClient';
 import type {
   DigitalLibraryEntry,
   DigitalMarketplaceDashboard,
@@ -246,7 +246,7 @@ export const digitalMarketplaceService = {
     }
 
     const response = await fetch(
-      `${baseUrl}/marketplace/digital/library/download/${encodeURIComponent(orderItemId)}`,
+      buildBackendRequestUrl(baseUrl, `/marketplace/digital/library/download/${encodeURIComponent(orderItemId)}`),
       {
         method: 'GET',
         headers,

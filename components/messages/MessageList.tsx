@@ -100,6 +100,8 @@ const getMessageSnippet = (message: ChatMessage | null, decryptedByMessageId: Re
   return String(message.text || '').trim() || 'Message';
 };
 
+const getMessageDomId = (messageId: string) => `chat-message-${messageId}`;
+
 const DeliveryTicks: React.FC<{ status: DeliveryStatus }> = ({ status }) => {
   const tickClass = status === 'seen' ? 'text-sky-500' : 'text-gray-400';
   if (status === 'sent') {
@@ -161,6 +163,19 @@ const MessageBubble = memo(({
   onToggleReaction
 }: MessageBubbleProps) => {
   const lastTapAtRef = useRef(0);
+  const focusMessageById = (messageId: string, highlight = true) => {
+    if (typeof document === 'undefined' || !messageId) return;
+    const messageRow = document.getElementById(getMessageDomId(messageId));
+    if (!messageRow) return;
+    messageRow.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    if (!highlight) return;
+    messageRow.classList.remove('is-emphasized');
+    void messageRow.offsetHeight;
+    messageRow.classList.add('is-emphasized');
+    window.setTimeout(() => {
+      messageRow.classList.remove('is-emphasized');
+    }, 1400);
+  };
   const isSender = message.senderId === currentUserId;
   const isDeleted = Boolean(message.deletedAt);
   const isPending = String(message.id || '').startsWith('temp-');
@@ -229,8 +244,19 @@ const MessageBubble = memo(({
     lastTapAtRef.current = now;
   };
 
+  const handleReplyClick = () => {
+    focusMessageById(message.id);
+    onReplyToMessage(message);
+  };
+
+  const handleReplyReferenceClick = () => {
+    if (!replyTarget?.id) return;
+    focusMessageById(replyTarget.id, false);
+  };
+
   return (
     <div
+      id={getMessageDomId(message.id)}
       className={`messages-message-row ${isStackedWithPrev ? 'is-stacked' : ''} ${isSender ? 'justify-end' : 'justify-start'}`}
       onDoubleClick={handleHeartToggle}
       onTouchEnd={handleTouchEnd}
@@ -250,8 +276,15 @@ const MessageBubble = memo(({
         <div className={`messages-message-tools ${isSender ? 'is-own' : 'is-peer'}`}>
           {!isPending ? (
             <>
-              <button type="button" className="messages-message-tool" onClick={() => onReplyToMessage(message)} aria-label="Reply to message">
+              <button
+                type="button"
+                className="messages-message-tool messages-message-tool--reply"
+                onClick={handleReplyClick}
+                aria-label="Reply to message"
+                title="Reply"
+              >
                 <ReplyIcon />
+                <span>Reply</span>
               </button>
               <button type="button" className="messages-message-tool" onClick={handleHeartToggle} aria-label="React with heart">
                 <HeartIcon />
@@ -270,54 +303,62 @@ const MessageBubble = memo(({
           ) : null}
         </div>
 
-        {message.type === 'offer' && message.offer && !isDeleted ? (
-          <OfferCard offer={message.offer} isSender={isSender} onAccept={() => onAcceptOffer(message.offer!.id)} />
-        ) : message.type === 'voice' && message.audioUrl && !isDeleted ? (
-          <div className={`messages-message-card ${isSender ? 'messages-message-card--own' : 'messages-message-card--peer'} ${stackShapeClass}`}>
-            {replyTarget ? (
-              <div className="messages-reply-quote">
-                <p className="messages-reply-quote-label">{replyLabel}</p>
-                <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
-              </div>
-            ) : null}
-            <VoiceNotePlayer audioUrl={message.audioUrl} durationMs={message.audioDurationMs} isOwn={isSender} />
-          </div>
-        ) : message.type === 'contract' || message.type === 'milestone' ? (
-          <div className={`messages-update-card ${stackShapeClass}`}>
-            {replyTarget ? (
-              <div className="messages-reply-quote">
-                <p className="messages-reply-quote-label">{replyLabel}</p>
-                <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
-              </div>
-            ) : null}
-            <p className="messages-update-card-label">{message.type === 'contract' ? 'Contract update' : 'Milestone update'}</p>
-            <p className="mt-2 whitespace-pre-wrap leading-relaxed text-text-secondary">
-              {typeof message.content === 'string'
-                ? message.content
-                : message.content?.summary || message.text || 'New workflow update shared in this conversation.'}
-            </p>
-          </div>
-        ) : (
-          <div className={`messages-message-card ${isSender ? 'messages-message-card--own' : 'messages-message-card--peer'} ${stackShapeClass} ${isDeleted ? 'is-deleted' : ''}`}>
-            {replyTarget ? (
-              <div className="messages-reply-quote">
-                <p className="messages-reply-quote-label">{replyLabel}</p>
-                <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
-              </div>
-            ) : null}
-            {message.imageUrl && !isDeleted ? (
-              <SafeImage src={message.imageUrl} fallbackSrc="" alt="attached" className="mb-2 w-full max-w-xs rounded-2xl object-cover" />
-            ) : null}
-            {displayText ? (
-              <p className={`whitespace-pre-wrap break-words leading-relaxed ${isDeleted ? 'messages-deleted-copy' : ''}`}>{displayText}</p>
-            ) : null}
-            {isEncrypted && !decryptedText && !isDeleted ? (
-              <p className="mt-2 text-[11px] font-semibold text-amber-500">
-                {decryptedError ? 'Decryption failed. Save the correct passphrase in details.' : 'Encrypted message'}
+        <div className="messages-card-shell">
+          {message.type === 'offer' && message.offer && !isDeleted ? (
+            <OfferCard offer={message.offer} isSender={isSender} onAccept={() => onAcceptOffer(message.offer!.id)} />
+          ) : message.type === 'voice' && message.audioUrl && !isDeleted ? (
+            <div
+              data-message-card="true"
+              className={`messages-message-card ${isSender ? 'messages-message-card--own' : 'messages-message-card--peer'} ${stackShapeClass}`}
+            >
+              {replyTarget ? (
+                <button type="button" className="messages-reply-quote messages-reply-quote-button" onClick={handleReplyReferenceClick}>
+                  <p className="messages-reply-quote-label">{replyLabel}</p>
+                  <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
+                </button>
+              ) : null}
+              <VoiceNotePlayer audioUrl={message.audioUrl} durationMs={message.audioDurationMs} isOwn={isSender} />
+            </div>
+          ) : message.type === 'contract' || message.type === 'milestone' ? (
+            <div data-message-card="true" className={`messages-update-card ${stackShapeClass}`}>
+              {replyTarget ? (
+                <button type="button" className="messages-reply-quote messages-reply-quote-button" onClick={handleReplyReferenceClick}>
+                  <p className="messages-reply-quote-label">{replyLabel}</p>
+                  <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
+                </button>
+              ) : null}
+              <p className="messages-update-card-label">{message.type === 'contract' ? 'Contract update' : 'Milestone update'}</p>
+              <p className="mt-2 whitespace-pre-wrap leading-relaxed text-text-secondary">
+                {typeof message.content === 'string'
+                  ? message.content
+                  : message.content?.summary || message.text || 'New workflow update shared in this conversation.'}
               </p>
-            ) : null}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div
+              data-message-card="true"
+              className={`messages-message-card ${isSender ? 'messages-message-card--own' : 'messages-message-card--peer'} ${stackShapeClass} ${isDeleted ? 'is-deleted' : ''}`}
+            >
+              {replyTarget ? (
+                <button type="button" className="messages-reply-quote messages-reply-quote-button" onClick={handleReplyReferenceClick}>
+                  <p className="messages-reply-quote-label">{replyLabel}</p>
+                  <p className="messages-reply-quote-copy">{getMessageSnippet(replyTarget, decryptedByMessageId)}</p>
+                </button>
+              ) : null}
+              {message.imageUrl && !isDeleted ? (
+                <SafeImage src={message.imageUrl} fallbackSrc="" alt="attached" className="mb-2 w-full max-w-xs rounded-2xl object-cover" />
+              ) : null}
+              {displayText ? (
+                <p className={`whitespace-pre-wrap break-words leading-relaxed ${isDeleted ? 'messages-deleted-copy' : ''}`}>{displayText}</p>
+              ) : null}
+              {isEncrypted && !decryptedText && !isDeleted ? (
+                <p className="mt-2 text-[11px] font-semibold text-amber-500">
+                  {decryptedError ? 'Decryption failed. Save the correct passphrase in details.' : 'Encrypted message'}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
 
         {reactionEntries.length > 0 ? (
           <div className={`messages-reaction-strip ${isSender ? 'justify-end' : 'justify-start'}`}>

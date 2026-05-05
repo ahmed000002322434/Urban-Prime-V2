@@ -4,6 +4,7 @@ import { userService } from '../../services/itemService';
 import type { User } from '../../types';
 import Spinner from '../../components/Spinner';
 import StarRating from '../../components/StarRating';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 type DirectoryRole = 'seller' | 'buyer' | 'provider' | 'affiliate';
 
@@ -46,7 +47,7 @@ const DirectoryCard: React.FC<{ user: User; role: DirectoryRole }> = ({ user, ro
         <p className="text-xs text-text-secondary mt-2">Member since {new Date(user.memberSince).getFullYear()}</p>
         <div className="mt-4 grid grid-cols-2 gap-2">
             <Link
-                to={`/user/${user.id}`}
+                to={buildPublicProfilePath(user)}
                 className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-xs font-semibold text-text-primary hover:border-primary"
             >
                 View profile
@@ -167,4 +168,3 @@ const SellerDirectoryPage: React.FC = () => {
 };
 
 export default SellerDirectoryPage;
-

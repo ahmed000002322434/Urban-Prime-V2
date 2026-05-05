@@ -7,6 +7,7 @@ import CategoryPill from '../../components/CategoryPill';
 import type { Item } from '../../types';
 // FIX: Replaced useAuth with useTranslation for currency information.
 import { useTranslation } from '../../hooks/useTranslation';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 const ComparePage: React.FC = () => {
     const { itemsToCompare, toggleCompare, clearCompare } = useComparison();
@@ -82,7 +83,7 @@ const ComparePage: React.FC = () => {
                         {renderRow("Video Preview", item => item.videoUrl ? <span className="text-green-500 font-bold">✓ Yes</span> : <span className="text-gray-400">-</span>)}
                         {renderRow("Instant Book", item => item.isInstantBook ? <span className="text-green-500 font-bold">✓</span> : <span className="text-gray-400">-</span>)}
                         {renderRow("Verified Item", item => item.isVerified ? <span className="text-green-500 font-bold">✓</span> : <span className="text-gray-400">-</span>)}
-                        {renderRow("Owner", item => item.owner ? <Link to={`/user/${item.owner.id}`} className="hover:underline">{item.owner.name}</Link> : '-')}
+                        {renderRow("Owner", item => item.owner ? <Link to={buildPublicProfilePath(item.owner)} className="hover:underline">{item.owner.name}</Link> : '-')}
                          <tr>
                             <td className="p-4 font-semibold sticky left-0 bg-white"></td>
                             {displayItems.map(item => <td key={item.id} className="p-4 text-center">{item.title ? <Link to={`/item/${item.id}`} className="w-full text-center py-2 bg-black text-white font-semibold rounded-md hover:bg-gray-800 text-sm inline-block">View Item</Link> : ''}</td>)}

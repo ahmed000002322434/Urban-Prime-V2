@@ -959,12 +959,19 @@ const workService = {
     return undefined;
   },
 
-  async createRequest(input: Partial<WorkRequest>, user: User): Promise<WorkRequest> {
+  async createRequest(
+    input: Partial<WorkRequest>,
+    user: User,
+    options: { requireLiveBackend?: boolean } = {}
+  ): Promise<WorkRequest> {
+    const resolvedTargetProviderId = input.targetProviderId
+      ? await resolveBackendUserId(input.targetProviderId).catch(() => input.targetProviderId)
+      : undefined;
     const payload = {
       title: input.title || 'New request',
       brief: input.brief || '',
       listingId: input.listingId || undefined,
-      targetProviderId: input.targetProviderId || undefined,
+      targetProviderId: resolvedTargetProviderId || input.targetProviderId || undefined,
       category: input.category || 'general',
       mode: input.mode || 'hybrid',
       fulfillmentKind: input.fulfillmentKind || 'hybrid',
@@ -992,7 +999,8 @@ const workService = {
       const token = await getBackendToken();
       const res = await backendFetch('/work/requests', {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        backendNoQueue: Boolean(options.requireLiveBackend)
       }, token);
       const request = mapWorkRequestRow(res?.data);
       await supabaseMirror.upsert('work_requests', request.id, request);
@@ -1000,6 +1008,10 @@ const workService = {
         await setDoc(doc(db, 'work_requests', request.id), request, { merge: true });
       }
       return request;
+    }
+
+    if (options.requireLiveBackend) {
+      throw new Error('Live backend is required to create this work request.');
     }
 
     if (canUseDirectSupabase()) {
@@ -1051,7 +1063,8 @@ const workService = {
       queryParams.set('offset', String(Math.max(params.offset || 0, 0)));
 
       const res = await backendFetch(`/work/requests?${queryParams.toString()}`, {}, token);
-      return (Array.isArray(res?.data) ? res.data : []).map(mapWorkRequestRow);
+      const normalizedRows = await attachRequestFirebaseIds(Array.isArray(res?.data) ? res.data : []);
+      return normalizedRows.map(mapWorkRequestRow);
     }
 
     if (canUseDirectSupabase()) {
@@ -1086,6 +1099,42 @@ const workService = {
 
     const snapshot = await getDocs(workQuery);
     return snapshot.docs.map((snap) => mapWorkRequestRow({ id: snap.id, ...(snap.data() || {}) }));
+  },
+
+  async getRequestById(id: string): Promise<WorkRequest | undefined> {
+    const requestId = String(id || '').trim();
+    if (!requestId) return undefined;
+
+    if (isBackendConfigured()) {
+      const token = await getBackendToken();
+      const res = await backendFetch(`/api/work_requests?eq.id=${encodeURIComponent(requestId)}&limit=1`, {}, token);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data;
+      if (row) {
+        const [normalizedRow] = await attachRequestFirebaseIds([row]);
+        const request = mapWorkRequestRow(normalizedRow);
+        await supabaseMirror.upsert('work_requests', request.id, request);
+        return request;
+      }
+      return undefined;
+    }
+
+    if (canUseDirectSupabase()) {
+      const res = await supabase.from('work_requests').select('*').eq('id', requestId).limit(1);
+      if (res.error) {
+        throw toSupabaseError(getDirectSupabaseSetupMessage(), res.error);
+      }
+      if (!res.data?.length) return undefined;
+      const [normalizedRow] = await attachRequestFirebaseIds([res.data[0]]);
+      const request = mapWorkRequestRow(normalizedRow);
+      await supabaseMirror.upsert('work_requests', request.id, request);
+      return request;
+    }
+
+    if (!shouldUseFirestoreFallback()) return undefined;
+
+    const snap = await getDoc(doc(db, 'work_requests', requestId));
+    if (!snap.exists()) return undefined;
+    return mapWorkRequestRow({ id: snap.id, ...(snap.data() || {}) });
   },
 
   async getProviderIncomingJobs(providerId: string): Promise<Job[]> {

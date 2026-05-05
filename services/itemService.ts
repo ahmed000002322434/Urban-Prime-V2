@@ -21,13 +21,16 @@ import {
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
+    signInWithCustomToken,
     createUserWithEmailAndPassword, 
     signOut, 
     signInWithPopup, 
+    signInWithRedirect,
     sendPasswordResetEmail,
     GoogleAuthProvider,
     User as FirebaseUser,
     confirmPasswordReset,
+    verifyPasswordResetCode as verifyFirebasePasswordResetCode,
     EmailAuthProvider,
     deleteUser as deleteFirebaseUser,
     reauthenticateWithCredential
@@ -47,10 +50,13 @@ import {
     ensureSupabaseUserRecord,
     syncSupabaseUserProfile
 } from './supabaseAppBridge';
+import supabase from '../utils/supabase';
+import type { Provider } from '@supabase/supabase-js';
 import { affiliateCommissionService } from './affiliateCommissionService';
 import { shouldUseFirestoreFallback, shouldUseLocalDb, shouldUseLocalMockFallback } from './dataMode';
 import { resolveBackendUserId, resolveBackendUserLookupKeys } from './backendUserIdentity';
 import { enforceAvatarIdentity } from '../utils/avatarEnforcement';
+import { deriveDisplayNameFromEmail, deriveUsernameFromIdentity, resolveDisplayName, sanitizeUsername } from '../utils/profileIdentity';
 import type { 
     Item, 
     User, 
@@ -224,9 +230,15 @@ const mapPersonaNotification = (row: any, fallbackUserId: string): Notification 
 });
 
 const mapBackendUserRow = (row: any): User => {
+    const email = String(row?.email || '').trim();
+    const resolvedName = resolveDisplayName(
+        row?.name,
+        deriveDisplayNameFromEmail(email),
+        'User'
+    );
     const identity = enforceAvatarIdentity({
-        name: row?.name || 'User',
-        email: row?.email || '',
+        name: resolvedName,
+        email,
         gender: row?.gender,
         avatar: row?.avatar_url
     });
@@ -236,6 +248,13 @@ const mapBackendUserRow = (row: any): User => {
 
     return {
         id: row?.firebase_uid || row?.id || '',
+        username: deriveUsernameFromIdentity({
+            username: row?.username || row?.preferred_username,
+            handle: row?.handle,
+            email,
+            name: identity.name,
+            id: row?.firebase_uid || row?.id
+        }),
         name: identity.name,
         email: identity.email,
         avatar: identity.avatar,
@@ -269,6 +288,13 @@ const mapUnifiedProfilePayloadToUser = (payload: any, fallbackUid: string): User
     const enrichedUser: User = {
         ...mapped,
         id: userRow?.firebase_uid || fallbackUid || mapped.id,
+        username: deriveUsernameFromIdentity({
+            username: payload?.profile?.username || payload?.user?.username,
+            handle: payload?.profile?.handle || payload?.persona?.handle,
+            email: userRow?.email || mapped.email,
+            name: userRow?.name || mapped.name,
+            id: userRow?.firebase_uid || fallbackUid || mapped.id
+        }),
         phone: userRow?.phone || mapped.phone || '',
         city: profileRow?.city || '',
         country: profileRow?.country || '',
@@ -704,8 +730,9 @@ const fetchBackendItemSupport = async (rows: any[], token?: string) => {
 const syncUserToBackend = async (firebaseUser: FirebaseUser, payload: Partial<User> = {}): Promise<User | null> => {
     if (!isBackendConfigured()) return null;
     const token = await getBackendToken();
-    const rawName = String(payload.name || firebaseUser.displayName || '').trim();
     const rawEmail = String(payload.email || firebaseUser.email || '').trim();
+    const derivedName = deriveDisplayNameFromEmail(rawEmail);
+    const rawName = resolveDisplayName(payload.name, firebaseUser.displayName, derivedName);
     const rawAvatar = String(payload.avatar || firebaseUser.photoURL || '').trim();
     const normalizedIdentity = enforceAvatarIdentity({
         name: rawName || undefined,
@@ -734,6 +761,158 @@ const syncUserToBackend = async (firebaseUser: FirebaseUser, payload: Partial<Us
         console.warn('Backend user sync failed:', error);
         return null;
     }
+};
+
+const PENDING_LOGIN_ALERT_PROVIDER_KEY = 'urbanprime_pending_login_alert_provider_v1';
+
+type LoginAlertProvider = 'email' | 'google' | 'phone' | 'apple' | 'facebook' | 'linkedin' | 'unknown';
+type SupabaseSocialProvider = 'apple' | 'facebook' | 'linkedin_oidc';
+
+const getBrowserAppUrl = () => {
+    if (typeof window === 'undefined') return '';
+    return String(window.location?.origin || '').trim();
+};
+
+const getBrowserTimeZone = () => {
+    if (typeof Intl === 'undefined') return '';
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    } catch {
+        return '';
+    }
+};
+
+const getBrowserClientHints = async () => {
+    if (typeof navigator === 'undefined') return null;
+    const userAgentData = (navigator as any).userAgentData;
+    if (!userAgentData || typeof userAgentData.getHighEntropyValues !== 'function') return null;
+    try {
+        return await userAgentData.getHighEntropyValues([
+            'brands',
+            'fullVersionList',
+            'mobile',
+            'platform',
+            'platformVersion'
+        ]);
+    } catch {
+        return null;
+    }
+};
+
+const rememberPendingLoginAlertProvider = (provider: LoginAlertProvider) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.sessionStorage.setItem(PENDING_LOGIN_ALERT_PROVIDER_KEY, provider);
+    } catch {
+        // ignore session storage failures
+    }
+};
+
+const consumePendingLoginAlertProvider = (): LoginAlertProvider | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const value = String(window.sessionStorage.getItem(PENDING_LOGIN_ALERT_PROVIDER_KEY) || '').trim();
+        window.sessionStorage.removeItem(PENDING_LOGIN_ALERT_PROVIDER_KEY);
+        if (['email', 'google', 'phone', 'apple', 'facebook', 'linkedin', 'unknown'].includes(value)) {
+            return value as LoginAlertProvider;
+        }
+    } catch {
+        // ignore session storage failures
+    }
+    return null;
+};
+
+const mapSupabaseProviderToLoginAlertProvider = (provider: SupabaseSocialProvider): LoginAlertProvider => {
+    if (provider === 'linkedin_oidc') return 'linkedin';
+    return provider;
+};
+
+const consumePendingSupabaseOAuthProvider = (): SupabaseSocialProvider | 'unknown' => {
+    const pendingProvider = consumePendingLoginAlertProvider();
+    if (pendingProvider === 'apple' || pendingProvider === 'facebook') return pendingProvider;
+    if (pendingProvider === 'linkedin') return 'linkedin_oidc';
+    return 'unknown';
+};
+
+const getSupabaseOAuthRedirectUrl = () => {
+    if (typeof window === 'undefined') return undefined;
+    const url = new URL('/auth', window.location.origin);
+    url.searchParams.set('supabase_oauth', '1');
+    return url.toString();
+};
+
+const extractSupabaseProfile = (user: any): Partial<User> => {
+    const metadata = user?.user_metadata || {};
+    const email = String(user?.email || '').trim();
+    const name = resolveDisplayName(
+        metadata.full_name,
+        metadata.name,
+        metadata.user_name,
+        metadata.preferred_username,
+        deriveDisplayNameFromEmail(email),
+        'Urban Prime member'
+    );
+    return enforceAvatarIdentity({
+        id: `supabase:${user?.id || ''}`,
+        name,
+        email,
+        avatar: metadata.avatar_url || metadata.picture || metadata.photo_url || '/icons/urbanprime.svg'
+    } as Partial<User> & { id: string });
+};
+
+const exchangeSupabaseSessionForFirebaseUser = async (
+    provider: SupabaseSocialProvider | 'unknown' = 'unknown'
+): Promise<User | null> => {
+    if (isFirebaseDisabled()) return null;
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const session = sessionData?.session;
+    const accessToken = String(session?.access_token || '').trim();
+    if (!accessToken || !session?.user?.id) return null;
+
+    const response = await backendFetch('/api/auth/supabase/exchange', {
+        method: 'POST',
+        body: JSON.stringify({ accessToken, provider }),
+        backendNoQueue: true
+    });
+    const customToken = String(response?.customToken || '').trim();
+    if (!customToken) throw new Error('Provider sign-in did not return a login token.');
+
+    const credential = await signInWithCustomToken(auth, customToken);
+    const profile = extractSupabaseProfile(session.user);
+    const syncedUser = await syncUserToBackend(credential.user, profile);
+    const user = (await userService.getUserById(credential.user.uid)) || syncedUser;
+    void sendLoginSecurityAlert(
+        credential.user,
+        provider === 'unknown' ? 'unknown' : mapSupabaseProviderToLoginAlertProvider(provider),
+        user || profile
+    ).catch((error) => console.warn('Supabase provider login security email failed:', error));
+    return user || null;
+};
+
+const sendLoginSecurityAlert = async (
+    firebaseUser: FirebaseUser,
+    provider: LoginAlertProvider,
+    profile?: Partial<User> | null
+) => {
+    const email = String(firebaseUser.email || profile?.email || '').trim();
+    if (!email) return;
+    const token = await firebaseUser.getIdToken();
+    const clientHints = await getBrowserClientHints();
+    await backendFetch('/api/auth/login-alert', {
+        method: 'POST',
+        keepalive: true,
+        body: JSON.stringify({
+            email,
+            displayName: profile?.name || firebaseUser.displayName || deriveDisplayNameFromEmail(email),
+            provider,
+            appUrl: getBrowserAppUrl(),
+            timeZone: getBrowserTimeZone(),
+            clientHints,
+            localTime: new Date().toLocaleString()
+        }),
+        backendNoQueue: true
+    }, token);
 };
 
 export type ItemEventAction = 'item_view' | 'cart_add' | 'purchase' | 'rent' | 'auction_win';
@@ -1257,6 +1436,7 @@ const mapNotificationTypeForBackend = (type?: string) => {
 const normalizeLocalNotificationType = (type?: string): Notification['type'] => {
     const normalized = String(type || 'INFO').toUpperCase();
     if (normalized === 'SALE' || normalized === 'ORDER') return normalized as Notification['type'];
+    if (normalized === 'MESSAGE') return 'MESSAGE';
     return 'INFO';
 };
 
@@ -1720,6 +1900,54 @@ export const authService = {
         await syncUserToBackend(userCredential.user);
         const user = await userService.getUserById(userCredential.user.uid);
         if (!user) throw new Error('User profile not found');
+        void sendLoginSecurityAlert(userCredential.user, 'email', user)
+            .catch((error) => console.warn('Login security email failed:', error));
+        return user;
+    },
+    requestPhoneSignupPin: async (name: string, phone: string, pass: string): Promise<{ expiresInSeconds?: number; pin?: string }> => {
+        return backendFetch('/api/auth/phone/signup/request', {
+            method: 'POST',
+            body: JSON.stringify({ name, phone, password: pass }),
+            backendNoQueue: true
+        });
+    },
+    confirmPhoneSignupPin: async (name: string, phone: string, pass: string, pin: string): Promise<User> => {
+        const response = await backendFetch('/api/auth/phone/signup/confirm', {
+            method: 'POST',
+            body: JSON.stringify({ name, phone, password: pass, pin }),
+            backendNoQueue: true
+        });
+        const customToken = String(response?.customToken || '').trim();
+        if (!customToken) throw new Error('Phone sign up did not return a login token.');
+        const credential = await signInWithCustomToken(auth, customToken);
+        await syncUserToBackend(credential.user, { name, phone });
+        const user = await userService.getUserById(credential.user.uid);
+        if (!user) throw new Error('Phone user profile not found');
+        void sendLoginSecurityAlert(credential.user, 'phone', user)
+            .catch((error) => console.warn('Phone sign-up security email failed:', error));
+        return user;
+    },
+    requestPhoneLoginPin: async (phone: string, pass: string): Promise<{ expiresInSeconds?: number; pin?: string }> => {
+        return backendFetch('/api/auth/phone/login/request', {
+            method: 'POST',
+            body: JSON.stringify({ phone, password: pass }),
+            backendNoQueue: true
+        });
+    },
+    confirmPhoneLoginPin: async (phone: string, pin: string): Promise<User> => {
+        const response = await backendFetch('/api/auth/phone/login/confirm', {
+            method: 'POST',
+            body: JSON.stringify({ phone, pin }),
+            backendNoQueue: true
+        });
+        const customToken = String(response?.customToken || '').trim();
+        if (!customToken) throw new Error('Phone sign in did not return a login token.');
+        const credential = await signInWithCustomToken(auth, customToken);
+        const syncedUser = await syncUserToBackend(credential.user, { phone, name: response?.user?.name });
+        const user = (await userService.getUserById(credential.user.uid)) || syncedUser;
+        if (!user) throw new Error('Phone user profile not found');
+        void sendLoginSecurityAlert(credential.user, 'phone', user)
+            .catch((error) => console.warn('Phone login security email failed:', error));
         return user;
     },
     register: async (
@@ -1762,15 +1990,60 @@ export const authService = {
     },
     logout: async () => {
         if (isFirebaseDisabled()) return;
-        await signOut(auth);
+        await Promise.allSettled([
+            signOut(auth),
+            supabase.auth.signOut()
+        ]);
     },
     signInWithGoogle: async (): Promise<void> => {
         if (isFirebaseDisabled()) {
             await ensureLocalDb();
             return;
         }
-        const result = await signInWithPopup(auth, googleProvider);
-        await syncUserToBackend(result.user);
+        try {
+            const result = await signInWithPopup(auth, googleProvider);
+            const syncedUser = await syncUserToBackend(result.user);
+            void sendLoginSecurityAlert(result.user, 'google', syncedUser)
+                .catch((error) => console.warn('Google login security email failed:', error));
+            return;
+        } catch (error) {
+            const code = String((error as { code?: string })?.code || '').trim();
+            const shouldFallbackToRedirect = [
+                'auth/popup-blocked',
+                'auth/popup-closed-by-user',
+                'auth/cancelled-popup-request',
+                'auth/operation-not-supported-in-this-environment'
+            ].includes(code);
+
+            if (!shouldFallbackToRedirect) {
+                throw error;
+            }
+
+            rememberPendingLoginAlertProvider('google');
+            await signInWithRedirect(auth, googleProvider);
+            const redirectSignal = new Error('Google sign-in redirect started.');
+            (redirectSignal as Error & { code?: string }).code = 'auth/redirect';
+            throw redirectSignal;
+        }
+    },
+    signInWithSupabaseProvider: async (provider: SupabaseSocialProvider): Promise<void> => {
+        if (isFirebaseDisabled()) {
+            await ensureLocalDb();
+            return;
+        }
+        rememberPendingLoginAlertProvider(mapSupabaseProviderToLoginAlertProvider(provider));
+        const redirectTo = getSupabaseOAuthRedirectUrl();
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: provider as Provider,
+            options: {
+                redirectTo,
+                scopes: provider === 'linkedin_oidc' ? 'openid profile email' : undefined
+            }
+        });
+        if (error) throw error;
+    },
+    completeSupabaseOAuthSignIn: async (): Promise<User | null> => {
+        return exchangeSupabaseSessionForFirebaseUser(consumePendingSupabaseOAuthProvider());
     },
     syncAuthenticatedUser: async (payload: Partial<User> = {}): Promise<User | null> => {
         if (isFirebaseDisabled()) {
@@ -1778,8 +2051,16 @@ export const authService = {
             const users = await localDb.list<User>('users');
             return users[0] ? enforceAvatarIdentity(users[0]) : null;
         }
-        if (!auth.currentUser) return null;
-        return syncUserToBackend(auth.currentUser, payload);
+        if (!auth.currentUser) {
+            return exchangeSupabaseSessionForFirebaseUser(consumePendingSupabaseOAuthProvider());
+        }
+        const syncedUser = await syncUserToBackend(auth.currentUser, payload);
+        const pendingProvider = consumePendingLoginAlertProvider();
+        if (pendingProvider) {
+            void sendLoginSecurityAlert(auth.currentUser, pendingProvider, syncedUser || payload)
+                .catch((error) => console.warn('Redirect login security email failed:', error));
+        }
+        return syncedUser;
     },
     getProfile: async (uid: string): Promise<User | null> => {
         return userService.getUserById(uid);
@@ -1789,10 +2070,30 @@ export const authService = {
     },
     requestPasswordReset: async (email: string) => {
         if (isFirebaseDisabled()) {
-            return { token: 'local-token' };
+            return { token: 'local-token', pin: '000000' };
         }
-        await sendPasswordResetEmail(auth, email);
-        return { token: 'mock-token' };
+        const res = await backendFetch('/api/auth/password-reset/request', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+            backendNoQueue: true
+        });
+        return res as { ok?: boolean; pin?: string; delivery?: string; expiresInSeconds?: number };
+    },
+    verifyPasswordResetCode: async (code: string): Promise<string | null> => {
+        if (isFirebaseDisabled()) {
+            return null;
+        }
+        return verifyFirebasePasswordResetCode(auth, code);
+    },
+    resetPasswordWithPin: async (email: string, pin: string, newPass: string) => {
+        if (isFirebaseDisabled()) {
+            return;
+        }
+        await backendFetch('/api/auth/password-reset/confirm', {
+            method: 'POST',
+            body: JSON.stringify({ email, pin, password: newPass }),
+            backendNoQueue: true
+        });
     },
     resetPassword: async (token: string, newPass: string) => {
         if (isFirebaseDisabled()) {
@@ -1845,14 +2146,39 @@ export const authService = {
 export const userService = {
     getUserById: async (uid: string): Promise<User | null> => {
         const token = await getBackendToken();
-        const canUseBackend = Boolean(token || hasBackendApiKey);
+        const canUseBackend = isBackendConfigured();
+        const normalizedLookupUsername = sanitizeUsername(uid);
 
         const mergeSupplementalUserState = async (baseUser: User | null): Promise<User | null> => {
             let supplemental: Partial<User> = {};
+            const resolvedUserId = String(baseUser?.id || uid || '').trim();
+
+            if (isBackendConfigured() && canUseBackend && resolvedUserId) {
+                try {
+                    const profileRes = await backendFetch(
+                        `/api/user_profiles?eq.user_id=${encodeURIComponent(resolvedUserId)}&select=username,about,bio,city,country,preferences,social_links&limit=1`,
+                        {},
+                        token
+                    ).catch(() => null);
+                    const profileRow = Array.isArray(profileRes?.data) ? profileRes.data[0] : null;
+                    if (profileRow) {
+                        supplemental = {
+                            ...supplemental,
+                            username: sanitizeUsername(profileRow.username),
+                            city: profileRow.city || supplemental.city,
+                            country: profileRow.country || supplemental.country,
+                            preferences: profileRow.preferences || supplemental.preferences,
+                            socialLinks: profileRow.social_links || supplemental.socialLinks
+                        };
+                    }
+                } catch (error) {
+                    console.warn('Backend user profile merge failed:', error);
+                }
+            }
 
             if (isBackendConfigured() && canUseBackend) {
                 try {
-                    const affiliateProfileLookupKeys = await resolveBackendUserLookupKeys(uid);
+                    const affiliateProfileLookupKeys = await resolveBackendUserLookupKeys(resolvedUserId || uid);
                     const affiliateProfileResponses = await Promise.all(
                         affiliateProfileLookupKeys.map((lookupUserId) =>
                             backendFetch(
@@ -1912,26 +2238,77 @@ export const userService = {
                 return null;
             }
 
-            return enforceAvatarIdentity({
+            const mergedUser = enforceAvatarIdentity({
                 ...(baseUser || {}),
                 ...supplemental,
                 id: baseUser?.id || supplemental.id || uid
             } as User);
+            return {
+                ...mergedUser,
+                username: sanitizeUsername(supplemental.username) || deriveUsernameFromIdentity(mergedUser)
+            };
         };
 
         if (isBackendConfigured() && canUseBackend) {
             try {
                 const queryByFirebaseUid = `/api/users?firebase_uid=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
                 const queryBySupabaseId = `/api/users?id=${encodeURIComponent(uid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`;
+                const queryByUsername = normalizedLookupUsername
+                    ? `/api/user_profiles?eq.username=${encodeURIComponent(normalizedLookupUsername)}&select=user_id,username&limit=1`
+                    : null;
                 const responses = await Promise.all([
                     backendFetch(queryByFirebaseUid, {}, token).catch(() => null),
-                    isUuidLike(uid) ? backendFetch(queryBySupabaseId, {}, token).catch(() => null) : Promise.resolve(null)
+                    isUuidLike(uid) ? backendFetch(queryBySupabaseId, {}, token).catch(() => null) : Promise.resolve(null),
+                    queryByUsername ? backendFetch(queryByUsername, {}, token).catch(() => null) : Promise.resolve(null)
                 ]);
 
-                for (const response of responses) {
+                for (const response of responses.slice(0, 2)) {
                     const rows = Array.isArray(response?.data) ? response?.data : [];
                     if (rows.length > 0) {
                         return mergeSupplementalUserState(mapBackendUserRow(rows[0]));
+                    }
+                }
+
+                const usernameRows = Array.isArray(responses[2]?.data) ? responses[2]?.data : [];
+                const matchedProfile = usernameRows[0];
+                const matchedUserId = String(matchedProfile?.user_id || '').trim();
+                if (matchedUserId) {
+                    const matchedUserResponse = await backendFetch(
+                        `/api/users?id=${encodeURIComponent(matchedUserId)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`,
+                        {},
+                        token
+                    ).catch(() => null);
+                    const matchedUserRows = Array.isArray(matchedUserResponse?.data) ? matchedUserResponse.data : [];
+                    if (matchedUserRows.length > 0) {
+                        return mergeSupplementalUserState(mapBackendUserRow({
+                            ...matchedUserRows[0],
+                            username: matchedProfile?.username
+                        }));
+                    }
+                }
+
+                if (normalizedLookupUsername) {
+                    const spotlightProfileResponse = await backendFetch(
+                        `/spotlight/profile/${encodeURIComponent(normalizedLookupUsername)}?tab=posts&limit=1`,
+                        {},
+                        token
+                    ).catch(() => null);
+                    const resolvedFirebaseUid = String(
+                        spotlightProfileResponse?.data?.profile?.firebase_uid || ''
+                    ).trim();
+                    if (resolvedFirebaseUid) {
+                        const spotlightUserResponse = await backendFetch(
+                            `/api/users?firebase_uid=${encodeURIComponent(resolvedFirebaseUid)}&select=id,firebase_uid,email,name,avatar_url,phone,status,role,created_at&limit=1`,
+                            {},
+                            token
+                        ).catch(() => null);
+                        const spotlightUserRows = Array.isArray(spotlightUserResponse?.data) ? spotlightUserResponse.data : [];
+                        if (spotlightUserRows.length > 0) {
+                            return mergeSupplementalUserState(mapBackendUserRow({
+                                ...spotlightUserRows[0],
+                                username: spotlightProfileResponse?.data?.profile?.username || normalizedLookupUsername
+                            }));
+                        }
                     }
                 }
             } catch (error) {
@@ -1941,14 +2318,20 @@ export const userService = {
 
         if (canUseBackend && supabaseMirror.enabled) {
             const mirrored = await supabaseMirror.get<User>('users', uid);
-            if (mirrored) return enforceAvatarIdentity(mirrored);
+            if (mirrored) {
+                const normalizedUser = enforceAvatarIdentity(mirrored);
+                return { ...normalizedUser, username: deriveUsernameFromIdentity(normalizedUser) };
+            }
         }
 
         if (shouldUseFirestoreFallback()) {
             try {
                 const docRef = doc(db, 'users', uid);
                 const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) return enforceAvatarIdentity(fromFirestore<User>(docSnap));
+                if (docSnap.exists()) {
+                    const normalizedUser = enforceAvatarIdentity(fromFirestore<User>(docSnap));
+                    return { ...normalizedUser, username: deriveUsernameFromIdentity(normalizedUser) };
+                }
             } catch (error) {
                 console.warn('Firestore user fetch failed:', error);
             }
@@ -1958,7 +2341,29 @@ export const userService = {
             await ensureLocalDb();
             const users = await localDb.list<User>('users');
             const found = users.find((u) => u.id === uid) || null;
-            return found ? enforceAvatarIdentity(found) : null;
+            if (found) {
+                const normalizedUser = enforceAvatarIdentity(found);
+                return { ...normalizedUser, username: deriveUsernameFromIdentity(normalizedUser) };
+            }
+            return null;
+        }
+
+        if (auth.currentUser?.uid === uid) {
+            const authFallback = enforceAvatarIdentity({
+                id: auth.currentUser.uid,
+                name: auth.currentUser.displayName || deriveDisplayNameFromEmail(auth.currentUser.email) || 'Urban Prime member',
+                email: auth.currentUser.email || '',
+                avatar: auth.currentUser.photoURL || '/icons/urbanprime.svg',
+                following: [],
+                followers: [],
+                wishlist: [],
+                cart: [],
+                badges: [],
+                memberSince: new Date().toISOString(),
+                status: 'active',
+                accountLifecycle: 'member'
+            } as User);
+            return { ...authFallback, username: deriveUsernameFromIdentity(authFallback) };
         }
 
         return null;
@@ -1980,7 +2385,7 @@ export const userService = {
             capabilities.affiliate = 'active';
         }
 
-        const newUser: User = enforceAvatarIdentity({
+        const normalizedNewUser: User = enforceAvatarIdentity({
             id: firebaseUser.uid,
             name: additionalData.name || firebaseUser.displayName || 'User',
             email: firebaseUser.email || '',
@@ -1996,6 +2401,10 @@ export const userService = {
             capabilities,
             ...additionalData
         });
+        const newUser: User = {
+            ...normalizedNewUser,
+            username: sanitizeUsername(additionalData.username) || deriveUsernameFromIdentity(normalizedNewUser)
+        };
 
         await syncUserToBackend(firebaseUser, newUser);
 
@@ -2057,6 +2466,7 @@ export const userService = {
                 if (normalizedUpdates.dob !== undefined) payload.dob = normalizedUpdates.dob;
                 if (normalizedUpdates.gender !== undefined) payload.gender = normalizedUpdates.gender;
                 if (normalizedUpdates.purpose !== undefined) payload.purpose = normalizedUpdates.purpose;
+                if (normalizedUpdates.username !== undefined) payload.username = sanitizeUsername(normalizedUpdates.username);
 
                 let mapped: User | null = null;
                 if (Object.keys(payload).length > 0) {
@@ -2561,10 +2971,70 @@ export const userService = {
         userId: string,
         options: { publishedOnly?: boolean } = {}
     ): Promise<{ user: User; items: Item[]; store: any } | null> => {
-        const user = await userService.getUserById(userId);
+        let user = await userService.getUserById(userId).catch(() => null);
+        if (!user && isBackendConfigured()) {
+            const normalizedSlug = sanitizeUsername(userId);
+            if (normalizedSlug) {
+                try {
+                    const token = await getBackendToken();
+                    const spotlightRes = await backendFetch(
+                        `/spotlight/profile/${encodeURIComponent(normalizedSlug)}?tab=posts&limit=1`,
+                        {},
+                        token
+                    );
+                    const spotlightProfile = spotlightRes?.data?.profile || null;
+                    const resolvedIdentity = String(
+                        spotlightProfile?.firebase_uid || spotlightProfile?.id || ''
+                    ).trim();
+
+                    if (resolvedIdentity) {
+                        user = await userService.getUserById(resolvedIdentity).catch(() => null);
+                    }
+
+                    if (!user && spotlightProfile) {
+                        const email = String(spotlightProfile?.email || '').trim();
+                        const identity = enforceAvatarIdentity({
+                            name: resolveDisplayName(
+                                spotlightProfile?.name,
+                                deriveDisplayNameFromEmail(email),
+                                'User'
+                            ),
+                            email,
+                            gender: spotlightProfile?.gender,
+                            avatar: spotlightProfile?.avatar_url
+                        });
+
+                        user = {
+                            id: resolvedIdentity || normalizedSlug,
+                            username: sanitizeUsername(spotlightProfile?.username) || normalizedSlug,
+                            name: identity.name,
+                            email: identity.email,
+                            avatar: identity.avatar,
+                            gender: identity.gender,
+                            phone: '',
+                            status: 'active',
+                            following: [],
+                            followers: [],
+                            wishlist: [],
+                            cart: [],
+                            badges: [],
+                            memberSince: spotlightProfile?.joined_at || new Date().toISOString(),
+                            city: spotlightProfile?.city || '',
+                            country: spotlightProfile?.country || '',
+                            about: spotlightProfile?.about || spotlightProfile?.bio || '',
+                            accountLifecycle: 'member',
+                            capabilities: personaService.getCapabilitiesForPersonaType('consumer')
+                        };
+                    }
+                } catch (error) {
+                    console.warn('Public profile spotlight fallback failed:', error);
+                }
+            }
+        }
         if (!user) return null;
+        const resolvedOwnerId = String(user.id || userId);
         const publishedOnly = options.publishedOnly !== false;
-        const items = await itemService.getItemsByOwner(userId, {
+        const items = await itemService.getItemsByOwner(resolvedOwnerId, {
             visibility: publishedOnly ? 'public' : 'owner',
             statuses: publishedOnly ? ['published'] : undefined,
             allowMockFallback: false,
@@ -2576,7 +3046,7 @@ export const userService = {
         }
 
         try {
-            const q = query(collection(db, 'storefronts'), where('ownerId', '==', userId));
+            const q = query(collection(db, 'storefronts'), where('ownerId', '==', resolvedOwnerId));
             const storeSnap = await getDocs(q);
             const store = storeSnap.empty ? null : fromFirestore(storeSnap.docs[0]);
             return { user, items, store };
@@ -2645,7 +3115,10 @@ export const userService = {
                         `/personas/${personaId}/notifications?limit=${effectiveLimit}`,
                         {},
                         token
-                    );
+                    ).catch((error) => {
+                        console.warn('Persona notifications fetch skipped:', error);
+                        return null;
+                    });
                     const personaRows = Array.isArray(personaRes?.data) ? personaRes.data : [];
                     notifications.push(...personaRows.map((row: any) => mapPersonaNotification(row, userId)));
                 }
@@ -2706,7 +3179,10 @@ export const userService = {
                         `/personas/${personaId}/notifications/read`,
                         { method: 'POST', body: JSON.stringify({ read_at: readAt }) },
                         token
-                    );
+                    ).catch((error) => {
+                        console.warn('Persona notifications mark-read skipped:', error);
+                        return null;
+                    });
                 }
                 return;
             } catch (error) {
@@ -4931,7 +5407,7 @@ export const itemService = {
                 const preview = isEncryptedMessagePayload(trimmedText)
                     ? 'Encrypted message'
                     : (trimmedText || (imageUrl ? 'Sent an image' : 'New message'));
-                await backendFetch('/api/notifications', {
+                void backendFetch('/api/notifications', {
                     method: 'POST',
                     body: JSON.stringify({
                         user_id: recipientSupabaseId,
@@ -4940,8 +5416,8 @@ export const itemService = {
                         body: preview.slice(0, 280),
                         link: `/profile/messages/${threadId}`
                     })
-                }, token);
-                await backendFetch('/push/notify-message', {
+                }, token).catch(() => null);
+                void backendFetch('/push/notify-message', {
                     method: 'POST',
                     body: JSON.stringify({
                         thread_id: threadId,
@@ -4955,6 +5431,15 @@ export const itemService = {
         }
 
         if (shouldUseFirestoreFallback()) {
+            const threadRef = doc(db, 'chatThreads', threadId);
+            const threadSnapshot = await getDoc(threadRef);
+            const threadData = threadSnapshot.exists() ? threadSnapshot.data() as Record<string, any> : null;
+            const participants = [
+                String(threadData?.buyerId || ''),
+                String(threadData?.sellerId || '')
+            ].filter(Boolean);
+            const createdAt = new Date().toISOString();
+            const preview = text?.trim() || (imageUrl ? 'Sent an image' : 'New message');
             await addDoc(collection(db, 'chatThreads', threadId, 'messages'), {
                 senderId,
                 text: text?.trim() || '',
@@ -4964,12 +5449,22 @@ export const itemService = {
                 reactions: {},
                 editedAt: null,
                 deletedAt: null,
-                timestamp: new Date().toISOString()
+                timestamp: createdAt
             });
-            await updateDoc(doc(db, 'chatThreads', threadId), {
-                lastMessage: text?.trim() || (imageUrl ? 'Sent an image' : 'New message'),
-                lastUpdated: new Date().toISOString()
+            await updateDoc(threadRef, {
+                lastMessage: preview,
+                lastUpdated: createdAt
             });
+            const recipientId = participants.find((participantId) => participantId !== senderId);
+            if (recipientId) {
+                void createUserNotification(recipientId, {
+                    type: 'MESSAGE',
+                    title: 'New message',
+                    message: preview.slice(0, 280),
+                    link: `/profile/messages/${threadId}`,
+                    createdAt
+                });
+            }
             return;
         }
 
@@ -5152,6 +5647,14 @@ export const itemService = {
             if (!senderSupabaseId) {
                 throw new Error('Unable to resolve sender identity for voice note.');
             }
+            const threadRes = await backendFetch(`/api/chat_threads/${threadId}`, {}, token);
+            const threadRow = threadRes?.data;
+            if (!threadRow) throw new Error('Conversation not found.');
+
+            const participants = [String(threadRow?.buyer_id || ''), String(threadRow?.seller_id || '')];
+            if (!participants.includes(senderSupabaseId)) {
+                throw new Error('You are not a participant in this conversation.');
+            }
 
             const mimeType = normalizeMimeType(voiceBlob.type) || 'audio/webm';
             const extension = voiceFileExtensionForMime(mimeType);
@@ -5199,10 +5702,41 @@ export const itemService = {
                 method: 'PATCH',
                 body: JSON.stringify({ last_message_at: now })
             }, token);
+            const recipientSupabaseId = participants.find((participantId) => participantId && participantId !== senderSupabaseId);
+            if (recipientSupabaseId) {
+                const preview = 'Sent a voice note';
+                void backendFetch('/api/notifications', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: recipientSupabaseId,
+                        type: 'message',
+                        title: 'New voice note',
+                        body: preview,
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token).catch(() => null);
+                void backendFetch('/push/notify-message', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        thread_id: threadId,
+                        recipient_supabase_id: recipientSupabaseId,
+                        preview,
+                        link: `/profile/messages/${threadId}`
+                    })
+                }, token).catch(() => null);
+            }
             return;
         }
 
         if (shouldUseFirestoreFallback()) {
+            const threadRef = doc(db, 'chatThreads', threadId);
+            const threadSnapshot = await getDoc(threadRef);
+            const threadData = threadSnapshot.exists() ? threadSnapshot.data() as Record<string, any> : null;
+            const participants = [
+                String(threadData?.buyerId || ''),
+                String(threadData?.sellerId || '')
+            ].filter(Boolean);
+            const createdAt = new Date().toISOString();
             const audioDataUrl = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(String(reader.result || ''));
@@ -5218,12 +5752,22 @@ export const itemService = {
                 reactions: {},
                 editedAt: null,
                 deletedAt: null,
-                timestamp: new Date().toISOString()
+                timestamp: createdAt
             });
-            await updateDoc(doc(db, 'chatThreads', threadId), {
+            await updateDoc(threadRef, {
                 lastMessage: 'Voice note',
-                lastUpdated: new Date().toISOString()
+                lastUpdated: createdAt
             });
+            const recipientId = participants.find((participantId) => participantId !== senderId);
+            if (recipientId) {
+                void createUserNotification(recipientId, {
+                    type: 'MESSAGE',
+                    title: 'New voice note',
+                    message: 'Sent a voice note',
+                    link: `/profile/messages/${threadId}`,
+                    createdAt
+                });
+            }
             return;
         }
 
@@ -5705,6 +6249,20 @@ export const listerService = {
          const seen = new Set<string>();
          let canonicalLoaded = false;
 
+         const mergeFirestoreBookings = async () => {
+             const q = query(collection(db, 'bookings'), where('provider.id', '==', userId));
+             const snapshot = await getDocs(q);
+             snapshot.docs
+                 .map(doc => fromFirestore<Booking>(doc))
+                 .filter((booking) => !(canonicalLoaded && booking.source === 'commerce'))
+                 .forEach((booking) => {
+                     if (!seen.has(booking.id)) {
+                         seen.add(booking.id);
+                         merged.push(booking);
+                     }
+                 });
+         };
+
          if (isBackendConfigured()) {
              try {
                  const canonical = await commerceService.getSellerBookings();
@@ -5716,24 +6274,22 @@ export const listerService = {
                      }
                  });
              } catch (error) {
+                 if (!shouldUseFirestoreFallback()) {
+                     console.warn('Canonical seller bookings failed, checking Firestore seller bookings:', error);
+                     await mergeFirestoreBookings();
+                     return merged;
+                 }
                  throw error;
              }
          }
 
          if (!shouldUseFirestoreFallback()) {
+             if (merged.length === 0) {
+                 await mergeFirestoreBookings();
+             }
              return merged;
          }
-         const q = query(collection(db, 'bookings'), where('provider.id', '==', userId));
-         const snapshot = await getDocs(q);
-         snapshot.docs
-             .map(doc => fromFirestore<Booking>(doc))
-             .filter((booking) => !(canonicalLoaded && booking.source === 'commerce'))
-             .forEach((booking) => {
-             if (!seen.has(booking.id)) {
-                 seen.add(booking.id);
-                 merged.push(booking);
-             }
-         });
+         await mergeFirestoreBookings();
          return merged;
     },
     getBookingById: async (bookingId: string): Promise<Booking | undefined> => {

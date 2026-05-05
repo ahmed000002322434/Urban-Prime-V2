@@ -1,5 +1,5 @@
 import { auth } from '../firebase';
-import { backendFetch, isBackendConfigured, resolveBackendBaseUrl } from './backendClient';
+import { backendFetch, buildBackendRequestUrl, isBackendConfigured, resolveBackendBaseUrl } from './backendClient';
 import type {
   AnalyticsPageId,
   AnalyticsScopeType,
@@ -125,7 +125,7 @@ export const personaAnalyticsService = {
         if (token) headers.Authorization = `Bearer ${token}`;
 
         const response = await fetch(
-          `${baseUrl}/analytics/stream/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`,
+        buildBackendRequestUrl(baseUrl, `/analytics/stream/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`),
           {
             method: 'GET',
             headers,

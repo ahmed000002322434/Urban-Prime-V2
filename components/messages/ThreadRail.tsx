@@ -22,6 +22,7 @@ interface ThreadRailProps {
   onSelectThread: (threadId: string) => void;
   onToggleThreadMenu: (threadId: string) => void;
   onMoveThread: (threadId: string, bucket: 'primary' | 'general') => void;
+  isLoading?: boolean;
 }
 
 const filterOptions: Array<{ key: ThreadFilter; label: string }> = [
@@ -46,7 +47,8 @@ const ThreadRail: React.FC<ThreadRailProps> = ({
   menuThreadId,
   onSelectThread,
   onToggleThreadMenu,
-  onMoveThread
+  onMoveThread,
+  isLoading = false
 }) => (
   <div className="flex h-full min-h-0 flex-col">
     <WorkspaceHeader accountLabel={accountLabel} subtitle={subtitle} onNewChat={onNewChat} />
@@ -94,6 +96,26 @@ const ThreadRail: React.FC<ThreadRailProps> = ({
               onMoveToPrimary={() => onMoveThread(viewModel.thread.id, 'primary')}
               onMoveToGeneral={() => onMoveThread(viewModel.thread.id, 'general')}
             />
+          ))}
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={`thread-skeleton-${index}`} className="messages-thread-item w-full text-left" aria-hidden="true">
+              <div className="flex items-start gap-2.5 animate-pulse">
+                <div className="h-11 w-11 shrink-0 rounded-full bg-slate-200/85 dark:bg-slate-700/70" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-3.5 w-28 rounded-full bg-slate-200/85 dark:bg-slate-700/70" />
+                      <div className="h-3 w-16 rounded-full bg-slate-200/75 dark:bg-slate-700/60" />
+                    </div>
+                    <div className="h-3 w-10 rounded-full bg-slate-200/75 dark:bg-slate-700/60" />
+                  </div>
+                  <div className="mt-2 h-3.5 w-36 rounded-full bg-slate-200/80 dark:bg-slate-700/65" />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       ) : (

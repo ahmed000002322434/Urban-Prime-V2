@@ -21,10 +21,13 @@ import { localDb } from '../services/localDb';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import Spinner from '../components/Spinner';
 import { enforceAvatarIdentity, needsAvatarNormalization } from '../utils/avatarEnforcement';
+import { deriveDisplayNameFromEmail, deriveUsernameFromIdentity, resolveDisplayName, sanitizeUsername } from '../utils/profileIdentity';
+import engagementService from '../services/engagementService';
 
 const ONBOARDING_PRESET_KEY = 'urbanprime_onboarding_preset_v2';
 const ONBOARDING_REDIRECT_KEY = 'urbanprime_onboarding_redirect_v2';
 const UNIFIED_PROFILE_CACHE_PREFIX = 'urbanprime_unified_profile_cache_v2:';
+const ACTIVE_FIREBASE_UID_KEY = 'urbanprime_active_firebase_uid_v1';
 type ItemServiceModule = typeof import('../services/itemService');
 
 let itemServiceModulePromise: Promise<ItemServiceModule> | null = null;
@@ -153,6 +156,10 @@ interface AuthContextType {
   profileCompletion: ProfileCompletion | null;
   isProfileOnboardingEnabled: boolean;
   login: (email: string, pass: string) => Promise<User>;
+  requestPhoneSignupPin: (name: string, phone: string, pass: string) => Promise<{ expiresInSeconds?: number; pin?: string }>;
+  confirmPhoneSignupPin: (name: string, phone: string, pass: string, pin: string) => Promise<User>;
+  requestPhoneLoginPin: (phone: string, pass: string) => Promise<{ expiresInSeconds?: number; pin?: string }>;
+  confirmPhoneLoginPin: (phone: string, pin: string) => Promise<User>;
   register: (
     name: string,
     email: string,
@@ -162,6 +169,8 @@ interface AuthContextType {
     profileOverrides?: Partial<User>
   ) => Promise<User>;
   signInWithGoogle: () => Promise<User>;
+  signInWithSocialProvider: (provider: 'apple' | 'facebook' | 'linkedin_oidc') => Promise<void>;
+  completeSupabaseOAuthSignIn: () => Promise<User | null>;
   logout: () => void;
   switchUser: (targetUserId: string) => Promise<void>;
   completeOnboarding: (payload: OnboardingData | { selectedIntents?: OnboardingIntent[]; draft?: OnboardingDraft; roleSetup?: Record<string, unknown> }) => Promise<void>;
@@ -206,7 +215,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     (firebaseUser: FirebaseUser): User =>
       enforceAvatarIdentity({
         id: firebaseUser.uid,
-        name: firebaseUser.displayName || 'User',
+        name: resolveDisplayName(firebaseUser.displayName, deriveDisplayNameFromEmail(firebaseUser.email), 'User'),
         email: firebaseUser.email || '',
         avatar: firebaseUser.photoURL || '/icons/urbanprime.svg',
         phone: '',
@@ -261,6 +270,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
+  const ensureCurrentUserUsername = useCallback(async (currentUser: User) => {
+    if (!currentUser?.id) return;
+
+    const existingUsername = sanitizeUsername(currentUser.username);
+    if (existingUsername && existingUsername.length >= 3) {
+      setUser((prev) => (prev && prev.id === currentUser.id ? { ...prev, username: existingUsername } : prev));
+      return;
+    }
+
+    const nameSegments = String(currentUser.name || '').trim().split(/\s+/).map(sanitizeUsername).filter(Boolean);
+    const emailLocalPart = sanitizeUsername(String(currentUser.email || '').split('@')[0] || '');
+    const candidates = Array.from(
+      new Set([
+        nameSegments[0],
+        nameSegments.slice(0, 2).join('.'),
+        sanitizeUsername(deriveDisplayNameFromEmail(currentUser.email).split(' ')[0] || ''),
+        emailLocalPart,
+        deriveUsernameFromIdentity(currentUser)
+      ].filter((value) => value && value.length >= 3))
+    );
+
+    if (candidates.length === 0) return;
+
+    for (const candidate of candidates) {
+      try {
+        const updated = await withUserService((userService) => userService.updateUserProfile(currentUser.id, { username: candidate }));
+        const normalizedCandidate = sanitizeUsername(updated?.username || candidate);
+        setUser((prev) => (prev && prev.id === currentUser.id ? { ...prev, username: normalizedCandidate } : prev));
+        return;
+      } catch (error) {
+        const message = String((error as Error)?.message || error || '').toLowerCase();
+        if (message.includes('taken') || message.includes('409') || message.includes('already')) {
+          continue;
+        }
+        console.warn('Username provisioning skipped:', error);
+        return;
+      }
+    }
+
+    const localFallback = candidates[0];
+    setUser((prev) => (prev && prev.id === currentUser.id ? { ...prev, username: localFallback } : prev));
+  }, []);
+
   const normalizeAvatarDirectory = useCallback(async () => {
     if (avatarDirectoryNormalizationRef.current) return;
     avatarDirectoryNormalizationRef.current = true;
@@ -273,7 +325,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const applyUnifiedProfile = useCallback(
     async (unified: UnifiedProfile) => {
-      const normalizedUser = enforceAvatarIdentity(unified.user);
+      const normalizedUser = {
+        ...enforceAvatarIdentity(unified.user),
+        username: sanitizeUsername(unified.user?.username) || deriveUsernameFromIdentity(unified.user)
+      };
       const onboardingEnabled = unified.featureFlags?.profileOnboardingV2 ?? onboardingFeatureDefault;
       const normalizedUnified: UnifiedProfile = {
         ...unified,
@@ -293,9 +348,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await syncPersonas(normalizedUser);
       }
       await ensureCurrentUserAvatarNormalized(normalizedUser);
+      await ensureCurrentUserUsername(normalizedUser);
       void normalizeAvatarDirectory();
     },
-    [ensureCurrentUserAvatarNormalized, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]
+    [ensureCurrentUserAvatarNormalized, ensureCurrentUserUsername, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]
   );
 
   const refreshProfile = useCallback(async (): Promise<UnifiedProfile | null> => {
@@ -321,7 +377,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return cachedUnified;
       }
       const fallbackRaw = (await withAuthService((authService) => authService.getProfile(firebaseUser.uid))) || buildFallbackUser(firebaseUser);
-      const fallback = enforceAvatarIdentity(fallbackRaw);
+      const fallback = {
+        ...enforceAvatarIdentity(fallbackRaw),
+        username: sanitizeUsername(fallbackRaw?.username) || deriveUsernameFromIdentity(fallbackRaw)
+      };
       setUser(fallback);
       const completion = fallbackCompletion(fallback);
       setProfileCompletion(onboardingFeatureDefault ? completion : completedBypassCompletion);
@@ -332,6 +391,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser((prev) => (prev ? { ...prev, activePersonaId: active.id, capabilities: active.capabilities } : prev));
       }
       await ensureCurrentUserAvatarNormalized(fallback);
+      await ensureCurrentUserUsername(fallback);
       void normalizeAvatarDirectory();
       const fallbackUnified: UnifiedProfile = {
         user: fallback,
@@ -347,7 +407,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       writeCachedUnifiedProfile(firebaseUser.uid, fallbackUnified);
       return fallbackUnified;
     }
-  }, [applyUnifiedProfile, buildFallbackUser, ensureCurrentUserAvatarNormalized, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]);
+  }, [applyUnifiedProfile, buildFallbackUser, ensureCurrentUserAvatarNormalized, ensureCurrentUserUsername, normalizeAvatarDirectory, onboardingFeatureDefault, syncPersonas]);
 
   useEffect(() => {
     if (isFirebaseDisabled()) {
@@ -402,6 +462,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.setItem(ACTIVE_FIREBASE_UID_KEY, firebaseUser.uid);
+            } catch {
+              // ignore local uid persistence failures
+            }
+          }
           try {
             await withAuthService((authService) => authService.syncAuthenticatedUser());
           } catch (syncError) {
@@ -409,6 +476,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
           await refreshProfile();
         } else {
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.removeItem(ACTIVE_FIREBASE_UID_KEY);
+            } catch {
+              // ignore local uid persistence failures
+            }
+          }
           avatarNormalizationAttemptRef.current.clear();
           avatarDirectoryNormalizationRef.current = false;
           setUser(null);
@@ -431,6 +505,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       unsubscribe();
     };
   }, [onboardingFeatureDefault, refreshProfile]);
+
+  useEffect(() => {
+    if (!user?.id || isFirebaseDisabled()) return;
+    const path = `${location.pathname}${location.search}`;
+    void engagementService.markPresence(path);
+    const intervalId = window.setInterval(() => {
+      void engagementService.markPresence(`${window.location.pathname}${window.location.search}`);
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [user?.id, location.pathname, location.search]);
 
   const openAuthModal = useCallback(
     (_view: 'login' | 'register') => {
@@ -465,6 +549,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [refreshProfile, syncPersonas, user]
   );
 
+  const requestPhoneSignupPin = useCallback(
+    (name: string, phone: string, pass: string) =>
+      withAuthService((authService) => authService.requestPhoneSignupPin(name, phone, pass)),
+    []
+  );
+
+  const confirmPhoneSignupPin = useCallback(
+    async (name: string, phone: string, pass: string, pin: string) => {
+      await withAuthService((authService) => authService.confirmPhoneSignupPin(name, phone, pass, pin));
+      const unified = await refreshProfile();
+      if (unified?.user) return unified.user;
+      if (user) return user;
+      throw new Error('Phone sign up succeeded but profile could not be loaded.');
+    },
+    [refreshProfile, user]
+  );
+
+  const requestPhoneLoginPin = useCallback(
+    (phone: string, pass: string) =>
+      withAuthService((authService) => authService.requestPhoneLoginPin(phone, pass)),
+    []
+  );
+
+  const confirmPhoneLoginPin = useCallback(
+    async (phone: string, pin: string) => {
+      await withAuthService((authService) => authService.confirmPhoneLoginPin(phone, pin));
+      const unified = await refreshProfile();
+      if (unified?.user) return unified.user;
+      if (user) return user;
+      throw new Error('Phone sign in succeeded but profile could not be loaded.');
+    },
+    [refreshProfile, user]
+  );
+
   const register = useCallback(
     async (
       name: string,
@@ -493,8 +611,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     throw new Error('Google sign-in succeeded but profile could not be loaded.');
   }, [refreshProfile, user]);
 
+  const signInWithSocialProvider = useCallback(
+    (provider: 'apple' | 'facebook' | 'linkedin_oidc') =>
+      withAuthService((authService) => authService.signInWithSupabaseProvider(provider)),
+    []
+  );
+
+  const completeSupabaseOAuthSignIn = useCallback(async (): Promise<User | null> => {
+    const completed = await withAuthService((authService) => authService.completeSupabaseOAuthSignIn());
+    const unified = await refreshProfile();
+    return unified?.user || completed || user || null;
+  }, [refreshProfile, user]);
+
   const logout = useCallback(() => {
     void withAuthService((authService) => authService.logout());
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(ACTIVE_FIREBASE_UID_KEY);
+      } catch {
+        // ignore local uid persistence failures
+      }
+    }
     avatarNormalizationAttemptRef.current.clear();
     avatarDirectoryNormalizationRef.current = false;
     setUser(null);
@@ -517,6 +654,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       }
       await withAuthService((authService) => authService.logout());
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(ACTIVE_FIREBASE_UID_KEY);
+        } catch {
+          // ignore local uid persistence failures
+        }
+      }
       avatarNormalizationAttemptRef.current.clear();
       avatarDirectoryNormalizationRef.current = false;
       setUser(null);
@@ -714,8 +858,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       profileCompletion,
       isProfileOnboardingEnabled,
       login,
+      requestPhoneSignupPin,
+      confirmPhoneSignupPin,
+      requestPhoneLoginPin,
+      confirmPhoneLoginPin,
       register,
       signInWithGoogle,
+      signInWithSocialProvider,
+      completeSupabaseOAuthSignIn,
       logout,
       switchUser,
       completeOnboarding,
@@ -744,8 +894,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       profileCompletion,
       isProfileOnboardingEnabled,
       login,
+      requestPhoneSignupPin,
+      confirmPhoneSignupPin,
+      requestPhoneLoginPin,
+      confirmPhoneLoginPin,
       register,
       signInWithGoogle,
+      signInWithSocialProvider,
+      completeSupabaseOAuthSignIn,
       logout,
       switchUser,
       completeOnboarding,

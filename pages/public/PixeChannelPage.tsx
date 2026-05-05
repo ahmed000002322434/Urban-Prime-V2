@@ -5,7 +5,9 @@ import { PixeGridPageSkeleton } from '../../components/pixe/PixeSkeleton';
 import PixeTopHeader from '../../components/pixe/PixeTopHeader';
 import { pixeLibraryHeaderLink } from '../../components/pixe/pixeHeaderConfig';
 import { useAuth } from '../../hooks/useAuth';
+import useSeoMeta from '../../hooks/useSeoMeta';
 import { pixeService, type PixeChannelResponse, type PixeVideo } from '../../services/pixeService';
+import { createBaseMeta, createPixeChannelSeoMeta, resolveStaticSeoMeta } from '../../seo/siteMetadata.js';
 
 type ChannelTab = 'home' | 'clips' | 'about';
 
@@ -143,6 +145,25 @@ const PixeChannelPage: React.FC = () => {
       { label: 'Handle', value: `@${channel.handle}` }
     ]
     : [];
+  const seoMeta = useMemo(() => {
+    if (channel) {
+      return createPixeChannelSeoMeta(channel, `/pixe/channel/${encodeURIComponent(channel.handle)}`);
+    }
+
+    if (!loading) {
+      return createBaseMeta({
+        title: 'Pixe Channel Unavailable | Urban Prime',
+        description: 'This Pixe channel is unavailable or has no public clips right now.',
+        path: `/pixe/channel/${encodeURIComponent(handle || 'channel')}`,
+        noIndex: true,
+        themeColor: '#08090d'
+      });
+    }
+
+    return resolveStaticSeoMeta(`/pixe/channel/${encodeURIComponent(handle || 'channel')}`);
+  }, [channel, handle, loading]);
+
+  useSeoMeta(seoMeta);
 
   if (loading) {
     return (

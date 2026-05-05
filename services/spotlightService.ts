@@ -1,5 +1,7 @@
 ﻿import { auth } from '../firebase';
 import { backendFetch } from './backendClient';
+import type { Notification } from '../types';
+import { itemService } from './itemService';
 
 export type SpotlightFeedMode = 'for_you' | 'following' | 'trending';
 export type SpotlightMediaType = 'image' | 'video';
@@ -240,6 +242,32 @@ export interface SpotlightProfileResponse {
 export interface SpotlightProfilePeopleResponse {
   tab: 'followers' | 'following';
   items: SpotlightCreator[];
+}
+
+export interface SpotlightSavedResponse {
+  items: SpotlightItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface SpotlightSearchTag {
+  key: string;
+  label: string;
+  kind: 'hashtag' | 'topic';
+  hits: number;
+}
+
+export interface SpotlightSearchProductResult {
+  item: SpotlightItem;
+  product: SpotlightProductLink;
+}
+
+export interface SpotlightSearchResponse {
+  query: string;
+  creators: SpotlightCreator[];
+  posts: SpotlightItem[];
+  products: SpotlightSearchProductResult[];
+  tags: SpotlightSearchTag[];
 }
 
 const getToken = async () => {
@@ -612,6 +640,25 @@ export const spotlightService = {
     return (payload?.data || []) as SpotlightCreator[];
   },
 
+  async search(
+    queryText: string,
+    {
+      limit = 12,
+      viewerFirebaseUid
+    }: {
+      limit?: number;
+      viewerFirebaseUid?: string;
+    } = {}
+  ) {
+    const query = toQueryString({
+      q: queryText.trim(),
+      limit,
+      viewer_firebase_uid: viewerFirebaseUid
+    });
+    const payload = await backendFetch(`/spotlight/search${query ? `?${query}` : ''}`);
+    return payload?.data as SpotlightSearchResponse;
+  },
+
   async getProfile(
     username: string,
     {
@@ -634,6 +681,28 @@ export const spotlightService = {
     });
     const payload = await backendFetch(`/spotlight/profile/${encodeURIComponent(username)}${query ? `?${query}` : ''}`);
     return payload?.data as SpotlightProfileResponse;
+  },
+
+  async getSaved({
+    cursor,
+    limit = 24,
+    viewerFirebaseUid
+  }: {
+    cursor?: string | null;
+    limit?: number;
+    viewerFirebaseUid?: string;
+  } = {}) {
+    const payload = await spotlightService.getProfile('me', {
+      tab: 'saved',
+      cursor,
+      limit,
+      viewerFirebaseUid
+    });
+    return {
+      items: payload?.items || [],
+      next_cursor: payload?.next_cursor || null,
+      has_more: Boolean(payload?.has_more)
+    } as SpotlightSavedResponse;
   },
 
   async getProfilePeople(
@@ -679,6 +748,38 @@ export const spotlightService = {
       token
     );
     return payload?.data as SpotlightProfile;
+  },
+
+  async getNotifications(
+    userId: string,
+    {
+      filter = 'all',
+      query = '',
+      limit = 120
+    }: {
+      filter?: 'all' | 'unread' | 'orders' | 'messages' | 'updates';
+      query?: string;
+      limit?: number;
+    } = {}
+  ) {
+    const entries = await itemService.getNotificationsForUser(userId, {
+      includePersona: false,
+      limit
+    });
+    const normalizedQuery = query.trim().toLowerCase();
+    return entries.filter((entry: Notification) => {
+      const normalizedType = String(entry.type || 'INFO').toUpperCase();
+      const kind = normalizedType === 'MESSAGE'
+        ? 'messages'
+        : normalizedType === 'ORDER' || normalizedType === 'SALE'
+          ? 'orders'
+          : 'updates';
+      if (filter === 'unread' && entry.isRead) return false;
+      if (filter !== 'all' && filter !== 'unread' && kind !== filter) return false;
+      if (!normalizedQuery) return true;
+      const haystack = `${entry.message} ${entry.link || ''} ${String(entry.type || '')}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
   },
 
   async getCreatorAnalytics(userId: string = 'me') {

@@ -18,10 +18,15 @@ const normalizeOrigin = (value: string | undefined, fallback: string) => {
   return normalized || fallback;
 };
 
-const fallbackAppUrl = "https://urban-prime.local";
+const isVercelDeployment = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+const fallbackAppUrl = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : "https://urban-prime.local";
+const legacyWebFallback = isVercelDeployment ? "https://urbanprime.vercel.app" : "http://127.0.0.1:3000";
+const legacyApiFallback = isVercelDeployment ? "https://urbanprime-api.onrender.com" : "http://127.0.0.1:5050";
 
-export const legacyWebOrigin = normalizeOrigin(process.env.LEGACY_WEB_ORIGIN, "http://127.0.0.1:3000");
-export const legacyApiOrigin = normalizeOrigin(process.env.LEGACY_API_ORIGIN, "http://127.0.0.1:5050");
+export const legacyWebOrigin = normalizeOrigin(process.env.LEGACY_WEB_ORIGIN, legacyWebFallback);
+export const legacyApiOrigin = normalizeOrigin(process.env.LEGACY_API_ORIGIN, legacyApiFallback);
 export const appUrl = normalizeOrigin(
   process.env.NEXT_PUBLIC_APP_URL || process.env.APP_PUBLIC_URL,
   fallbackAppUrl,

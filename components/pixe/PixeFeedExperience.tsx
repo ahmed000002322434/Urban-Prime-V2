@@ -15,6 +15,7 @@ import {
 } from './PixePublicSurface';
 import PixeTopHeader from './PixeTopHeader';
 import { pixeLibraryHeaderLink } from './pixeHeaderConfig';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 type FeedSession = {
   activationKey: string;
@@ -143,12 +144,6 @@ const getViewerSessionId = () => {
   return created;
 };
 
-const modeTabs: Array<{ mode: PixeFeedMode; label: string; path: string }> = [
-  { mode: 'for_you', label: 'For You', path: '/pixe' },
-  { mode: 'following', label: 'Following', path: '/pixe/following' },
-  { mode: 'explore', label: 'Explore', path: '/pixe/explore' }
-];
-
 const publicHeaderLinks = [
   { to: '/', label: 'Home', end: true },
   { to: '/pixe/explore', label: 'Search' },
@@ -178,15 +173,21 @@ const IconButton: React.FC<{
       event.stopPropagation();
       onClick?.();
     }}
-    className={`flex flex-col items-center gap-2 rounded-full px-1 py-1 text-white transition ${
-      active ? 'scale-[1.03]' : 'opacity-92 hover:opacity-100'
+    className={`group flex flex-col items-center gap-1.5 rounded-full px-0.5 py-0.5 text-white transition duration-200 motion-safe:transform-gpu ${
+      active ? 'scale-[1.03]' : 'opacity-95 hover:-translate-y-0.5 hover:scale-[1.03] hover:opacity-100'
     }`}
     aria-label={label}
   >
-    <span className="flex h-12 w-12 items-center justify-center rounded-full border border-white/16 bg-black/38 backdrop-blur-md shadow-[0_14px_34px_rgba(0,0,0,0.35)]">
+    <span
+      className={`flex h-11 w-11 items-center justify-center rounded-[18px] border text-white shadow-[0_18px_44px_rgba(0,0,0,0.32)] backdrop-blur-xl transition duration-200 ${
+        active
+          ? 'border-white/20 bg-white/[0.16]'
+          : 'border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.04))] group-hover:border-white/18 group-hover:bg-white/[0.12]'
+      }`}
+    >
       {children}
     </span>
-    {value ? <span className="text-[11px] font-semibold tracking-[0.08em]">{value}</span> : null}
+    {value ? <span className="text-[10px] font-semibold tracking-[0.08em] text-white/80">{value}</span> : null}
   </button>
 );
 
@@ -203,22 +204,22 @@ const RailGlyphButton: React.FC<{
       event.stopPropagation();
       onClick?.();
     }}
-    className={`group flex w-full flex-col items-center gap-1.5 px-0.5 py-0.5 text-white transition ${
-      active ? 'scale-[1.03]' : 'opacity-92 hover:scale-[1.02] hover:opacity-100'
+    className={`group flex w-full flex-col items-center gap-1.5 px-0.5 py-0.5 text-white transition duration-200 motion-safe:transform-gpu ${
+      active ? 'scale-[1.03]' : 'opacity-95 hover:-translate-y-0.5 hover:scale-[1.03] hover:opacity-100'
     }`}
     aria-label={label}
   >
     <span
-      className={`flex h-11 w-11 items-center justify-center rounded-full text-white transition ${
+      className={`flex h-12 w-12 items-center justify-center rounded-[20px] border text-white shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl transition duration-200 ${
         active
-          ? 'bg-white text-black shadow-[0_14px_34px_rgba(255,255,255,0.18)]'
-          : 'bg-transparent hover:bg-white/[0.06]'
+          ? 'border-white/16 bg-white text-black shadow-[0_16px_38px_rgba(255,255,255,0.16)]'
+          : 'border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.04))] group-hover:border-white/16 group-hover:bg-white/[0.1]'
       }`}
     >
       {children}
     </span>
-    {label ? <span className="text-[11px] font-medium leading-none text-white/74">{label}</span> : null}
-    {value ? <span className="text-[13px] font-semibold leading-none text-white/96">{value}</span> : null}
+    {label ? <span className="text-[10px] font-medium leading-none tracking-[0.04em] text-white/62">{label}</span> : null}
+    {value ? <span className="text-[12px] font-semibold leading-none text-white/96">{value}</span> : null}
   </button>
 );
 
@@ -1087,7 +1088,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
       <div key={comment.id} className={depth > 0 ? 'ml-6 border-l border-white/8 pl-4' : ''}>
         <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.18)]">
           <div className="flex items-start gap-3">
-            <Link to={comment.user?.id ? `/user/${comment.user.id}` : '/'} className="shrink-0">
+            <Link to={comment.user ? buildPublicProfilePath({ id: comment.user.id, name: comment.user.name, username: (comment.user as { username?: string }).username }) : '/'} className="shrink-0">
               <img
                 src={comment.user?.avatar_url || '/icons/urbanprime.svg'}
                 alt={comment.user?.name || 'Viewer'}
@@ -1097,7 +1098,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <Link to={comment.user?.id ? `/user/${comment.user.id}` : '/'} className="truncate text-sm font-semibold text-white">
+                <Link to={comment.user ? buildPublicProfilePath({ id: comment.user.id, name: comment.user.name, username: (comment.user as { username?: string }).username }) : '/'} className="truncate text-sm font-semibold text-white">
                   {comment.user?.name || 'Viewer'}
                 </Link>
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">
@@ -1382,21 +1383,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
   if (mode === 'following' && !isAuthenticated) {
     return (
       <div className="pixe-noir-shell flex min-h-[100svh] flex-col text-white">
-        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={publicHeaderLinks}>
-          <div className="flex flex-wrap gap-2">
-            {modeTabs.map((tab) => (
-              <Link
-                key={tab.mode}
-                to={tab.path}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  tab.mode === mode ? 'bg-white text-black' : 'pixe-noir-pill text-white/74 hover:text-white'
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </div>
-        </PixeTopHeader>
+        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={publicHeaderLinks} />
         <div className="flex flex-1 items-center justify-center px-4 pb-10">
           <div className="w-full max-w-xl">
             <PixeEmptyState
@@ -1415,21 +1402,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
   if (!loading && items.length === 0) {
     return (
       <div className="pixe-noir-shell relative flex min-h-[100svh] flex-col overflow-hidden text-white">
-        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={publicHeaderLinks}>
-          <div className="flex flex-wrap gap-2">
-            {modeTabs.map((tab) => (
-              <Link
-                key={tab.mode}
-                to={tab.path}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  tab.mode === mode ? 'bg-white text-black' : 'pixe-noir-pill text-white/74 hover:text-white'
-                }`}
-              >
-                {tab.label}
-              </Link>
-            ))}
-          </div>
-        </PixeTopHeader>
+        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={publicHeaderLinks} />
 
         <div className="flex flex-1 items-center justify-center px-4 pb-10">
           <PixeEmptyState
@@ -1448,9 +1421,10 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
   return (
     <>
       <div className="pixe-noir-shell relative h-[100svh] overflow-hidden text-white">
-        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={feedHeaderLinks} overlay containerClassName="max-w-[118rem]" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-28 bg-gradient-to-b from-black/88 via-black/26 to-transparent" />
-        <div className="pointer-events-none absolute right-6 top-1/2 z-30 hidden -translate-y-1/2 lg:flex lg:flex-col lg:gap-3">
+        <PixeTopHeader title="Pixe" subtitle="Urban Prime" brandTo="/pixe" links={feedHeaderLinks} overlay containerClassName="max-w-[94rem]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_center,rgba(255,255,255,0.11),transparent_34%),radial-gradient(circle_at_22%_18%,rgba(255,255,255,0.05),transparent_26%),radial-gradient(circle_at_78%_22%,rgba(255,255,255,0.04),transparent_24%),linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0.6)_62%,rgba(0,0,0,0.88))]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-28 bg-gradient-to-b from-black/80 via-black/28 to-transparent" />
+        <div className="pointer-events-none absolute right-5 top-1/2 z-30 hidden -translate-y-1/2 lg:flex lg:flex-col lg:gap-3">
           <button
             type="button"
             onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
@@ -1475,8 +1449,8 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
           </button>
         </div>
 
-        <div className="h-[100svh] pt-[4.85rem] sm:pt-[5.05rem]">
-          <div className="mx-auto h-full w-full max-w-[118rem] px-3 sm:px-5 lg:px-6 xl:px-8">
+        <div className="h-[100svh] pt-[5.1rem] sm:pt-[5.25rem]">
+          <div className="mx-auto h-full w-full max-w-[94rem] px-3 sm:px-5 lg:px-6">
             <div
               ref={containerRef}
               className="h-full snap-y snap-mandatory overflow-y-auto overscroll-y-contain scroll-smooth [&::-webkit-scrollbar]:hidden"
@@ -1498,24 +1472,28 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                 const panelOpen = isDesktop && isActive && Boolean(desktopPanel);
                 const aspectRatio = getVideoAspectRatio(item);
                 const desktopPreset = getDesktopFeedFramePreset(item);
-                const mobileFrameCapWidth = aspectRatio >= 0.78 ? 480 : 448;
-                const desktopAvailableHeight = Math.max(viewportMetrics.height - 156, 360);
-                const mobileAvailableHeight = Math.max(viewportMetrics.height - 156, 380);
-                const desktopSquareSize = Math.min(viewportMetrics.width >= 1500 ? 560 : 520, desktopAvailableHeight);
-                const desktopPortraitHeight = Math.min(viewportMetrics.width >= 1500 ? 720 : 680, desktopAvailableHeight);
+                const mobileFrameCapWidth = Math.min(viewportMetrics.width - 10, aspectRatio >= 0.78 ? 430 : 520);
+                const desktopAvailableHeight = Math.max(viewportMetrics.height - 128, 460);
+                const mobileAvailableHeight = Math.max(viewportMetrics.height - 92, 500);
+                const desktopSquareSize = Math.min(viewportMetrics.width >= 1500 ? 500 : 468, desktopAvailableHeight);
+                const desktopPortraitWidth = Math.min(
+                  viewportMetrics.width >= 1500 ? 500 : 460,
+                  Math.round((desktopAvailableHeight * 9) / 16)
+                );
+                const desktopPortraitHeight = Math.round(desktopPortraitWidth * 16 / 9);
                 const desktopFrameWidth = desktopPreset === 'square'
                   ? desktopSquareSize
-                  : Math.round((desktopPortraitHeight * 9) / 16);
+                  : desktopPortraitWidth;
                 const desktopFrameHeight = desktopPreset === 'square'
                   ? desktopSquareSize
                   : desktopPortraitHeight;
                 const mobileRawWidth = mobileAvailableHeight * aspectRatio;
                 const mobileFrameWidth = Math.min(mobileFrameCapWidth, mobileRawWidth);
                 const mobileFrameHeight = mobileFrameWidth / Math.max(aspectRatio, 0.1);
-                const desktopPlayerClassName = 'w-fit max-w-full rounded-[24px] bg-black shadow-[0_36px_90px_rgba(0,0,0,0.42)]';
-                const mobilePlayerClassName = 'w-fit max-w-full';
-                const desktopFrameClassName = 'w-full rounded-[20px] shadow-[0_18px_48px_rgba(0,0,0,0.32)]';
-                const mobileFrameClassName = 'w-full rounded-[30px] shadow-[0_42px_94px_rgba(0,0,0,0.56)]';
+                const desktopPlayerClassName = 'w-fit max-w-full rounded-[32px]';
+                const mobilePlayerClassName = 'w-full max-w-full';
+                const desktopFrameClassName = 'w-full rounded-[28px]';
+                const mobileFrameClassName = 'w-full rounded-[22px] shadow-[0_32px_72px_rgba(0,0,0,0.46)]';
                 const desktopFrameStyle: React.CSSProperties = {
                   width: `${desktopFrameWidth}px`,
                   height: `${desktopFrameHeight}px`
@@ -1527,10 +1505,10 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                 const previewFrameStyle = isDesktop ? desktopFrameStyle : mobileFrameStyle;
 
                 const desktopOverlay = (
-                  <div className="relative h-full p-4 sm:p-5" onClick={() => handleVideoClick(item, isActive)}>
+                  <div className="relative h-full p-5 sm:p-6" onClick={() => handleVideoClick(item, isActive)}>
                     <div className="relative flex h-full flex-col justify-between">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="rounded-full border border-white/10 bg-black/42 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/68 backdrop-blur-xl">
+                        <div className="rounded-full border border-white/10 bg-black/34 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/72 backdrop-blur-xl">
                           @{item.channel?.handle || 'pixe'}
                         </div>
                         <button
@@ -1539,7 +1517,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                             event.stopPropagation();
                             setIsMuted((current) => !current);
                           }}
-                          className="pointer-events-auto rounded-full border border-white/10 bg-black/42 p-2.5 text-white/82 backdrop-blur-xl transition hover:border-white/18 hover:text-white"
+                          className="pointer-events-auto rounded-full border border-white/10 bg-black/32 p-3 text-white/86 backdrop-blur-xl transition duration-200 hover:border-white/18 hover:bg-white/[0.08] hover:text-white"
                           aria-label={isMuted ? 'Unmute clip' : 'Mute clip'}
                         >
                           {isMuted ? (
@@ -1560,8 +1538,8 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
 
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                         <div
-                          className={`flex h-16 w-16 items-center justify-center rounded-full border border-white/14 bg-black/42 text-white shadow-[0_24px_48px_rgba(0,0,0,0.35)] transition ${
-                            isActive && activePlaybackState.isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+                          className={`flex h-[4.6rem] w-[4.6rem] items-center justify-center rounded-full border border-white/14 bg-black/34 text-white shadow-[0_28px_64px_rgba(0,0,0,0.38)] backdrop-blur-xl transition duration-300 ${
+                            isActive && activePlaybackState.isPlaying ? 'opacity-0 group-hover:opacity-100 group-hover:scale-100 scale-95' : 'opacity-100 scale-100'
                           }`}
                         >
                           {isActive && activePlaybackState.isPlaying ? (
@@ -1588,10 +1566,10 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                         ) : null}
                       </div>
 
-                      <div className="absolute inset-x-4 bottom-3 z-20">
-                        <div className="h-[2px] w-full overflow-hidden rounded-full bg-white/18">
+                      <div className="absolute inset-x-5 bottom-4 z-20">
+                        <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/15">
                           <div
-                            className="h-full rounded-full bg-white transition-[width] duration-150"
+                            className="h-full rounded-full bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(255,255,255,0.72))] transition-[width] duration-150"
                             style={{ width: `${Math.max(playbackProgress, 0.015) * 100}%` }}
                           />
                         </div>
@@ -1601,9 +1579,9 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                 );
 
                 const mobileOverlay = (
-                  <div className="flex h-full flex-col justify-between p-4 sm:p-5" onClick={() => handleVideoClick(item, isActive)}>
+                  <div className="flex h-full flex-col justify-between px-3 pb-4 pt-4 sm:px-4 sm:pb-5" onClick={() => handleVideoClick(item, isActive)}>
                     <div className="flex items-start justify-between gap-3">
-                      <span className="rounded-full border border-white/10 bg-black/42 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70 backdrop-blur-xl">
+                      <span className="rounded-full border border-white/10 bg-black/36 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/72 backdrop-blur-xl">
                         {mode === 'for_you' ? 'For You' : mode === 'following' ? 'Following' : 'Explore'}
                       </span>
                       <button
@@ -1612,7 +1590,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                           event.stopPropagation();
                           setIsMuted((current) => !current);
                         }}
-                        className="pointer-events-auto rounded-full border border-white/10 bg-black/42 p-2.5 text-white/82 backdrop-blur-xl transition hover:border-white/18 hover:text-white"
+                        className="pointer-events-auto rounded-full border border-white/10 bg-black/36 p-2.5 text-white/84 backdrop-blur-xl transition hover:border-white/18 hover:text-white"
                         aria-label={isMuted ? 'Unmute clip' : 'Mute clip'}
                       >
                         {isMuted ? (
@@ -1632,7 +1610,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                     </div>
 
                     <div className="flex items-end justify-between gap-3">
-                      <div className="max-w-[calc(100%-5.5rem)] rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,8,8,0.28),rgba(8,8,8,0.66))] px-4 py-4 backdrop-blur-xl shadow-[0_24px_52px_rgba(0,0,0,0.3)]">
+                      <div className="max-w-[calc(100%-5rem)] rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,8,8,0.14),rgba(8,8,8,0.72))] px-4 py-4 backdrop-blur-2xl shadow-[0_26px_60px_rgba(0,0,0,0.34)]">
                         <div className="flex items-center gap-3">
                           <img
                             src={item.channel?.avatar_url || '/icons/urbanprime.svg'}
@@ -1658,7 +1636,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                         </div>
 
                         {item.title ? (
-                          <p className="mt-3 text-base font-semibold text-white" style={clampTextStyle(2)}>
+                          <p className="mt-3 text-[15px] font-semibold leading-snug text-white" style={clampTextStyle(2)}>
                             {item.title}
                           </p>
                         ) : null}
@@ -1711,7 +1689,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-center gap-3">
+                      <div className="flex flex-col items-center gap-2.5 pb-1">
                         <IconButton label="Like" value={formatCount(item.metrics.likes)} active={item.viewer_state.liked} onClick={() => void handleLike(item)}>
                           <svg viewBox="0 0 24 24" className={`h-6 w-6 ${item.viewer_state.liked ? 'fill-white' : 'fill-none'}`} stroke="currentColor" strokeWidth="2">
                             <path d="M12 21s-7-4.35-9.5-8.28C.57 9.93 2.11 5.5 6.3 5.5c2.3 0 3.7 1.29 4.54 2.45.52.72 1.3.72 1.83 0C13.99 6.79 15.39 5.5 17.7 5.5c4.19 0 5.73 4.43 3.8 7.22C19 16.65 12 21 12 21Z" />
@@ -1745,10 +1723,10 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                       </div>
                     </div>
 
-                    <div className="absolute inset-x-4 bottom-3 z-20">
-                      <div className="h-[2px] w-full overflow-hidden rounded-full bg-white/18">
+                    <div className="absolute inset-x-3 bottom-2.5 z-20">
+                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/18">
                         <div
-                          className="h-full rounded-full bg-white transition-[width] duration-150"
+                          className="h-full rounded-full bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(255,255,255,0.72))] transition-[width] duration-150"
                           style={{ width: `${Math.max(playbackProgress, 0.015) * 100}%` }}
                         />
                       </div>
@@ -1760,8 +1738,8 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                   <div
                     className={`relative mx-auto overflow-hidden bg-black ${
                       isDesktop
-                        ? 'rounded-[20px] shadow-[0_36px_90px_rgba(0,0,0,0.42)]'
-                        : 'rounded-[30px] shadow-[0_42px_94px_rgba(0,0,0,0.56)]'
+                        ? 'rounded-[28px] ring-1 ring-white/[0.06] shadow-[0_42px_104px_rgba(0,0,0,0.5)]'
+                        : 'rounded-[22px] ring-1 ring-white/[0.06] shadow-[0_32px_72px_rgba(0,0,0,0.52)]'
                     }`}
                     style={previewFrameStyle}
                   >
@@ -1770,7 +1748,8 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-sm text-white/45">Preview</div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/64 via-black/12 to-black/36" />
+                    <div className="absolute inset-x-6 top-0 h-16 rounded-b-[2rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),transparent)] opacity-60" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/68 via-black/10 to-black/30" />
                   </div>
                 );
 
@@ -1781,35 +1760,37 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                       cardRefs.current[item.id] = node;
                     }}
                     data-video-id={item.id}
-                    className="relative flex min-h-[calc(100svh-4.85rem)] snap-start items-center justify-center overflow-hidden px-2 pb-4 pt-3 sm:px-3 lg:min-h-[calc(100svh-5.05rem)] lg:px-0 lg:pb-8 lg:pt-6"
+                    className="relative flex min-h-[calc(100svh-5.3rem)] snap-start items-center justify-center overflow-hidden px-1 pb-4 pt-2 sm:min-h-[calc(100svh-5.45rem)] sm:px-2 lg:px-0 lg:pb-8 lg:pt-3"
                   >
-                    <div className="pointer-events-none absolute inset-x-[8%] top-1/2 h-[72%] -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.13),_rgba(255,255,255,0.04)_30%,_transparent_72%)] opacity-70 blur-3xl" />
+                    <div className="pointer-events-none absolute left-1/2 top-1/2 h-[76%] w-[min(54rem,72vw)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.14),_rgba(255,255,255,0.05)_34%,_transparent_76%)] opacity-75 blur-3xl" />
+                    <div className="pointer-events-none absolute inset-y-[10%] left-1/2 w-[min(30rem,44vw)] -translate-x-1/2 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_70%)] opacity-80 blur-[72px]" />
 
                     {isDesktop ? (
                       <div
-                        className="grid w-full items-center justify-center"
+                        className="relative grid w-full items-center justify-center"
                         style={{
                           gridTemplateColumns: panelOpen
-                            ? 'minmax(14.5rem,16rem) minmax(0,auto) minmax(18.5rem,21rem)'
-                            : 'minmax(14.5rem,16rem) minmax(0,auto)',
-                          gap: '1rem'
+                            ? `20rem minmax(0,${desktopFrameWidth}px) 5.5rem minmax(19.5rem,22rem)`
+                            : `20rem minmax(0,${desktopFrameWidth}px) 5.5rem`,
+                          gap: panelOpen ? '1.5rem' : '1.75rem'
                         }}
                       >
                       <aside className="self-center">
-                        <div className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+                        <div className="pixe-noir-panel relative overflow-hidden rounded-[32px] px-5 py-5 shadow-[0_32px_90px_rgba(0,0,0,0.34)]">
+                          <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent)] opacity-60" />
                           <div className="flex items-center gap-3">
                             <Link to={item.channel ? `/pixe/channel/${item.channel.handle}` : '/pixe'}>
                               <img
                                 src={item.channel?.avatar_url || '/icons/urbanprime.svg'}
                                 alt={item.channel?.display_name || 'Creator'}
-                                className="h-12 w-12 rounded-full border border-white/12 object-cover"
+                                className="h-12 w-12 rounded-full border border-white/12 object-cover shadow-[0_16px_34px_rgba(0,0,0,0.26)] transition-transform duration-200 hover:scale-[1.03]"
                               />
                             </Link>
                             <div className="min-w-0 flex-1">
                               <Link to={item.channel ? `/pixe/channel/${item.channel.handle}` : '/pixe'} className="block truncate text-base font-semibold text-white">
                                 {item.channel?.display_name || 'Creator'}
                               </Link>
-                              <p className="truncate text-sm text-white/54">@{item.channel?.handle || 'pixe'}</p>
+                              <p className="truncate text-sm text-white/50">@{item.channel?.handle || 'pixe'}</p>
                             </div>
                             {item.channel ? (
                               <button
@@ -1817,8 +1798,8 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                                 onClick={() => void handleSubscribe(item)}
                                 className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
                                   item.channel.is_subscribed
-                                    ? 'border border-white/12 bg-white/[0.1] text-white'
-                                    : 'border border-transparent bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(214,214,214,0.9))] text-black shadow-[0_12px_28px_rgba(255,255,255,0.14)] hover:scale-[1.02]'
+                                    ? 'border border-white/12 bg-white/[0.08] text-white hover:bg-white/[0.12]'
+                                    : 'border border-transparent bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(228,228,228,0.9))] text-black shadow-[0_14px_28px_rgba(255,255,255,0.14)] hover:scale-[1.02]'
                                 }`}
                               >
                                 {item.channel.is_subscribed ? 'Following' : 'Follow'}
@@ -1827,19 +1808,19 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                           </div>
 
                           {item.title ? (
-                            <p className="mt-5 text-xl font-semibold leading-tight text-white" style={clampTextStyle(2)}>
+                            <p className="mt-5 text-[1.35rem] font-semibold leading-tight text-white" style={clampTextStyle(2)}>
                               {item.title}
                             </p>
                           ) : null}
 
-                          <p className="mt-3 text-sm leading-7 text-white/72">
+                          <p className="mt-3 text-[0.95rem] leading-7 text-white/70" style={showFullDescription ? undefined : clampTextStyle(3)}>
                             {showFullDescription ? (item.caption || 'No caption added yet.') : (descriptionPreview.text || 'No caption added yet.')}
                           </p>
                           {descriptionPreview.truncated ? (
                             <button
                               type="button"
                               onClick={() => setExpandedCaptionIds((current) => ({ ...current, [item.id]: !current[item.id] }))}
-                              className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/78 transition hover:text-white"
+                              className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/78 transition hover:text-white"
                             >
                               {showFullDescription ? 'Show less' : 'Read more'}
                             </button>
@@ -1847,7 +1828,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             {(showAllHashtags ? item.hashtags : hashtagPreview).map((tag) => (
-                              <span key={tag} className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-white/74">
+                              <span key={tag} className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-medium text-white/70 transition hover:border-white/18 hover:bg-white/[0.08] hover:text-white">
                                 #{tag}
                               </span>
                             ))}
@@ -1855,14 +1836,14 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                               <button
                                 type="button"
                                 onClick={() => setExpandedHashtagIds((current) => ({ ...current, [item.id]: !current[item.id] }))}
-                                className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/74 transition hover:border-white/18 hover:text-white"
+                                className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold text-white/74 transition hover:border-white/18 hover:bg-white/[0.08] hover:text-white"
                               >
                                 {showAllHashtags ? 'Less' : '... more'}
                               </button>
                             ) : null}
                           </div>
 
-                          <div className="mt-5 flex items-center gap-3">
+                          <div className="mt-5 flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/24 px-3.5 py-3">
                             <div className="flex h-10 w-10 animate-[spin_7s_linear_infinite] items-center justify-center rounded-full border border-white/12 bg-white/[0.06]">
                               <img
                                 src={item.channel?.avatar_url || '/icons/urbanprime.svg'}
@@ -1876,18 +1857,18 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                             </div>
                           </div>
 
-                          <div className="mt-5 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/54">
+                          <div className="mt-5 grid grid-cols-2 gap-2">
+                            <span className="rounded-[20px] border border-white/10 bg-white/[0.04] px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/54">
                               {formatCount(item.metrics.qualified_views)} views
                             </span>
-                            <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/54">
+                            <span className="rounded-[20px] border border-white/10 bg-white/[0.04] px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/54">
                               {formatDuration(item.duration_ms)}
                             </span>
                           </div>
                         </div>
                       </aside>
 
-                      <div className="flex min-w-0 items-center justify-center gap-3.5">
+                      <div className="flex min-w-0 items-center justify-center gap-4">
                         <div className="group relative flex w-fit max-w-full shrink-0 cursor-pointer">
                           {isNear ? (
                             <PixeVideoSurface
@@ -1949,7 +1930,7 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                           ) : previewFrame}
                         </div>
 
-                        <div className="flex shrink-0 flex-col items-center gap-3">
+                        <div className="pixe-noir-panel flex shrink-0 flex-col items-center gap-3 rounded-[30px] px-2.5 py-4 shadow-[0_24px_64px_rgba(0,0,0,0.28)]">
                             <RailGlyphButton label="Like" value={formatCount(item.metrics.likes)} active={item.viewer_state.liked} onClick={() => void handleLike(item)}>
                               <svg viewBox="0 0 24 24" className={`h-5 w-5 ${item.viewer_state.liked ? 'fill-white' : 'fill-none'}`} stroke="currentColor" strokeWidth="2">
                                 <path d="M12 21s-7-4.35-9.5-8.28C.57 9.93 2.11 5.5 6.3 5.5c2.3 0 3.7 1.29 4.54 2.45.52.72 1.3.72 1.83 0C13.99 6.79 15.39 5.5 17.7 5.5c4.19 0 5.73 4.43 3.8 7.22C19 16.65 12 21 12 21Z" />
@@ -2008,14 +1989,14 @@ export const PixeFeedExperience: React.FC<{ mode: PixeFeedMode }> = ({ mode }) =
                       </div>
 
                       <div className={`min-w-0 overflow-hidden transition-all duration-300 ${panelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-6 opacity-0'}`}>
-                        <div className={`${panelOpen ? 'w-full' : 'w-0'} h-[calc(100svh-10.7rem)] max-w-[22rem]`}>
+                        <div className={`${panelOpen ? 'w-full' : 'w-0'} h-[calc(100svh-12rem)] max-w-[22rem]`}>
                           {isActive ? renderDesktopPanel() : null}
                         </div>
                       </div>
                     </div>
                     ) : (
                     <div className="flex w-full items-center justify-center">
-                      <div className="group relative flex w-fit max-w-full cursor-pointer">
+                      <div className="group relative flex w-full max-w-full cursor-pointer justify-center">
                         {isNear ? (
                           <PixeVideoSurface
                             video={item}

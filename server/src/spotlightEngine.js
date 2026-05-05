@@ -102,6 +102,7 @@ const slugifyUsername = (value) => safeString(value)
   .slice(0, 60);
 const normalizeProfileUsername = (value) => slugifyUsername(value).slice(0, 32);
 const isReservedProfileUsername = (value) => RESERVED_PROFILE_USERNAMES.has(normalizeProfileUsername(value));
+const isUuidLike = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(safeString(value).trim());
 const normalizeTagArray = (value) => {
   if (!Array.isArray(value)) return [];
   return value
@@ -466,7 +467,7 @@ const createNotificationDeduper = () => {
   };
 };
 
-const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFromFirebaseUid }) => {
+const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFromFirebaseUid, scheduleEmailForNotifications = null }) => {
   const bannedWords = parseBannedWords(process.env.SPOTLIGHT_BANNED_WORDS);
   const enforceModeration = parseBoolean(process.env.SPOTLIGHT_BANNED_WORDS_ENFORCED, true);
   const hitRateGuard = createActionRateGuard();
@@ -669,13 +670,17 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     const dedupeKey = `${type}:${targetUserId}:${actorUserId}:${contentId || ''}`;
     if (!shouldEmitNotification(dedupeKey)) return;
     try {
-      await supabase.from('notifications').insert({
+      const { data, error } = await supabase.from('notifications').insert({
         user_id: targetUserId,
         type,
         title,
         body,
         link: link || '/spotlight'
-      });
+      }).select('*').maybeSingle();
+      if (error) throw error;
+      if (data && typeof scheduleEmailForNotifications === 'function') {
+        scheduleEmailForNotifications(data, null);
+      }
     } catch (error) {
       console.warn('Spotlight notification skipped:', error?.message || error);
     }
@@ -866,13 +871,15 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       }
     }
 
-    const { data: userById, error: userByIdError } = await supabase
-      .from('users')
-      .select('id,firebase_uid,name,avatar_url,created_at')
-      .eq('id', requestedValue)
-      .maybeSingle();
-    if (userByIdError) throw userByIdError;
-    if (userById) return userById;
+    if (isUuidLike(requestedValue)) {
+      const { data: userById, error: userByIdError } = await supabase
+        .from('users')
+        .select('id,firebase_uid,name,avatar_url,created_at')
+        .eq('id', requestedValue)
+        .maybeSingle();
+      if (userByIdError) throw userByIdError;
+      if (userById) return userById;
+    }
 
     const { data: userByFirebaseUid, error: firebaseUidError } = await supabase
       .from('users')
@@ -891,6 +898,19 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
     if (userByNameRows?.[0]) return userByNameRows[0];
 
     if (normalizedUsername) {
+      const emailLocalPattern = `${normalizedUsername}@%`;
+      const { data: userByEmailRows, error: userByEmailError } = await supabase
+        .from('users')
+        .select('id,firebase_uid,name,avatar_url,created_at,email')
+        .ilike('email', emailLocalPattern)
+        .limit(12);
+      if (userByEmailError) throw userByEmailError;
+      const emailLocalMatch = (userByEmailRows || []).find((candidate) => {
+        const localPart = safeString(candidate?.email || '').toLowerCase().split('@')[0] || '';
+        return normalizeProfileUsername(localPart) === normalizedUsername;
+      });
+      if (emailLocalMatch) return emailLocalMatch;
+
       const normalizedNamePattern = `%${normalizedUsername.split('-').filter(Boolean).join('%')}%`;
       if (normalizedNamePattern !== '%%') {
         const { data: normalizedNameRows, error: normalizedNameError } = await supabase
@@ -3030,6 +3050,23 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       }
 
       await Promise.all([refreshCreatorCounters(authContext.userId), refreshCreatorCounters(targetUserId)]);
+      if (following) {
+        const { count } = await supabase
+          .from('user_follows')
+          .select('id', { count: 'exact', head: true })
+          .eq('following_user_id', targetUserId);
+        if (Number(count || 0) === 1) {
+          await emitSocialNotification({
+            type: 'social_follow_milestone',
+            targetUserId,
+            actorUserId: authContext.userId,
+            contentId: 'first-follower',
+            title: 'Your first Spotlight follower joined',
+            body: 'Your Spotlight profile has its first follower. Keep the profile warm with a fresh post.',
+            link: '/spotlight'
+          });
+        }
+      }
       return res.json({ data: { creator_user_id: targetUserId, following } });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to update follow state.') });
@@ -3117,6 +3154,165 @@ const registerSpotlightRoutes = ({ app, supabase, requireAuth, resolveUserIdFrom
       });
     } catch (error) {
       return res.status(500).json({ error: safeString(error?.message || 'Unable to load Spotlight creator analytics.') });
+    }
+  });
+
+  app.get('/spotlight/search', async (req, res) => {
+    try {
+      const queryText = safeString(req.query.q || '').trim();
+      const normalizedQuery = queryText.toLowerCase();
+      const limit = parsePositiveInt(req.query.limit, 12, 1, 24);
+      const { viewerUserId } = await resolveViewerContext(req);
+      const followedCreatorIds = await getFollowedCreatorIds(viewerUserId);
+      const blockedUserIds = await getBlockedUserIdSet(viewerUserId);
+
+      if (!normalizedQuery) {
+        return res.json({
+          data: {
+            query: '',
+            creators: [],
+            posts: [],
+            products: [],
+            tags: []
+          }
+        });
+      }
+
+      const [{ data: profileMatches }, { data: userMatches }, { data: itemMatches }] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('user_id,username')
+          .ilike('username', `%${normalizedQuery}%`)
+          .limit(limit * 2),
+        supabase
+          .from('users')
+          .select('id,name')
+          .ilike('name', `%${normalizedQuery}%`)
+          .limit(limit * 2),
+        supabase
+          .from('items')
+          .select('id,title')
+          .ilike('title', `%${normalizedQuery}%`)
+          .limit(limit * 3)
+      ]);
+
+      const creatorIds = Array.from(new Set([
+        ...(profileMatches || []).map((row) => row.user_id),
+        ...(userMatches || []).map((row) => row.id)
+      ].filter(Boolean))).filter((userId) => !blockedUserIds.has(userId));
+      const creatorPreviewList = await buildUserPreviewList(creatorIds);
+      const creators = creatorPreviewList
+        .map((creator) => ({
+          ...creator,
+          is_following: viewerUserId ? followedCreatorIds.has(creator.id) : false
+        }))
+        .sort((left, right) => {
+          const leftLabel = `${safeString(left.username || '').toLowerCase()} ${safeString(left.name || '').toLowerCase()}`;
+          const rightLabel = `${safeString(right.username || '').toLowerCase()} ${safeString(right.name || '').toLowerCase()}`;
+          const leftStarts = leftLabel.startsWith(normalizedQuery) ? 1 : 0;
+          const rightStarts = rightLabel.startsWith(normalizedQuery) ? 1 : 0;
+          if (leftStarts !== rightStarts) return rightStarts - leftStarts;
+          return Number(right.followers_count || 0) - Number(left.followers_count || 0);
+        })
+        .slice(0, limit);
+
+      const { data: recentContentRows, error: contentError } = await supabase
+        .from('spotlight_content')
+        .select('id,creator_user_id,media_type,media_url,thumbnail_url,caption,hashtags,interest_tags,visibility,allow_comments,status,published_at,reposted_from_content_id,feed_score,trending_score,created_at,updated_at')
+        .eq('status', 'published')
+        .not('published_at', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(180);
+      if (contentError) return res.status(400).json({ error: contentError.message });
+
+      const filteredRows = (recentContentRows || []).filter((row) => {
+        if (!row || blockedUserIds.has(row.creator_user_id)) return false;
+        if (!canViewerAccessRow({ row, viewerUserId, followedCreatorIds })) return false;
+        const haystack = [
+          safeString(row.caption || '').toLowerCase(),
+          ...(Array.isArray(row.hashtags) ? row.hashtags.map((entry) => safeString(entry).toLowerCase()) : []),
+          ...(Array.isArray(row.interest_tags) ? row.interest_tags.map((entry) => safeString(entry).toLowerCase()) : [])
+        ];
+        return haystack.some((entry) => entry.includes(normalizedQuery));
+      });
+
+      const posts = (await hydrateFeedItems({ contentRows: filteredRows.slice(0, limit), followedCreatorIds })) || [];
+
+      const itemIds = (itemMatches || []).map((row) => row.id).filter(Boolean);
+      const { data: productLinkRows, error: productLinkError } = itemIds.length
+        ? await supabase
+          .from('spotlight_product_links')
+          .select('id,content_id,item_id,linked_by_user_id,placement,cta_label,sort_order,is_primary,source,campaign_key,metadata,created_at,updated_at')
+          .in('item_id', itemIds)
+          .order('created_at', { ascending: false })
+          .limit(limit * 4)
+        : { data: [], error: null };
+      if (productLinkError) return res.status(400).json({ error: productLinkError.message });
+
+      const productContentIds = Array.from(new Set((productLinkRows || []).map((row) => row.content_id).filter(Boolean)));
+      const { data: productContentRows, error: productContentError } = productContentIds.length
+        ? await supabase
+          .from('spotlight_content')
+          .select('id,creator_user_id,media_type,media_url,thumbnail_url,caption,hashtags,interest_tags,visibility,allow_comments,status,published_at,reposted_from_content_id,feed_score,trending_score,created_at,updated_at')
+          .in('id', productContentIds)
+          .eq('status', 'published')
+        : { data: [], error: null };
+      if (productContentError) return res.status(400).json({ error: productContentError.message });
+
+      const hydratedProductContent = await hydrateFeedItems({
+        contentRows: (productContentRows || []).filter((row) => !blockedUserIds.has(row.creator_user_id) && canViewerAccessRow({ row, viewerUserId, followedCreatorIds })),
+        followedCreatorIds
+      });
+      const contentById = new Map((hydratedProductContent || []).map((item) => [item.id, item]));
+      const products = (productLinkRows || [])
+        .map((linkRow) => {
+          const item = contentById.get(linkRow.content_id);
+          const product = item?.products?.find((entry) => entry.id === linkRow.id) || null;
+          if (!item || !product) return null;
+          return { item, product };
+        })
+        .filter(Boolean)
+        .slice(0, limit);
+
+      const tagCounts = new Map();
+      filteredRows.forEach((row) => {
+        (Array.isArray(row.hashtags) ? row.hashtags : []).forEach((tag) => {
+          const normalized = safeString(tag).trim().toLowerCase();
+          if (!normalized.includes(normalizedQuery)) return;
+          const key = `hashtag:${normalized}`;
+          tagCounts.set(key, {
+            key,
+            label: `#${normalized}`,
+            kind: 'hashtag',
+            hits: Number((tagCounts.get(key)?.hits || 0) + 1)
+          });
+        });
+        (Array.isArray(row.interest_tags) ? row.interest_tags : []).forEach((tag) => {
+          const normalized = safeString(tag).trim().toLowerCase();
+          if (!normalized.includes(normalizedQuery)) return;
+          const key = `topic:${normalized}`;
+          tagCounts.set(key, {
+            key,
+            label: normalized,
+            kind: 'topic',
+            hits: Number((tagCounts.get(key)?.hits || 0) + 1)
+          });
+        });
+      });
+
+      return res.json({
+        data: {
+          query: queryText,
+          creators,
+          posts,
+          products,
+          tags: [...tagCounts.values()]
+            .sort((left, right) => right.hits - left.hits || left.label.localeCompare(right.label))
+            .slice(0, limit)
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ error: safeString(error?.message || 'Unable to search Spotlight.') });
     }
   });
 

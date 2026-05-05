@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import Spinner from './Spinner';
 import { useNotification } from '../../context/NotificationContext';
 import BackButton from './BackButton';
+import { buildPublicProfilePath } from '../utils/profileIdentity';
 
 
 // --- Icons ---
@@ -342,7 +343,7 @@ const ReelPlayer: React.FC<ReelPlayerProps> = ({ reel }) => {
                     </div>
                     {creator && (
                         <div className="flex items-center gap-2 mb-2 mt-4">
-                            <Link to={`/user/${creator.id}`} className="flex items-center gap-3">
+                            <Link to={buildPublicProfilePath(creator)} className="flex items-center gap-3">
                                 <img src={creator.avatar} alt={creator.name} className="w-10 h-10 rounded-full border-2 border-current"/>
                                 <span className="font-bold text-sm">{creator.name}</span>
                             </Link>

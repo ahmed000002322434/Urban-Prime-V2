@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import DashboardPageLoader from '../../components/dashboard/DashboardPageLoader';
 import LottieAnimation from '../../components/LottieAnimation';
-import { itemService } from '../../services/itemService';
+import { itemService, userService } from '../../services/itemService';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
 import type { Notification as NotificationEntry } from '../../types';
 
@@ -162,7 +162,10 @@ const ProfileNotificationsPage: React.FC = () => {
       }
 
       try {
-        const nextEntries = await itemService.getNotificationsForUser(user.id, {
+        const notificationsApi = typeof userService.getNotificationsForUser === 'function'
+          ? userService
+          : itemService;
+        const nextEntries = await notificationsApi.getNotificationsForUser(user.id, {
           includePersona: false,
           limit: 120
         });
@@ -233,7 +236,10 @@ const ProfileNotificationsPage: React.FC = () => {
 
     setIsMarkingAll(true);
     try {
-      await itemService.markNotificationsAsRead(user.id, { includePersona: false });
+      const notificationsApi = typeof userService.markNotificationsAsRead === 'function'
+        ? userService
+        : itemService;
+      await notificationsApi.markNotificationsAsRead(user.id, { includePersona: false });
       setNotifications((current) => current.map((entry) => ({ ...entry, isRead: true })));
       await refreshUnreadNotificationCount();
       showNotification('All notifications marked as read.');
@@ -262,67 +268,45 @@ const ProfileNotificationsPage: React.FC = () => {
       transition={{ duration: 0.28, ease: 'easeOut' }}
       className="space-y-5"
     >
-      <section className="relative overflow-hidden rounded-[34px] border border-[#ece2e7] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),rgba(255,255,255,0.8)_36%,rgba(255,236,243,0.82)_70%,rgba(255,240,220,0.92)_100%),linear-gradient(130deg,rgba(255,249,246,0.98),rgba(255,241,247,0.96)_54%,rgba(255,236,214,0.98)_100%)] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_30px_65px_rgba(236,172,167,0.13)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.08),rgba(255,255,255,0.02)_36%,rgba(240,157,181,0.05)_70%,rgba(255,193,118,0.06)_100%),linear-gradient(125deg,rgba(39,33,49,0.98),rgba(46,34,48,0.97)_52%,rgba(56,42,36,0.98)_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_32px_70px_rgba(0,0,0,0.28)] sm:p-7">
-        <div className="pointer-events-none absolute -left-14 top-[-5rem] h-40 w-40 rounded-full bg-white/78 blur-3xl dark:bg-white/6" />
-        <div className="pointer-events-none absolute bottom-[-4rem] right-[-2rem] h-44 w-44 rounded-full bg-[#ffd3a2]/50 blur-3xl dark:bg-[#ffb56b]/10" />
-
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-[0.7rem] font-black uppercase tracking-[0.34em] text-[#9d6f8c] dark:text-[#e5bc9e]">Notification inbox</p>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-text-primary sm:text-[2.35rem]">
-              Every alert, order update, and message in one feed
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm font-medium leading-7 text-text-secondary sm:text-base">
-              This page is wired to the live notification records already used by the dashboard count, so new activity lands here without relying on mock UI data.
-            </p>
+      <section className="rounded-[24px] border border-[#ece2e7] bg-[linear-gradient(180deg,#ffffff,#fffefe)] p-4 shadow-[0_18px_36px_rgba(224,196,196,0.08),inset_0_1px_0_rgba(255,255,255,0.96)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(33,31,43,0.98),rgba(27,25,35,0.96))] dark:shadow-[0_20px_40px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-[#9d6f8c] dark:text-[#e5bc9e]">Notifications</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium text-text-secondary">
+              <span>{summary.unread} unread</span>
+              <span>{summary.messages} messages</span>
+              <span>{summary.orders} orders</span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
               onClick={() => void loadNotifications({ silent: true })}
-              className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/84 px-4 py-2.5 text-sm font-bold text-[#5b4866] shadow-[0_18px_34px_rgba(227,183,196,0.15)] transition-all hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-[#f4e7d8] dark:shadow-[0_14px_26px_rgba(0,0,0,0.18)]"
+              className="inline-flex items-center gap-2 rounded-full border border-[#ece2e7] bg-white px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#5b4866] shadow-[0_12px_22px_rgba(227,183,196,0.12)] transition-all hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-[#f4e7d8] dark:shadow-[0_12px_22px_rgba(0,0,0,0.18)]"
             >
               <RefreshIcon />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
             <Link
               to="/profile/settings/notifications"
-              className="inline-flex items-center rounded-full border border-white/70 bg-white/84 px-4 py-2.5 text-sm font-bold text-[#5b4866] shadow-[0_18px_34px_rgba(227,183,196,0.15)] transition-all hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-[#f4e7d8] dark:shadow-[0_14px_26px_rgba(0,0,0,0.18)]"
+              className="inline-flex items-center rounded-full border border-[#ece2e7] bg-white px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-[#5b4866] shadow-[0_12px_22px_rgba(227,183,196,0.12)] transition-all hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-[#f4e7d8] dark:shadow-[0_12px_22px_rgba(0,0,0,0.18)]"
             >
-              Notification settings
+              Settings
             </Link>
             <button
               type="button"
               onClick={() => void handleMarkAllRead()}
               disabled={summary.unread === 0 || isMarkingAll}
-              className="inline-flex items-center rounded-full bg-gradient-to-r from-[#8f6ce1] via-[#8f69c2] to-[#d39a65] px-4 py-2.5 text-sm font-bold text-white shadow-[0_18px_34px_rgba(122,103,187,0.2)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
+              className="inline-flex items-center rounded-full bg-gradient-to-r from-[#8f6ce1] via-[#8f69c2] to-[#d39a65] px-3.5 py-2 text-xs font-black uppercase tracking-[0.16em] text-white shadow-[0_14px_24px_rgba(122,103,187,0.18)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 dark:shadow-[0_14px_24px_rgba(0,0,0,0.22)]"
             >
               {isMarkingAll ? 'Marking...' : 'Mark all read'}
             </button>
           </div>
         </div>
-
-        <div className="relative mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[24px] border border-white/65 bg-white/78 p-4 shadow-[0_18px_36px_rgba(226,186,196,0.14)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
-            <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Unread now</p>
-            <p className="mt-2 text-3xl font-black text-text-primary">{summary.unread}</p>
-            <p className="mt-2 text-xs font-medium text-text-secondary">Header badge syncs from this same feed.</p>
-          </div>
-          <div className="rounded-[24px] border border-white/65 bg-white/78 p-4 shadow-[0_18px_36px_rgba(226,186,196,0.14)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
-            <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Message alerts</p>
-            <p className="mt-2 text-3xl font-black text-text-primary">{summary.messages}</p>
-            <p className="mt-2 text-xs font-medium text-text-secondary">Conversation and inbox activity.</p>
-          </div>
-          <div className="rounded-[24px] border border-white/65 bg-white/78 p-4 shadow-[0_18px_36px_rgba(226,186,196,0.14)] dark:border-white/10 dark:bg-white/[0.05] dark:shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
-            <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[#8c8293] dark:text-[#a8a0ac]">Commerce updates</p>
-            <p className="mt-2 text-3xl font-black text-text-primary">{summary.orders}</p>
-            <p className="mt-2 text-xs font-medium text-text-secondary">Orders, purchases, and transactional events.</p>
-          </div>
-        </div>
       </section>
 
-      <section className="rounded-[30px] border border-[#ece2e7] bg-[linear-gradient(180deg,#ffffff,#fffefe)] p-4 shadow-[0_24px_48px_rgba(224,196,196,0.1),inset_0_1px_0_rgba(255,255,255,0.96)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(33,31,43,0.98),rgba(27,25,35,0.96))] dark:shadow-[0_24px_48px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
+      <section className="rounded-[26px] border border-[#ece2e7] bg-[linear-gradient(180deg,#ffffff,#fffefe)] p-4 shadow-[0_20px_40px_rgba(224,196,196,0.08),inset_0_1px_0_rgba(255,255,255,0.96)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(33,31,43,0.98),rgba(27,25,35,0.96))] dark:shadow-[0_22px_42px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             {filters.map((filter) => {
@@ -344,7 +328,7 @@ const ProfileNotificationsPage: React.FC = () => {
             })}
           </div>
 
-          <div className="relative w-full lg:max-w-sm">
+          <div className="relative w-full lg:max-w-[19rem]">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8d7c99] dark:text-[#9f97a8]">
               <BellIcon />
             </span>
@@ -353,7 +337,7 @@ const ProfileNotificationsPage: React.FC = () => {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search notification copy or links..."
-              className="h-12 w-full rounded-[20px] border border-[#e8deed] bg-[linear-gradient(180deg,#fffefe,#faf8ff)] pl-12 pr-4 text-sm font-medium text-[#4d4156] shadow-[inset_0_2px_4px_rgba(255,255,255,0.85),0_14px_24px_rgba(130,116,178,0.08)] outline-none transition-all placeholder:text-[#a79aae] focus:border-[#cfc2dc] focus:ring-4 focus:ring-[#ece5f5]/70 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(24,26,36,0.98),rgba(20,22,31,0.98))] dark:text-[#ece5dc] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_14px_24px_rgba(0,0,0,0.24)] dark:placeholder:text-[#8a8491] dark:focus:border-white/14 dark:focus:ring-white/10"
+              className="h-11 w-full rounded-[18px] border border-[#e8deed] bg-[linear-gradient(180deg,#fffefe,#faf8ff)] pl-11 pr-4 text-sm font-medium text-[#4d4156] shadow-[inset_0_2px_4px_rgba(255,255,255,0.85),0_12px_20px_rgba(130,116,178,0.07)] outline-none transition-all placeholder:text-[#a79aae] focus:border-[#cfc2dc] focus:ring-4 focus:ring-[#ece5f5]/70 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(24,26,36,0.98),rgba(20,22,31,0.98))] dark:text-[#ece5dc] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_20px_rgba(0,0,0,0.22)] dark:placeholder:text-[#8a8491] dark:focus:border-white/14 dark:focus:ring-white/10"
             />
           </div>
         </div>
@@ -423,16 +407,16 @@ const ProfileNotificationsPage: React.FC = () => {
           </div>
         </section>
       ) : (
-        <section className="space-y-5">
+        <section className="space-y-4">
           {groupedNotifications.map(([groupLabel, entries]) => (
-            <div key={groupLabel} className="space-y-3">
+            <div key={groupLabel} className="space-y-2.5">
               <div className="flex items-center gap-3 px-1">
                 <span className="h-px flex-1 bg-gradient-to-r from-transparent via-[#dccfe3] to-[#dccfe3] dark:via-white/10 dark:to-white/10" />
                 <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-[#8c8293] dark:text-[#a8a0ac]">{groupLabel}</p>
                 <span className="h-px flex-1 bg-gradient-to-r from-[#dccfe3] via-[#dccfe3] to-transparent dark:from-white/10 dark:via-white/10" />
               </div>
 
-              <div className="grid gap-3">
+              <div className="grid gap-2.5">
                 {entries.map((entry, index) => {
                   const meta = getNotificationMeta(entry);
                   return (
@@ -443,7 +427,7 @@ const ProfileNotificationsPage: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03, duration: 0.22 }}
                       onClick={() => handleNotificationOpen(entry)}
-                      className={`group relative flex w-full items-start gap-4 overflow-hidden rounded-[28px] border p-4 text-left shadow-[0_22px_44px_rgba(224,196,196,0.1)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_48px_rgba(224,196,196,0.14)] dark:shadow-[0_22px_44px_rgba(0,0,0,0.2)] sm:p-5 ${
+                      className={`group relative flex w-full items-start gap-3 overflow-hidden rounded-[24px] border p-3.5 text-left shadow-[0_18px_32px_rgba(224,196,196,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_38px_rgba(224,196,196,0.12)] dark:shadow-[0_18px_32px_rgba(0,0,0,0.18)] sm:p-4 ${
                         entry.isRead
                           ? 'border-[#ece2e7] bg-[linear-gradient(180deg,#ffffff,#fffefe)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(33,31,43,0.98),rgba(27,25,35,0.96))]'
                           : 'border-[#e6d9ef] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),rgba(255,247,251,0.9)_46%,rgba(255,241,230,0.9)_100%),linear-gradient(180deg,#fffefe,#fff7fb)] shadow-[0_24px_48px_rgba(218,164,193,0.16)] dark:border-[#4d3a55] dark:bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.08),rgba(255,255,255,0.03)_46%,rgba(255,188,120,0.05)_100%),linear-gradient(180deg,rgba(45,36,54,0.98),rgba(31,26,39,0.96))] dark:shadow-[0_24px_48px_rgba(0,0,0,0.24)]'
@@ -453,7 +437,7 @@ const ProfileNotificationsPage: React.FC = () => {
                         <span className="absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-[#8f6ce1] to-[#d39a65] shadow-[0_0_18px_rgba(143,108,225,0.28)]" />
                       ) : null}
 
-                      <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br ${meta.iconShellClassName}`}>
+                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gradient-to-br ${meta.iconShellClassName}`}>
                         {meta.icon}
                       </span>
 
@@ -470,8 +454,8 @@ const ProfileNotificationsPage: React.FC = () => {
                                 </span>
                               ) : null}
                             </div>
-                            <p className="mt-3 text-[1rem] font-bold leading-7 text-text-primary">{entry.message}</p>
-                            <p className="mt-2 text-sm text-text-secondary">
+                            <p className="mt-2 text-[0.96rem] font-bold leading-6 text-text-primary">{entry.message}</p>
+                            <p className="mt-1.5 text-[0.82rem] leading-5 text-text-secondary">
                               {entry.link ? `Opens ${entry.link}` : 'Saved in your notification inbox.'}
                             </p>
                           </div>
@@ -486,11 +470,11 @@ const ProfileNotificationsPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="mt-4 flex items-center justify-between gap-3">
+                        <div className="mt-3 flex items-center justify-between gap-3">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#998c9e] dark:text-[#b8afbb]">
                             {entry.link ? 'Tap to open destination' : 'No linked destination'}
                           </p>
-                          <span className="inline-flex items-center rounded-full border border-[#ece2e7] bg-white px-3 py-1.5 text-xs font-bold text-[#5b4866] transition-colors group-hover:border-[#d9cfe0] group-hover:text-[#4d3d58] dark:border-white/10 dark:bg-white/[0.04] dark:text-[#f4e7d8]">
+                          <span className="inline-flex items-center rounded-full border border-[#ece2e7] bg-white px-3 py-1 text-[0.72rem] font-bold text-[#5b4866] transition-colors group-hover:border-[#d9cfe0] group-hover:text-[#4d3d58] dark:border-white/10 dark:bg-white/[0.04] dark:text-[#f4e7d8]">
                             Open
                           </span>
                         </div>

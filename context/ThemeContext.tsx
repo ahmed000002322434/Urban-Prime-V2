@@ -78,7 +78,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ];
 
   const getSystemTheme = () => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'obsidian' : 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'noir' : 'light';
   };
 
   const normalizeTheme = (value?: string | null): Theme => {

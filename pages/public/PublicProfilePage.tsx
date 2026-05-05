@@ -8,19 +8,20 @@ import {
   type SpotlightProfileResponse
 } from '../../services/spotlightService';
 import type { Item, ItemCollection, Reel, Store, User } from '../../types';
-import Spinner from '../../components/Spinner';
 import VerifiedBadge from '../../components/VerifiedBadge';
 import Badge from '../../components/Badge';
 import ItemCard from '../../components/ItemCard';
 import QuickViewModal from '../../components/QuickViewModal';
 import StarRating from '../../components/StarRating';
-import LottieAnimation from '../../components/LottieAnimation';
 import SpotlightTextCard from '../../components/spotlight/SpotlightTextCard';
 import { useUserData } from '../../hooks/useUserData';
 import { useAuth } from '../../hooks/useAuth';
+import useSeoMeta from '../../hooks/useSeoMeta';
 import { useNotification } from '../../context/NotificationContext';
-import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
+import { createBaseMeta, createPublicProfileSeoMeta, resolveStaticSeoMeta } from '../../seo/siteMetadata.js';
 import { pixeService, type PixeVideo } from '../../services/pixeService';
+import { buildPublicProfilePath, sanitizeUsername } from '../../utils/profileIdentity';
+import { enforceAvatarIdentity } from '../../utils/avatarEnforcement';
 
 const GlobeIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -128,8 +129,74 @@ const AffiliateTierBadge: React.FC<{ tier: 'bronze' | 'silver' | 'gold' }> = ({ 
   );
 };
 
+const resolvePublicProfileAvatar = (user?: Partial<User> | SpotlightProfile | null) =>
+  enforceAvatarIdentity({
+    name: user?.name,
+    username: 'username' in (user || {}) ? (user as any)?.username : '',
+    email: (user as any)?.email,
+    gender: (user as any)?.gender,
+    avatar: (user as any)?.avatar || (user as any)?.avatar_url
+  }).avatar;
+
+const PublicProfileSkeleton: React.FC = () => (
+  <div className="min-h-screen bg-background pb-14 text-text-primary">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-[2rem] border border-border bg-surface p-5 shadow-soft sm:p-7">
+            <div className="animate-pulse space-y-5">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                <div className="h-24 w-24 rounded-[1.6rem] bg-slate-200 dark:bg-white/10 sm:h-28 sm:w-28" />
+                <div className="flex-1 space-y-3">
+                  <div className="h-4 w-28 rounded-full bg-slate-200 dark:bg-white/10" />
+                  <div className="h-8 w-56 rounded-2xl bg-slate-200 dark:bg-white/10" />
+                  <div className="h-4 w-40 rounded-full bg-slate-200 dark:bg-white/10" />
+                  <div className="h-4 w-full max-w-xl rounded-full bg-slate-200 dark:bg-white/10" />
+                  <div className="h-4 w-4/5 max-w-lg rounded-full bg-slate-200 dark:bg-white/10" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[0, 1, 2, 3].map((index) => (
+                  <div key={index} className="h-20 rounded-[1.35rem] bg-slate-200 dark:bg-white/10" />
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[1.9rem] border border-border bg-surface p-5 shadow-soft sm:p-6">
+            <div className="animate-pulse">
+              <div className="h-6 w-48 rounded-full bg-slate-200 dark:bg-white/10" />
+              <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {[0, 1, 2, 3, 4, 5].map((index) => (
+                  <div key={index} className="h-72 rounded-[1.6rem] bg-slate-200 dark:bg-white/10" />
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside className="space-y-6">
+          {[0, 1, 2].map((index) => (
+            <section key={index} className="rounded-[1.9rem] border border-border bg-surface p-5 shadow-soft sm:p-6">
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 w-24 rounded-full bg-slate-200 dark:bg-white/10" />
+                <div className="h-7 w-40 rounded-full bg-slate-200 dark:bg-white/10" />
+                <div className="space-y-2 pt-2">
+                  {[0, 1, 2].map((line) => (
+                    <div key={line} className="h-12 rounded-[1.1rem] bg-slate-200 dark:bg-white/10" />
+                  ))}
+                </div>
+              </div>
+            </section>
+          ))}
+        </aside>
+      </div>
+    </div>
+  </div>
+);
+
 const PublicProfilePage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id: profileSlug } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { badges: allBadgesData } = useUserData();
   const { user: loggedInUser, isAuthenticated, openAuthModal } = useAuth();
@@ -150,39 +217,81 @@ const PublicProfilePage: React.FC = () => {
   const [followersCount, setFollowersCount] = useState(0);
 
   useEffect(() => {
-    if (!id) return;
+    if (!profileSlug) return;
     setIsLoading(true);
     setLoadError(null);
 
     const loadProfile = async () => {
-      const [
-        profileRes,
-        collectionsRes,
-        reelsRes,
-        reviewsRes,
-        spotlightRes,
-        pixeRes
-      ] = await Promise.allSettled([
-        userService.getPublicProfile(id, { publishedOnly: true }),
-        userService.getPublicCollectionsForUser(id),
-        reelService.getReelsByCreator(id),
-        itemService.getReviewsForOwner(id),
-        spotlightService.getProfile(id, {
+      let profileData = await userService.getPublicProfile(profileSlug, { publishedOnly: true });
+      if (!profileData) {
+        const fallbackSpotlight = await spotlightService.getProfile(profileSlug, {
           tab: 'posts',
           limit: 6,
           viewerFirebaseUid: loggedInUser?.id
-        }),
-        pixeService.getProfileVideos(id)
-      ]);
+        }).catch(() => null);
+        const spotlightProfile = fallbackSpotlight?.profile;
 
-      if (profileRes.status !== 'fulfilled' || !profileRes.value) {
+        if (spotlightProfile) {
+          const fallbackUser: User = {
+            id: String(spotlightProfile.firebase_uid || spotlightProfile.id || profileSlug),
+            username: sanitizeUsername(spotlightProfile.username) || sanitizeUsername(profileSlug) || String(profileSlug),
+            name: spotlightProfile.name || 'User',
+            email: '',
+            avatar: resolvePublicProfileAvatar(spotlightProfile),
+            gender: enforceAvatarIdentity({
+              name: spotlightProfile.name,
+              username: spotlightProfile.username,
+              avatar: spotlightProfile.avatar_url
+            }).gender,
+            phone: '',
+            status: 'active',
+            following: [],
+            followers: [],
+            wishlist: [],
+            cart: [],
+            badges: [],
+            memberSince: spotlightProfile.joined_at || new Date().toISOString(),
+            city: spotlightProfile.city || '',
+            country: spotlightProfile.country || '',
+            about: spotlightProfile.about || spotlightProfile.bio || '',
+            accountLifecycle: 'member',
+            capabilities: []
+          };
+          profileData = { user: fallbackUser, items: [], store: null };
+          setSpotlightPayload(fallbackSpotlight);
+        }
+      }
+
+      if (!profileData) {
         setProfile(null);
         setLoadError('Unable to load this profile right now.');
         setIsLoading(false);
         return;
       }
 
-      const profileData = profileRes.value;
+      const ownerId = String(profileData.user?.id || profileSlug);
+      const spotlightLookup =
+        sanitizeUsername(profileData.user?.username) ||
+        sanitizeUsername(String(profileData.user?.name || '').split(/\s+/)[0] || '') ||
+        ownerId;
+      const [
+        collectionsRes,
+        reelsRes,
+        reviewsRes,
+        spotlightRes,
+        pixeRes
+      ] = await Promise.allSettled([
+        userService.getPublicCollectionsForUser(ownerId),
+        reelService.getReelsByCreator(ownerId),
+        itemService.getReviewsForOwner(ownerId),
+        spotlightService.getProfile(spotlightLookup, {
+          tab: 'posts',
+          limit: 6,
+          viewerFirebaseUid: loggedInUser?.id
+        }),
+        pixeService.getProfileVideos(ownerId)
+      ]);
+
       const collectionsData = collectionsRes.status === 'fulfilled' ? collectionsRes.value : [];
       const reelsData = reelsRes.status === 'fulfilled' ? reelsRes.value : [];
       const reviewsData = reviewsRes.status === 'fulfilled' ? reviewsRes.value : [];
@@ -223,7 +332,42 @@ const PublicProfilePage: React.FC = () => {
       setLoadError('Unable to load this profile right now.');
       setIsLoading(false);
     });
-  }, [id, loggedInUser]);
+  }, [profileSlug, loggedInUser]);
+
+  useEffect(() => {
+    if (!profileSlug || !profile?.user) return;
+    const currentSlug = sanitizeUsername(profileSlug);
+    const canonicalSlug = sanitizeUsername(profile.user.username);
+    if (!canonicalSlug || currentSlug === canonicalSlug) return;
+    navigate(buildPublicProfilePath(profile.user), { replace: true });
+  }, [navigate, profile, profileSlug]);
+
+  const seoMeta = useMemo(() => {
+    if (profile) {
+      return createPublicProfileSeoMeta({
+        user: profile.user,
+        store: profile.store,
+        spotlightProfile: spotlightPayload?.profile || null,
+        itemCount: profile.items.length,
+        pixeVideoCount: pixeVideos.length || reels.length,
+        collectionsCount: collections.length,
+        path: buildPublicProfilePath(profile.user)
+      });
+    }
+
+    if (loadError) {
+      return createBaseMeta({
+        title: 'Profile Unavailable | Urban Prime',
+        description: 'This Urban Prime public profile is unavailable right now.',
+        path: profileSlug ? `/user/${encodeURIComponent(profileSlug)}` : '/user',
+        noIndex: true
+      });
+    }
+
+    return resolveStaticSeoMeta(profileSlug ? `/user/${encodeURIComponent(profileSlug)}` : '/user');
+  }, [collections.length, loadError, pixeVideos.length, profile, profileSlug, reels.length, spotlightPayload?.profile]);
+
+  useSeoMeta(seoMeta);
 
   const handleFollowToggle = async () => {
     if (!isAuthenticated || !loggedInUser || !profile) {
@@ -292,14 +436,14 @@ const PublicProfilePage: React.FC = () => {
   );
 
   if (isLoading) {
-    return <Spinner size="lg" className="mt-20" />;
+    return <PublicProfileSkeleton />;
   }
 
   if (loadError) {
     return (
       <div className="py-20 text-center text-text-secondary">
-        <LottieAnimation src={uiLottieAnimations.noFileFound} className="mx-auto h-44 w-44" loop autoplay />
-        <p>{loadError}</p>
+        <div className="mx-auto h-32 w-32 rounded-[2rem] bg-slate-200/80 dark:bg-white/10" />
+        <p className="mt-6">{loadError}</p>
       </div>
     );
   }
@@ -307,8 +451,8 @@ const PublicProfilePage: React.FC = () => {
   if (!profile) {
     return (
       <div className="py-20 text-center">
-        <LottieAnimation src={uiLottieAnimations.noFileFound} className="mx-auto h-44 w-44" loop autoplay />
-        <p>User not found.</p>
+        <div className="mx-auto h-32 w-32 rounded-[2rem] bg-slate-200/80 dark:bg-white/10" />
+        <p className="mt-6">User not found.</p>
       </div>
     );
   }
@@ -319,7 +463,7 @@ const PublicProfilePage: React.FC = () => {
   const spotlightRoute = spotlightProfile
     ? `/profile/${encodeURIComponent(spotlightProfile.firebase_uid || spotlightProfile.username || user.id)}`
     : null;
-  const resolvedUsername = spotlightProfile?.username || user.id;
+  const resolvedUsername = spotlightProfile?.username || user.username || user.id;
   const resolvedBio =
     spotlightProfile?.bio ||
     spotlightProfile?.about ||
@@ -334,7 +478,7 @@ const PublicProfilePage: React.FC = () => {
   const userBadges = allBadgesData.filter((badge) => (user.badges || []).includes(badge.id));
   const isOwnProfile = isAuthenticated && loggedInUser?.id === user.id;
   const websiteHref = getSafeWebsite(user, store);
-  const shareUrl = `${window.location.origin}/user/${encodeURIComponent(user.id)}`;
+  const shareUrl = `${window.location.origin}${buildPublicProfilePath(user)}`;
   const socialLinks = [
     { label: 'Website', href: normalizeExternalHref(websiteHref, 'website'), icon: <GlobeIcon /> },
     { label: 'Instagram', href: normalizeExternalHref(store?.socialLinks?.instagram || '', 'instagram'), icon: <InstagramIcon /> },
@@ -360,11 +504,11 @@ const PublicProfilePage: React.FC = () => {
                 <div className="relative flex flex-col gap-5">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
                     <img
-                      src={user.avatar || '/icons/urbanprime.svg'}
+                      src={resolvePublicProfileAvatar(user)}
                       alt={displayName}
                       className="h-24 w-24 rounded-[1.6rem] border border-border object-cover shadow-soft sm:h-28 sm:w-28"
                       onError={(event) => {
-                        event.currentTarget.src = '/icons/urbanprime.svg';
+                        event.currentTarget.src = resolvePublicProfileAvatar(user);
                       }}
                     />
 

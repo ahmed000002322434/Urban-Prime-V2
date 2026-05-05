@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../context/NotificationContext';
 import { userService } from '../../services/itemService';
+import { spotlightService } from '../../services/spotlightService';
 import { storefrontService } from '../../services/storefrontService';
 import { useUserData } from '../../hooks/useUserData';
 import Spinner from '../../components/Spinner';
 import EmailInput from '../../components/EmailInput';
 import ShippingSettingsSection from '../../components/ShippingSettingsSection';
 import type { ShippingSettings } from '../../types';
+import { buildPublicProfilePath, deriveUsernameFromIdentity, sanitizeUsername } from '../../utils/profileIdentity';
 
 const FormCard: React.FC<{title: string, children: React.ReactNode}> = ({ title, children }) => (
     <div className="bg-surface p-8 rounded-xl shadow-soft border border-border">
@@ -36,6 +38,7 @@ const EditProfilePage: React.FC = () => {
     // User Profile Data
     const [formData, setFormData] = useState({
         name: user?.name || '',
+        username: user?.username || deriveUsernameFromIdentity(user),
         dob: user?.dob || '',
         gender: user?.gender || 'prefer_not_to_say',
         about: user?.about || '',
@@ -62,6 +65,9 @@ const EditProfilePage: React.FC = () => {
     
     const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
     const [checkingSlug, setCheckingSlug] = useState(false);
+    const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+    const [checkingUsername, setCheckingUsername] = useState(false);
+    const [usernameMessage, setUsernameMessage] = useState('');
 
     useEffect(() => {
         if (storefront) {
@@ -82,6 +88,7 @@ const EditProfilePage: React.FC = () => {
         setFormData(prev => ({
             ...prev,
             name: user.name || '',
+            username: user.username || deriveUsernameFromIdentity(user),
             dob: user.dob || '',
             gender: user.gender || 'prefer_not_to_say',
             about: user.about || '',
@@ -98,7 +105,12 @@ const EditProfilePage: React.FC = () => {
     if (!user) return null;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setFormData(prev => ({...prev, [e.target.name]: e.target.value}));
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: name === 'username' ? sanitizeUsername(value) : value }));
+        if (name === 'username') {
+            setUsernameAvailable(null);
+            setUsernameMessage('');
+        }
     };
 
     const handleStoreChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,6 +135,42 @@ const EditProfilePage: React.FC = () => {
             console.error(error);
         } finally {
             setCheckingSlug(false);
+        }
+    };
+
+    const checkUsername = async () => {
+        const normalizedUsername = sanitizeUsername(formData.username);
+        const currentUsername = sanitizeUsername(user?.username || deriveUsernameFromIdentity(user));
+        if (!normalizedUsername) {
+            setUsernameAvailable(false);
+            setUsernameMessage('Username is required.');
+            return false;
+        }
+        if (normalizedUsername.length < 3) {
+            setUsernameAvailable(false);
+            setUsernameMessage('Username must be at least 3 characters.');
+            return false;
+        }
+        if (normalizedUsername === currentUsername) {
+            setUsernameAvailable(true);
+            setUsernameMessage('This is your current public username.');
+            return true;
+        }
+
+        setCheckingUsername(true);
+        try {
+            const availability = await spotlightService.checkUsernameAvailability(normalizedUsername);
+            const isAvailable = Boolean(availability?.available);
+            setUsernameAvailable(isAvailable);
+            setUsernameMessage(availability?.reason || (isAvailable ? 'Username is available.' : 'This username is already taken.'));
+            return isAvailable;
+        } catch (error) {
+            console.error(error);
+            setUsernameAvailable(false);
+            setUsernameMessage('Unable to validate username right now.');
+            return false;
+        } finally {
+            setCheckingUsername(false);
         }
     };
 
@@ -163,9 +211,16 @@ const EditProfilePage: React.FC = () => {
         let storeSaved = !storefront;
 
         try {
+            const usernameOk = await checkUsername();
+            if (!usernameOk) {
+                showNotification('Choose an available username first.');
+                setIsLoading(false);
+                return;
+            }
             const { email, ...profileUpdates } = formData;
             const updatedProfile = await userService.updateUserProfile(user.id, profileUpdates);
             updateUser?.(updatedProfile);
+            setFormData(prev => ({ ...prev, username: updatedProfile.username || prev.username }));
             profileSaved = true;
         } catch (error) {
             console.error('Profile update failed:', error);
@@ -225,6 +280,29 @@ const EditProfilePage: React.FC = () => {
                 <div className="space-y-6">
                     <FormField label="Name">
                        <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />
+                    </FormField>
+                    <FormField label="Username" helpText={`Public profile link: urbanprime.tech${buildPublicProfilePath({ username: formData.username, id: user.id })}`}>
+                       <div className="space-y-2">
+                            <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">@</span>
+                                <input
+                                    type="text"
+                                    name="username"
+                                    value={formData.username}
+                                    onChange={handleChange}
+                                    onBlur={() => void checkUsername()}
+                                    className={`w-full rounded-lg border bg-background py-2 pl-8 pr-24 text-text-primary ${
+                                        usernameAvailable === false ? 'border-red-500' : usernameAvailable === true ? 'border-green-500' : 'border-border'
+                                    }`}
+                                />
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold">
+                                    {checkingUsername ? <Spinner size="sm" /> : usernameAvailable === true ? <span className="text-green-600">Available</span> : usernameAvailable === false ? <span className="text-red-500">Taken</span> : null}
+                                </div>
+                            </div>
+                            <p className={`text-xs ${usernameAvailable === false ? 'text-red-500' : 'text-text-secondary'}`}>
+                                {usernameMessage || 'Use a unique username for your public profile and creator identity.'}
+                            </p>
+                       </div>
                     </FormField>
                      <FormField label="Date of birth">
                         <input type="date" name="dob" value={formData.dob} onChange={handleChange} className="w-full p-2 border border-border rounded-lg bg-background text-text-primary" />

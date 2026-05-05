@@ -1,0 +1,4 @@
+ORIGIN_API=https://urbanprime-api.onrender.com
+ALLOWED_ORIGINS=https://*.vercel.app,http://localhost:3000,http://127.0.0.1:3000
+# Optional shared backend secret forwarded to the origin service.
+# EDGE_BACKEND_KEY=

@@ -6,6 +6,7 @@ import { pixeService } from '../../services/pixeService';
 import LottieAnimation from '../LottieAnimation';
 import { PixeCommentThreadSkeleton } from './PixeSkeleton';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 const clampTextStyle = (lines: number): React.CSSProperties => ({
   display: '-webkit-box',
@@ -138,7 +139,7 @@ const CommentRow: React.FC<{
 
   return (
     <div className="flex gap-3 rounded-[22px] border border-white/6 bg-white/[0.03] p-3">
-      <Link to={comment.user?.id ? `/user/${comment.user.id}` : '/'} className="shrink-0">
+      <Link to={comment.user ? buildPublicProfilePath({ id: comment.user.id, name: comment.user.name, username: (comment.user as { username?: string }).username }) : '/'} className="shrink-0">
         <img
           src={comment.user?.avatar_url || '/icons/urbanprime.svg'}
           alt={comment.user?.name || 'Viewer'}
@@ -147,7 +148,7 @@ const CommentRow: React.FC<{
       </Link>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
-          <Link to={comment.user?.id ? `/user/${comment.user.id}` : '/'} className="truncate text-sm font-semibold text-white">
+          <Link to={comment.user ? buildPublicProfilePath({ id: comment.user.id, name: comment.user.name, username: (comment.user as { username?: string }).username }) : '/'} className="truncate text-sm font-semibold text-white">
             {comment.user?.name || 'Viewer'}
           </Link>
           {comment.is_pinned ? (
@@ -512,12 +513,22 @@ export const PixeVideoSurface: React.FC<PixeVideoSurfaceProps> = ({
     setReloadKey((current) => current + 1);
   };
 
-  const outerClasses = `group relative overflow-hidden rounded-[34px] bg-black ${className}`.trim();
-  const innerClasses = `relative mx-auto h-full w-full overflow-hidden rounded-[30px] bg-black ${frameClassName}`.trim();
+  const outerClasses = `group relative overflow-visible rounded-[38px] motion-safe:transform-gpu transition-transform duration-500 ${
+    active ? 'scale-[1.01]' : 'scale-[0.995] hover:scale-[1.003]'
+  } ${className}`.trim();
+  const innerClasses = `relative mx-auto h-full w-full overflow-hidden rounded-[30px] bg-black ring-1 ring-white/[0.06] shadow-[0_36px_96px_rgba(0,0,0,0.46)] motion-safe:transform-gpu transition-[box-shadow,transform,border-radius] duration-500 ${
+    active ? 'shadow-[0_44px_120px_rgba(0,0,0,0.54)]' : ''
+  } ${frameClassName}`.trim();
   const mediaClasses = `h-full w-full object-cover ${mediaClassName}`.trim();
 
   return (
     <div className={outerClasses}>
+      <div
+        className={`pointer-events-none absolute inset-x-[8%] top-[10%] bottom-[8%] rounded-[42px] bg-[radial-gradient(circle_at_50%_15%,rgba(255,255,255,0.18),rgba(255,255,255,0.06)_34%,transparent_72%)] blur-[44px] transition-opacity duration-500 ${
+          active ? 'opacity-80' : 'opacity-42 group-hover:opacity-58'
+        }`}
+      />
+      <div className="pointer-events-none absolute inset-x-[14%] top-[2%] h-16 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.18),transparent)] opacity-45 blur-2xl" />
       <div className={innerClasses} style={frameStyle}>
         {posterOnly ? (
           <div className="absolute inset-0">
@@ -616,7 +627,9 @@ export const PixeVideoSurface: React.FC<PixeVideoSurfaceProps> = ({
           />
         )}
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/72 via-transparent to-black/28" />
+        <div className="pointer-events-none absolute inset-x-5 top-0 h-20 rounded-b-[2rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.03),transparent)] opacity-60" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/78 via-black/10 to-black/24" />
+        <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/[0.05]" />
         {showLoadingState && source && !hasError && !posterOnly && !ready ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/32 backdrop-blur-[2px]">
             <div className="rounded-full border border-white/10 bg-black/45 px-4 py-3">

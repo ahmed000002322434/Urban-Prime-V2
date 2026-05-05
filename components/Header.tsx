@@ -1,24 +1,26 @@
 
 // components/Header.tsx
 // FIX: Corrected the React import to include necessary hooks like useState, useRef, useEffect, and useCallback.
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
 import { useAuth } from '../hooks/useAuth';
 import { useCart } from '../hooks/useCart';
-import type { Item, Notification, PersonaType, User } from '../types';
+import type { ChatThread, Item, Notification, PersonaType, User } from '../types';
 import Spinner from './Spinner';
 import { useTranslation } from '../hooks/useTranslation';
 import { useHeroStyle } from '../context/HeroStyleContext';
 import { useTheme } from '../hooks/useTheme';
+import { useNotification } from '../context/NotificationContext';
 import useLowEndMode from '../hooks/useLowEndMode';
 import BackButton from './BackButton';
 import LogoutConfirmationModal from './LogoutConfirmationModal';
-import { LANGUAGES } from '../data/languages';
 import LottieAnimation from './LottieAnimation';
 import { authAvatarIcons, uiLottieAnimations } from '../utils/uiAnimationAssets';
+import { enforceAvatarIdentity } from '../utils/avatarEnforcement';
 import { prefetchRoute } from '../utils/routePrefetch';
+import { buildPublicProfilePath } from '../utils/profileIdentity';
 
 const { Link: RouterLink, NavLink: RouterNavLink, useLocation, useNavigate } = ReactRouterDOM as any;
 type ItemServiceModule = typeof import('../services/itemService');
@@ -34,10 +36,43 @@ const loadItemServiceModule = () => {
 };
 
 const profileAvatarFallback = authAvatarIcons.male;
-const resolveProfileAvatar = (avatar?: string | null) => {
-    const value = String(avatar || '').trim();
-    return value || profileAvatarFallback;
+const GENERIC_INBOX_NAMES = new Set([
+    'user',
+    'new user',
+    'urban prime user',
+    'urban prime member',
+    'seller',
+    'buyer',
+    'codex seller',
+    'codexseller',
+    'newseller',
+    'newbuyer',
+    'loading profile'
+]);
+const normalizeInboxIdentityLabel = (value?: string | null) =>
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[_\-.]+/g, ' ')
+        .replace(/\s+/g, ' ');
+const isGenericInboxIdentity = (value?: string | null) => {
+    const normalized = normalizeInboxIdentityLabel(value);
+    return !normalized || GENERIC_INBOX_NAMES.has(normalized) || /\b(user|seller|buyer|member)\b/i.test(normalized);
 };
+const resolveProfileAvatar = (user?: Partial<User> | null) => {
+    const identity = enforceAvatarIdentity({
+        name: user?.name,
+        username: user?.username,
+        email: user?.email,
+        gender: user?.gender,
+        avatar: user?.avatar
+    });
+    return String(identity.avatar || '').trim() || profileAvatarFallback;
+};
+const isInboxProfileHydrating = (user?: Partial<User> | null) =>
+    !user
+    || isGenericInboxIdentity(user.name)
+    || (!String(user.username || '').trim() && !String(user.email || '').trim());
 
 const attachPrefetch =
     (to: any, callback?: (event: any) => void) =>
@@ -119,8 +154,8 @@ const AccountMenu: React.FC<{
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
     const quickActions = [
-        { icon: <UserIcon />, text: 'Profile', path: `/user/${user.id}` },
-        { icon: <MessageSquareIcon />, text: 'Messages', path: '/profile/messages' },
+        { icon: <AdminPanelIcon />, text: 'Dashboard', path: '/profile' },
+        { icon: <UserIcon />, text: 'Profile', path: buildPublicProfilePath(user) },
         { icon: <ShieldCheckIcon />, text: 'Settings', path: '/profile/settings' }
     ];
 
@@ -172,6 +207,7 @@ const AccountMenu: React.FC<{
             title: 'Account',
             items: [
                 { icon: <MapPinIcon />, text: 'Addresses', path: '/profile/settings/addresses' },
+                { icon: <PakistanFlagIcon />, text: 'Language & region', path: '/profile/settings/language' },
                 { icon: <ShieldCheckIcon />, text: 'Account security', path: '/profile/settings/trust-and-verification' },
                 { icon: <PermissionsIcon />, text: 'Permissions', path: '/profile/permissions' },
                 { icon: <SwitchAccountsIcon />, text: 'Switch accounts', path: '/profile/switch-accounts' }
@@ -207,7 +243,7 @@ const AccountMenu: React.FC<{
             <div className="p-4 border-b border-border bg-surface/80">
                 <div className="flex items-center gap-3">
                     <img
-                        src={resolveProfileAvatar(user.avatar)}
+                        src={resolveProfileAvatar(user)}
                         alt={user.name}
                         className="w-12 h-12 rounded-full object-cover bg-surface-soft"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}
@@ -531,16 +567,18 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const location = useLocation();
     const isHomePage = location.pathname === '/';
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-    const { t, currentLanguageInfo, isTranslating } = useTranslation();
+    const { t } = useTranslation();
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const [scrollOpacity, setScrollOpacity] = useState(0);
     const { heroStyle } = useHeroStyle();
     const { resolvedTheme } = useTheme();
+    const { unreadNotificationCount } = useNotification();
     const isLowEndMode = useLowEndMode();
 
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const menuTimeoutRef = useRef<number | null>(null);
+    const messageDropdownScrollRef = useRef<HTMLDivElement | null>(null);
 
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const searchTimeoutRef = useRef<number | null>(null);
@@ -565,7 +603,53 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
     const hasLoadedNotificationsRef = useRef(false);
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const [messageThreads, setMessageThreads] = useState<ChatThread[]>([]);
+    const [messageUsersById, setMessageUsersById] = useState<Record<string, User | null>>({});
+    const [unreadThreadIds, setUnreadThreadIds] = useState<string[]>([]);
+    const [isMessagesLoading, setIsMessagesLoading] = useState(false);
+    const recentMessageThreads = useMemo(() => {
+        const unreadSet = new Set(unreadThreadIds);
+        return [...messageThreads]
+            .sort((left, right) => {
+                const leftUnread = unreadSet.has(left.id) ? 1 : 0;
+                const rightUnread = unreadSet.has(right.id) ? 1 : 0;
+                if (leftUnread !== rightUnread) return rightUnread - leftUnread;
+                return new Date(right.lastUpdated).getTime() - new Date(left.lastUpdated).getTime();
+            })
+            .slice(0, 4)
+            .map((thread) => {
+                const counterpartId = thread.buyerId === user?.id ? thread.sellerId : thread.buyerId;
+                return {
+                    thread,
+                    counterpartId,
+                    counterpart: messageUsersById[counterpartId] || null,
+                    unread: unreadSet.has(thread.id)
+                };
+            });
+    }, [messageThreads, messageUsersById, unreadThreadIds, user?.id]);
+    const unreadMessageThreads = useMemo(
+        () => recentMessageThreads.filter((entry) => entry.unread),
+        [recentMessageThreads]
+    );
+    const dropdownMessageThreads = useMemo(
+        () => (unreadMessageThreads.length > 0 ? unreadMessageThreads.slice(0, 4) : recentMessageThreads.slice(0, 2)),
+        [recentMessageThreads, unreadMessageThreads]
+    );
+    const effectiveUnreadMessageCount = unreadThreadIds.length;
+    const messageIndicatorCount = effectiveUnreadMessageCount;
+    const activityNotifications = useMemo(
+        () =>
+            notifications.filter((notification) => {
+                const normalizedType = String(notification.type || '').toUpperCase();
+                const normalizedLink = String(notification.link || '').toLowerCase();
+                return normalizedType !== 'MESSAGE' && !normalizedLink.startsWith('/profile/messages');
+            }),
+        [notifications]
+    );
+    const activityNotificationUnreadCount = activityNotifications.filter((notification) => !notification.isRead).length;
+    const effectiveUnreadNotificationBadgeCount = hasLoadedNotificationsRef.current
+        ? activityNotificationUnreadCount
+        : unreadNotificationCount;
 
     useEffect(() => {
         const isItemRoute = location.pathname.startsWith('/item/');
@@ -655,6 +739,65 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
         }
     }, [user, activePersona?.id]);
 
+    const fetchMessageThreads = useCallback(async (showLoader = false) => {
+        if (!user) {
+            setMessageThreads([]);
+            setUnreadThreadIds([]);
+            setMessageUsersById({});
+            setIsMessagesLoading(false);
+            return;
+        }
+
+        if (showLoader) {
+            setIsMessagesLoading(true);
+        }
+
+        try {
+            const { itemService, userService } = await loadItemServiceModule();
+            const threads = await itemService.getChatThreadsForUser(user.id);
+            const threadIds = threads.map((thread) => thread.id).filter(Boolean);
+            const readReceiptsByThreadId =
+                threadIds.length > 0 && typeof itemService.getReadReceiptsForThreads === 'function'
+                    ? await itemService.getReadReceiptsForThreads(threadIds)
+                    : {};
+
+            const unreadIds = threads
+                .filter((thread) => {
+                    const latestMessage = thread.messages?.[thread.messages.length - 1];
+                    if (!latestMessage || latestMessage.senderId === user.id) return false;
+                    const ownReadAt = readReceiptsByThreadId?.[thread.id]?.[user.id] || '';
+                    return !ownReadAt || new Date(ownReadAt).getTime() < new Date(latestMessage.timestamp).getTime();
+                })
+                .map((thread) => thread.id);
+
+            const counterpartIds = Array.from(new Set(
+                threads
+                    .map((thread) => thread.buyerId === user.id ? thread.sellerId : thread.buyerId)
+                    .filter(Boolean)
+            ));
+
+            const counterpartUsers = await Promise.all(
+                counterpartIds.map(async (id) => [id, await userService.getUserById(id).catch(() => null)] as const)
+            );
+
+            setMessageUsersById(
+                counterpartUsers.reduce<Record<string, User | null>>((acc, [id, nextUser]) => {
+                    acc[id] = nextUser;
+                    return acc;
+                }, {})
+            );
+            setMessageThreads(Array.isArray(threads) ? threads : []);
+            setUnreadThreadIds(unreadIds);
+        } catch (error) {
+            console.warn('Message thread fetch failed:', error);
+            setMessageThreads([]);
+            setUnreadThreadIds([]);
+            setMessageUsersById({});
+        } finally {
+            setIsMessagesLoading(false);
+        }
+    }, [user]);
+
     useEffect(() => {
         if (isAuthenticated) {
             let timeoutId: number | null = null;
@@ -663,6 +806,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
             const runFetch = () => {
                 timeoutId = window.setTimeout(() => {
                     void fetchNotifications();
+                    void fetchMessageThreads();
                 }, 900);
             };
 
@@ -682,20 +826,25 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
             };
         } else {
             setNotifications([]);
+            setMessageThreads([]);
+            setUnreadThreadIds([]);
+            setMessageUsersById({});
             setIsNotificationsLoading(false);
+            setIsMessagesLoading(false);
             hasLoadedNotificationsRef.current = false;
         }
-    }, [isAuthenticated, fetchNotifications]);
+    }, [isAuthenticated, fetchMessageThreads, fetchNotifications]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
         const intervalId = window.setInterval(() => {
             if (document.visibilityState !== 'visible') return;
             void fetchNotifications();
+            void fetchMessageThreads();
         }, isLowEndMode ? 45000 : 25000);
 
         return () => window.clearInterval(intervalId);
-    }, [isAuthenticated, fetchNotifications, isLowEndMode]);
+    }, [isAuthenticated, fetchMessageThreads, fetchNotifications, isLowEndMode]);
 
     const handleMarkAsRead = async () => {
         if (!user) return;
@@ -838,8 +987,11 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const showSearchPanel = isSearchOpen && (searchQuery.trim().length > 0);
 
     const handleMenuEnter = (menu: string) => {
-        if (menu === 'notifications' && isAuthenticated && !hasLoadedNotificationsRef.current && !isNotificationsLoading) {
+        if ((menu === 'notifications' || menu === 'messages') && isAuthenticated && !hasLoadedNotificationsRef.current && !isNotificationsLoading) {
             void fetchNotifications(true);
+        }
+        if (menu === 'messages' && isAuthenticated && !isMessagesLoading) {
+            void fetchMessageThreads(true);
         }
         if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
         setActiveMenu(menu);
@@ -847,6 +999,24 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const handleMenuLeave = () => {
         menuTimeoutRef.current = window.setTimeout(() => setActiveMenu(null), 200);
     };
+
+    const handleMessageDropdownAutoScroll = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        const container = messageDropdownScrollRef.current;
+        if (!container) return;
+        const bounds = container.getBoundingClientRect();
+        const threshold = 64;
+        const maxStep = 22;
+        const fromTop = event.clientY - bounds.top;
+        const fromBottom = bounds.bottom - event.clientY;
+
+        if (fromTop < threshold) {
+            const ratio = (threshold - Math.max(fromTop, 0)) / threshold;
+            container.scrollTop -= Math.ceil(maxStep * ratio);
+        } else if (fromBottom < threshold) {
+            const ratio = (threshold - Math.max(fromBottom, 0)) / threshold;
+            container.scrollTop += Math.ceil(maxStep * ratio);
+        }
+    }, []);
     
     const handleSearchEnter = () => {
         isHoveringSearchRef.current = true;
@@ -893,7 +1063,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
     const prefersNoirTuning = isLowEndMode || resolvedTheme === 'noir';
 
     const bannerPillBorderProgress = Math.min(Math.max(isHomePage ? scrollOpacity : 1, 0), 1);
-    const isHomePillCollapsed = isHomePage && bannerPillBorderProgress < 0.12;
+    const isHomePillCollapsed = isBannerHero && bannerPillBorderProgress < 0.12;
     const homeTextClass = isHomePillCollapsed
         ? 'text-white/95 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)]'
         : 'text-[#1f1d12]';
@@ -944,12 +1114,12 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                 : 'p-2.5 rounded-full text-white bg-transparent border-transparent shadow-none hover:bg-white/12'
             : 'p-2.5 rounded-full text-text-secondary bg-surface-soft hover:bg-gray-200';
     const desktopActionButtonClass = isHomePage
-        ? `rounded-full ${isHomePillCollapsed ? 'text-white/90 hover:bg-white/10' : 'text-[#1f1d12] hover:bg-black/5'}`
+        ? `flex h-9 w-9 items-center justify-center rounded-full ${isHomePillCollapsed ? 'text-white/90 hover:bg-white/10' : 'text-[#1f1d12] hover:bg-black/5'}`
         : isBannerHero
             ? isScrolled
-                ? 'rounded-full text-white/90 hover:bg-white/10'
-                : 'rounded-full border-transparent bg-transparent text-white shadow-none hover:bg-white/12'
-            : 'rounded-full hover:bg-surface-soft text-text-primary';
+                ? 'flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/10'
+                : 'flex h-9 w-9 items-center justify-center rounded-full border-transparent bg-transparent text-white shadow-none hover:bg-white/12'
+            : 'flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface-soft text-text-primary';
 
     const mobilePillClasses = `
         ${pillClasses}
@@ -1049,16 +1219,16 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                     
                     {/* Right Pill: User Actions */}
                     <div 
-                        className={`flex items-center gap-1 p-0.5 ${desktopPillClasses}`} 
+                        className={`flex items-center gap-0.5 px-1.5 py-1 ${desktopPillClasses}`} 
                         onMouseLeave={handleMenuLeave}
                         style={desktopBannerPillStyle}>
                         <div className="relative" onMouseEnter={() => handleMenuEnter('account')}>
                             {isAuthenticated && user ? (
-                                <button className={`flex items-center gap-2 p-1 ${desktopActionButtonClass}`}>
+                                <button className={`flex items-center gap-1 p-0.5 ${desktopActionButtonClass}`}>
                                     <img
-                                        src={resolveProfileAvatar(user.avatar)}
+                                        src={resolveProfileAvatar(user)}
                                         alt={user.name}
-                                        className="w-8 h-8 rounded-full object-cover bg-surface-soft"
+                                        className="h-8 w-8 rounded-full object-cover bg-surface-soft"
                                         onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}
                                     />
                                 </button>
@@ -1078,29 +1248,143 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                         </div>
                         
                         {isAuthenticated && (
+                            <div className="relative" onMouseEnter={() => handleMenuEnter('messages')}>
+                                <NavLink to="/profile/messages" className={`relative p-2 ${desktopActionButtonClass}`} aria-label="Messages">
+                                    <MessageSquareIcon />
+                                    {messageIndicatorCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#7b6ee7] px-1 text-[10px] font-bold text-white ring-2 ring-surface">{messageIndicatorCount > 9 ? '9+' : messageIndicatorCount}</span>}
+                                </NavLink>
+                                {activeMenu === 'messages' && (
+                                    <div className="absolute right-0 top-full mt-2 w-[18.5rem] overflow-hidden rounded-[1.35rem] border border-[rgba(168,141,88,0.16)] bg-[rgba(246,239,227,0.94)] p-3.5 shadow-[0_24px_50px_rgba(84,67,43,0.14)] backdrop-blur-[26px] animate-dropdown-fade-in-up dark:border-white/8 dark:bg-[rgba(16,22,34,0.94)]">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-text-secondary">Inbox</p>
+                                                <p className="mt-1 text-sm font-semibold text-text-primary">
+                                                    {effectiveUnreadMessageCount > 0
+                                                        ? `${effectiveUnreadMessageCount} unread messages`
+                                                        : dropdownMessageThreads.length > 0
+                                                            ? 'Recent chats'
+                                                            : 'All caught up'}
+                                                </p>
+                                            </div>
+                                            <span className="inline-flex min-w-[2rem] items-center justify-center rounded-full bg-primary/12 px-2 py-1 text-xs font-black text-primary">
+                                                {effectiveUnreadMessageCount > 9 ? '9+' : effectiveUnreadMessageCount}
+                                            </span>
+                                        </div>
+                                        {isMessagesLoading ? (
+                                            <div className="mt-3 space-y-2">
+                                                {Array.from({ length: effectiveUnreadMessageCount > 0 ? 4 : 2 }).map((_, index) => (
+                                                    <div
+                                                        key={`header-thread-skeleton-${index}`}
+                                                        className="flex items-center gap-2.5 rounded-2xl border border-transparent bg-black/[0.035] px-2.5 py-2.5 dark:bg-white/[0.045]"
+                                                        aria-hidden="true"
+                                                    >
+                                                        <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-300/80 dark:bg-slate-700/70" />
+                                                        <div className="min-w-0 flex-1 animate-pulse space-y-1.5">
+                                                            <div className="h-3.5 w-24 rounded-full bg-slate-300/70 dark:bg-slate-700/70" />
+                                                            <div className="h-3 w-16 rounded-full bg-slate-200/80 dark:bg-slate-700/55" />
+                                                            <div className="h-3.5 w-32 rounded-full bg-slate-200/75 dark:bg-slate-700/55" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : dropdownMessageThreads.length > 0 ? (
+                                            <div
+                                                ref={messageDropdownScrollRef}
+                                                className="mt-3 max-h-[18rem] space-y-2 overflow-y-auto pr-1"
+                                                onMouseMove={handleMessageDropdownAutoScroll}
+                                            >
+                                                {dropdownMessageThreads.map(({ thread, counterpart, counterpartId, unread }) => {
+                                                    const isHydrating = isInboxProfileHydrating(counterpart);
+                                                    return (
+                                                        <RouterLink
+                                                            key={thread.id}
+                                                            to={`/profile/messages/${thread.id}`}
+                                                            className="flex items-center gap-2.5 rounded-2xl border border-[rgba(128,104,58,0.1)] bg-black/[0.035] px-2.5 py-2.5 transition hover:bg-black/[0.05] dark:border-white/6 dark:bg-white/[0.04] dark:hover:bg-white/[0.065]"
+                                                        >
+                                                            {isHydrating ? (
+                                                                <>
+                                                                    <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-300/80 dark:bg-slate-700/70" />
+                                                                    <div className="min-w-0 flex-1 animate-pulse space-y-1.5">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <div className="h-3.5 w-24 rounded-full bg-slate-300/70 dark:bg-slate-700/70" />
+                                                                            <div className="h-3 w-10 rounded-full bg-slate-200/80 dark:bg-slate-700/55" />
+                                                                        </div>
+                                                                        <div className="h-3 w-16 rounded-full bg-slate-200/80 dark:bg-slate-700/55" />
+                                                                        <div className="h-3.5 w-32 rounded-full bg-slate-200/75 dark:bg-slate-700/55" />
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <img
+                                                                        src={resolveProfileAvatar(counterpart || undefined)}
+                                                                        alt={counterpart?.name || 'Conversation'}
+                                                                        className="h-10 w-10 rounded-full object-cover bg-surface-soft"
+                                                                        onError={(event) => {
+                                                                            event.currentTarget.src = resolveProfileAvatar(counterpart || undefined);
+                                                                        }}
+                                                                    />
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <p className="truncate text-[12px] font-black leading-4 text-text-primary">
+                                                                                    {counterpart?.name || 'Conversation'}
+                                                                                </p>
+                                                                                <p className="mt-0.5 truncate text-[10px] font-semibold leading-4 text-text-secondary">
+                                                                                    {counterpart?.username ? `@${counterpart.username}` : `@${String(counterpartId || '').slice(0, 8)}`}
+                                                                                </p>
+                                                                            </div>
+                                                                            <span className="shrink-0 pt-0.5 text-[10px] text-text-secondary">
+                                                                                {new Date(thread.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className={`mt-1 truncate text-xs leading-5 ${unread ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
+                                                                            {thread.lastMessage || 'New message'}
+                                                                        </p>
+                                                                    </div>
+                                                                    {unread ? (
+                                                                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
+                                                                    ) : null}
+                                                                </>
+                                                            )}
+                                                        </RouterLink>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="mt-3 text-xs leading-5 text-text-secondary">
+                                                {effectiveUnreadMessageCount > 0
+                                                    ? 'Open your inbox to reply quickly and keep conversations active.'
+                                                    : 'No unread conversations right now. New replies will appear here.'}
+                                            </p>
+                                        )}
+                                        <RouterLink
+                                            to="/profile/messages"
+                                            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                                        >
+                                            Open inbox
+                                        </RouterLink>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {isAuthenticated && (
                              <div className="relative" onMouseEnter={() => handleMenuEnter('notifications')}>
                                 <button className={`relative p-2 ${desktopActionButtonClass}`}>
                                     <BellIcon />
-                                    {unreadCount > 0 && <span className="absolute top-0 right-0 block h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold ring-2 ring-surface">{unreadCount}</span>}
+                                    {effectiveUnreadNotificationBadgeCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-surface">{effectiveUnreadNotificationBadgeCount > 9 ? '9+' : effectiveUnreadNotificationBadgeCount}</span>}
                                 </button>
                                 {activeMenu === 'notifications' && (
                                     <NotificationMenu
-                                        notifications={notifications}
+                                        notifications={activityNotifications}
                                         onMarkAsRead={handleMarkAsRead}
-                                        unreadCount={unreadCount}
+                                        unreadCount={activityNotificationUnreadCount}
                                         isLoading={isNotificationsLoading}
                                     />
                                 )}
                             </div>
                         )}
 
-                        <div className="relative" onMouseEnter={() => handleMenuEnter('language')}>
-                            <button className={`p-2 ${desktopActionButtonClass}`}>
-                                {isTranslating ? <Spinner size="sm" className="w-8 h-8"/> : <PakistanFlagIcon />}
-                            </button>
-                             {activeMenu === 'language' && <LanguageMenu />}
-                        </div>
-                        
                         <NavLink to="/cart" className={`relative p-2 ${desktopActionButtonClass}`}>
                             <CartIcon />
                             {cartCount > 0 && <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-primary text-white text-xs flex items-center justify-center font-bold">{cartCount}</span>}
@@ -1152,7 +1436,7 @@ const Header: React.FC<{ onOpenOmni?: () => void }> = ({ onOpenOmni }) => {
                                         aria-label="Account menu"
                                     >
                                         <img
-                                            src={resolveProfileAvatar(user.avatar)}
+                                            src={resolveProfileAvatar(user)}
                                             alt={user.name}
                                             className="w-8 h-8 rounded-full object-cover bg-surface-soft"
                                             onError={(e) => { (e.currentTarget as HTMLImageElement).src = profileAvatarFallback; }}

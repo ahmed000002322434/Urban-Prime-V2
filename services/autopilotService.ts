@@ -2,7 +2,13 @@ import { addDoc, collection } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { backendFetch, isBackendConfigured } from './backendClient';
 import { shouldUseFirestoreFallback } from './dataMode';
-import type { AutopilotRun, WorkListing, WorkRequest } from '../types';
+import type {
+  AutopilotRun,
+  ConciergeMilestoneSuggestion,
+  ConciergeScopeDraft,
+  WorkListing,
+  WorkRequest
+} from '../types';
 
 export interface ScopeAutopilotInput {
   title?: string;
@@ -18,7 +24,11 @@ export interface ScopeAutopilotInput {
 
 export interface MatchAutopilotInput {
   requestId?: string;
+  brief?: string;
+  requirements?: string[];
   category?: string;
+  budgetMin?: number;
+  budgetMax?: number;
   skills?: string[];
   mode?: WorkRequest['mode'];
   fulfillmentKind?: WorkRequest['fulfillmentKind'];
@@ -27,8 +37,8 @@ export interface MatchAutopilotInput {
 }
 
 export interface ScopeAutopilotOutput {
-  normalizedRequest: Partial<WorkRequest>;
-  suggestedMilestones: Array<{ title: string; amountPct: number; description: string }>;
+  normalizedRequest: ConciergeScopeDraft;
+  suggestedMilestones: ConciergeMilestoneSuggestion[];
   suggestedTimelineDays: number;
   confidence: number;
 }
@@ -36,8 +46,13 @@ export interface ScopeAutopilotOutput {
 export interface MatchAutopilotOutput {
   matches: Array<{
     listing: WorkListing;
+    providerId?: string;
     score: number;
     reasons: string[];
+    recommendedPath: 'instant' | 'proposal';
+    priceFit: number;
+    trustScore: number;
+    responseSlaHours?: number;
   }>;
 }
 
@@ -51,6 +66,67 @@ const getBackendToken = async () => {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const toNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const toArray = (value: unknown) => (Array.isArray(value) ? value : []);
+const toObject = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {});
+
+const normalizeWorkListing = (listing: any): WorkListing => {
+  const providerSnapshotRaw = toObject(listing?.providerSnapshot || listing?.provider_snapshot);
+  const availability = toObject(listing?.availability);
+  const details = toObject(listing?.details);
+  const packages = toArray(listing?.packages).map((pkg: any, index: number) => ({
+    id: String(pkg?.id || `${listing?.id || 'listing'}-pkg-${index}`),
+    name: String(pkg?.name || pkg?.description || `Package ${index + 1}`),
+    description: pkg?.description || undefined,
+    price: toNumber(pkg?.price, 0),
+    currency: String(pkg?.currency || listing?.currency || 'USD'),
+    deliveryDays: pkg?.deliveryDays != null ? toNumber(pkg.deliveryDays) : pkg?.delivery_days != null ? toNumber(pkg.delivery_days) : undefined,
+    revisions: pkg?.revisions != null ? toNumber(pkg.revisions) : undefined,
+    type: pkg?.type || 'fixed'
+  }));
+
+  const providerSnapshot = providerSnapshotRaw?.id
+    ? {
+        id: String(providerSnapshotRaw.id),
+        name: String(providerSnapshotRaw.name || 'Provider'),
+        avatar: String(providerSnapshotRaw.avatar || '/icons/urbanprime.svg'),
+        rating: toNumber(providerSnapshotRaw.rating, 0),
+        reviews: toArray(providerSnapshotRaw.reviews)
+      }
+    : undefined;
+
+  return {
+    id: String(listing?.id || ''),
+    title: String(listing?.title || 'Untitled service'),
+    description: String(listing?.description || ''),
+    category: String(listing?.category || 'general'),
+    mode: (listing?.mode || 'hybrid') as WorkListing['mode'],
+    fulfillmentKind: (listing?.fulfillmentKind || listing?.fulfillment_kind || 'hybrid') as WorkListing['fulfillmentKind'],
+    sellerId: String(listing?.sellerId || listing?.seller_id || providerSnapshot?.id || ''),
+    sellerPersonaId: listing?.sellerPersonaId || listing?.seller_persona_id || undefined,
+    providerSnapshot,
+    currency: String(listing?.currency || 'USD'),
+    timezone: listing?.timezone || undefined,
+    basePrice: listing?.basePrice != null ? toNumber(listing.basePrice) : listing?.base_price != null ? toNumber(listing.base_price) : undefined,
+    packages,
+    skills: toArray(listing?.skills).map((entry) => String(entry)),
+    media: toArray(listing?.media).map((entry) => String(entry)),
+    availability: availability as WorkListing['availability'],
+    details: details as WorkListing['details'],
+    riskScore: listing?.riskScore != null ? toNumber(listing.riskScore) : listing?.risk_score != null ? toNumber(listing.risk_score) : undefined,
+    status: (listing?.status || 'draft') as WorkListing['status'],
+    visibility: (listing?.visibility || 'public') as WorkListing['visibility'],
+    reviewNotes: listing?.reviewNotes || listing?.review_notes || undefined,
+    submittedAt: listing?.submittedAt || listing?.submitted_at || undefined,
+    reviewedAt: listing?.reviewedAt || listing?.reviewed_at || undefined,
+    publishedAt: listing?.publishedAt || listing?.published_at || undefined,
+    createdAt: listing?.createdAt || listing?.created_at || new Date().toISOString(),
+    updatedAt: listing?.updatedAt || listing?.updated_at || undefined
+  };
+};
 
 const scopeLocally = (input: ScopeAutopilotInput): ScopeAutopilotOutput => {
   const brief = input.brief?.trim() || '';
@@ -120,7 +196,36 @@ const autopilotService = {
         method: 'POST',
         body: JSON.stringify(input)
       }, token);
-      return res?.data as MatchAutopilotOutput;
+      const matches = Array.isArray(res?.data?.matches)
+        ? res.data.matches.map((entry: any) => ({
+            listing: normalizeWorkListing(entry?.listing),
+            providerId: String(
+              entry?.providerId ||
+              entry?.provider_id ||
+              entry?.listing?.providerSnapshot?.id ||
+              entry?.listing?.provider_snapshot?.id ||
+              entry?.listing?.sellerId ||
+              entry?.listing?.seller_id ||
+              ''
+            ) || undefined,
+            score: clamp(toNumber(entry?.score, 0), 0, 100),
+            reasons: toArray(entry?.reasons).map((reason) => String(reason)).filter(Boolean),
+            recommendedPath: entry?.recommendedPath === 'instant' || entry?.recommended_path === 'instant' ? 'instant' : 'proposal',
+            priceFit: clamp(toNumber(entry?.priceFit ?? entry?.price_fit, 0), 0, 100),
+            trustScore: clamp(toNumber(entry?.trustScore ?? entry?.trust_score, 0), 0, 100),
+            responseSlaHours: (() => {
+              const value = toNumber(
+                entry?.responseSlaHours ??
+                entry?.response_sla_hours ??
+                entry?.listing?.details?.responseSlaHours ??
+                entry?.listing?.details?.response_sla_hours,
+                0
+              );
+              return value > 0 ? value : undefined;
+            })()
+          }))
+        : [];
+      return { matches };
     }
 
     if (shouldUseFirestoreFallback()) {

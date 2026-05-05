@@ -3,6 +3,7 @@ import { authAvatarIcons, type AuthAvatarGender } from './uiAnimationAssets';
 type AvatarIdentityInput = {
   name?: unknown;
   email?: unknown;
+  username?: unknown;
   gender?: unknown;
   avatar?: unknown;
 };
@@ -30,6 +31,16 @@ const LEGACY_PLACEHOLDER_AVATARS = new Set(['/icons/urbanprime.svg']);
 
 const toCleanString = (value: unknown) => String(value || '').trim();
 
+const looksLikeLegacyAvatarPath = (avatar: string) => {
+  const normalized = avatar.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.startsWith('/avatar%20icons')
+    || normalized.startsWith('/avatar icons')
+    || normalized.startsWith('/avatar-icons')
+    || normalized.includes('avatar%20icons%20and%20more%20icons')
+    || normalized.includes('avatar icons and more icons');
+};
+
 const hasAnyHint = (haystack: string, hints: string[]) => {
   if (!haystack) return false;
   return hints.some((hint) => haystack.includes(hint));
@@ -51,6 +62,7 @@ const hasCustomAvatar = (avatar: unknown) => {
   if (!value) return false;
   if (isSupportedAvatarIcon(value)) return false;
   if (LEGACY_PLACEHOLDER_AVATARS.has(value)) return false;
+  if (looksLikeLegacyAvatarPath(value)) return false;
   return true;
 };
 
@@ -63,8 +75,9 @@ export const inferAvatarGender = (input: AvatarIdentityInput): AuthAvatarGender 
   if (input.avatar === authAvatarIcons.male) return 'male';
 
   const name = toCleanString(input.name).toLowerCase();
+  const username = toCleanString(input.username).toLowerCase();
   const emailLocal = toCleanString(input.email).split('@')[0].toLowerCase();
-  const fullText = `${name} ${emailLocal}`.trim();
+  const fullText = `${name} ${username} ${emailLocal}`.trim();
 
   if (hasAnyHint(fullText, FEMALE_HINTS)) return 'female';
   if (hasAnyHint(fullText, MALE_HINTS)) return 'male';

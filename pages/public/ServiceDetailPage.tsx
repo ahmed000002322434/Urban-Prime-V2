@@ -10,6 +10,8 @@ import BackButton from '../../components/BackButton';
 import { useAuth } from '../../hooks/useAuth';
 import ServiceWorkflowEmptyState from '../../components/service/ServiceWorkflowEmptyState';
 import { useNotification } from '../../context/NotificationContext';
+import useSeoMeta from '../../hooks/useSeoMeta';
+import { createBaseMeta, createServiceSeoMeta, resolveStaticSeoMeta } from '../../seo/siteMetadata.js';
 
 const MessageIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -282,6 +284,23 @@ const ServiceDetailPage: React.FC = () => {
     ];
   }, [canBookInstantly, canRequestQuote, service]);
 
+  const seoMeta = useMemo(() => {
+    if (service) {
+      return createServiceSeoMeta(service, `/service/${encodeURIComponent(service.id)}`);
+    }
+
+    if (!isLoading) {
+      return createBaseMeta({
+        title: 'Service Unavailable | Urban Prime',
+        description: 'This Urban Prime service is unavailable or no longer published.',
+        path: id ? `/service/${encodeURIComponent(id)}` : '/services/marketplace',
+        noIndex: true
+      });
+    }
+
+    return resolveStaticSeoMeta(id ? `/service/${encodeURIComponent(id)}` : '/services/marketplace');
+  }, [id, isLoading, service]);
+
   const buyerChecklist = useMemo(() => {
     if (!service) return [];
     return [
@@ -294,6 +313,8 @@ const ServiceDetailPage: React.FC = () => {
   }, [faqs.length, policyEntries.length, portfolioItems.length, service]);
 
   const isOwnService = Boolean(user?.id && service?.provider?.id && String(user.id) === String(service.provider.id));
+
+  useSeoMeta(seoMeta);
 
   const handleBookNow = () => {
     if (!service) return;
@@ -541,9 +562,15 @@ const ServiceDetailPage: React.FC = () => {
                           Request quote
                         </button>
                       ) : null}
+                      <Link
+                        to={`/services/concierge?category=${encodeURIComponent(service.category || 'general')}&listingId=${encodeURIComponent(service.id)}&providerId=${encodeURIComponent(providerId || '')}`}
+                        className="inline-flex items-center justify-center rounded-[24px] border border-border bg-background px-4 py-4 text-sm font-semibold text-text-primary transition hover:bg-surface-soft"
+                      >
+                        Start with AI concierge
+                      </Link>
                       <button
                         onClick={handleMessageProvider}
-                        className="inline-flex items-center justify-center gap-2 rounded-[24px] border border-border bg-background px-4 py-4 text-sm font-semibold text-text-primary transition hover:bg-surface-soft sm:col-span-2"
+                        className="inline-flex items-center justify-center gap-2 rounded-[24px] border border-border bg-background px-4 py-4 text-sm font-semibold text-text-primary transition hover:bg-surface-soft"
                       >
                         <MessageIcon />
                         Message provider

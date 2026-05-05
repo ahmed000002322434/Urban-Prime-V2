@@ -541,7 +541,7 @@ const HomePageMobile: React.FC = () => {
 
         <section className="mb-7">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className={sectionTitleClass}>Explore Urban Prime</h2>
+            <h2 className={sectionTitleClass}>Explore the Social Marketplace</h2>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {quickActions.map((action, index) => (

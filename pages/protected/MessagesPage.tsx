@@ -13,6 +13,7 @@ import { collection, limit as firestoreLimit, onSnapshot, orderBy, query } from 
 import { useAuth } from '../../hooks/useAuth';
 import { itemService, userService } from '../../services/itemService';
 import { isBackendConfigured } from '../../services/backendClient';
+import { spotlightRealtime } from '../../services/spotlightRealtime';
 import { decryptChatText, encryptChatText, getChatEncryptionStorageKey } from '../../services/chatCrypto';
 import profileOnboardingService from '../../services/profileOnboardingService';
 import { useNotification } from '../../context/NotificationContext';
@@ -26,7 +27,6 @@ import type {
   Item,
   User
 } from '../../types';
-import Spinner from '../../components/Spinner';
 import ConversationHeader from '../../components/messages/ConversationHeader';
 import CallBanner from '../../components/messages/CallBanner';
 import ComposerDock from '../../components/messages/ComposerDock';
@@ -51,6 +51,19 @@ const MESSAGE_POLL_BACKGROUND_MS = 7600;
 const META_POLL_RINGING_MS = 360;
 const META_POLL_FOREGROUND_MS = 620;
 const META_POLL_BACKGROUND_MS = 1600;
+const GENERIC_THREAD_USER_NAMES = new Set([
+  'user',
+  'new user',
+  'urban prime user',
+  'urban prime member',
+  'seller',
+  'buyer',
+  'codex seller',
+  'codexseller',
+  'newseller',
+  'newbuyer'
+]);
+const GENERIC_THREAD_USER_NAME_PATTERN = /\b(user|seller|buyer|member)\b/i;
 const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   e2eEnabled: false,
   presenceVisible: true,
@@ -82,6 +95,50 @@ const formatDuration = (durationMs: number) => {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const toTitleCaseWords = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+
+const normalizeIdentityLabel = (value: string) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\-\.]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
+const isGenericThreadUserName = (value?: string | null) => {
+  const normalized = normalizeIdentityLabel(String(value || ''));
+  return !normalized || GENERIC_THREAD_USER_NAMES.has(normalized) || GENERIC_THREAD_USER_NAME_PATTERN.test(normalized);
+};
+
+const deriveThreadDisplayName = (user: Partial<User> | null, fallbackId: string) => {
+  const username = String(user?.username || '').trim().replace(/^@+/, '');
+  if (username) {
+    const normalizedUsername = normalizeIdentityLabel(username);
+    if (!GENERIC_THREAD_USER_NAMES.has(normalizedUsername)) {
+      return toTitleCaseWords(username.replace(/[._\-]+/g, ' '));
+    }
+  }
+
+  const emailLocalPart = String(user?.email || '').trim().split('@')[0] || '';
+  if (emailLocalPart) {
+    const normalizedEmailLabel = normalizeIdentityLabel(emailLocalPart);
+    if (!GENERIC_THREAD_USER_NAMES.has(normalizedEmailLabel)) {
+      return toTitleCaseWords(emailLocalPart.replace(/[._\-]+/g, ' '));
+    }
+  }
+
+  const fallbackLabel = String(fallbackId || '').trim();
+  if (fallbackLabel && !isGenericThreadUserName(fallbackLabel)) {
+    return toTitleCaseWords(fallbackLabel.replace(/[._\-]+/g, ' '));
+  }
+
+  return '';
 };
 
 const chatSettingsStorageKey = (threadId: string) => `${CHAT_SETTINGS_STORAGE_PREFIX}${threadId}`;
@@ -239,6 +296,34 @@ const getThreadSortMs = (thread: ThreadWithDetails) => {
 const sortThreadsByActivity = (items: ThreadWithDetails[]) =>
   [...items].sort((left, right) => getThreadSortMs(right) - getThreadSortMs(left));
 
+const buildThreadIdentityState = (resolvedUser: User | null, fallbackUserId: string) => {
+  const normalizedId = String(fallbackUserId || resolvedUser?.id || '').trim();
+  const derivedName = deriveThreadDisplayName(resolvedUser, normalizedId);
+  const displayName = !isGenericThreadUserName(resolvedUser?.name) ? String(resolvedUser?.name || '').trim() : derivedName;
+  const isHydrating = !displayName || displayName === normalizedId;
+
+  const normalizedUser: User = {
+    id: resolvedUser?.id || normalizedId,
+    name: displayName || 'Loading profile',
+    email: String(resolvedUser?.email || '').trim(),
+    avatar: String(resolvedUser?.avatar || '/icons/urbanprime.svg').trim() || '/icons/urbanprime.svg',
+    following: resolvedUser?.following || [],
+    followers: resolvedUser?.followers || [],
+    wishlist: resolvedUser?.wishlist || [],
+    cart: resolvedUser?.cart || [],
+    badges: resolvedUser?.badges || [],
+    memberSince: resolvedUser?.memberSince || new Date().toISOString(),
+    status: resolvedUser?.status || 'active',
+    username: String(resolvedUser?.username || '').trim(),
+    accountLifecycle: resolvedUser?.accountLifecycle
+  } as User;
+
+  return {
+    user: normalizedUser,
+    isHydrating
+  };
+};
+
 const MessagesPage: React.FC = () => {
   const { user } = useAuth();
   const { notificationSettings, updateNotificationSettings } = useNotification();
@@ -283,6 +368,7 @@ const MessagesPage: React.FC = () => {
   const [activeCall, setActiveCall] = useState<ChatCallSession | null>(null);
   const [callBannerState, setCallBannerState] = useState<CallBannerState>('none');
   const [presenceByUserId, setPresenceByUserId] = useState<Record<string, ChatPresenceState>>({});
+  const [hydratingThreadIds, setHydratingThreadIds] = useState<string[]>([]);
   const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -328,7 +414,10 @@ const MessagesPage: React.FC = () => {
     [searchParamsKey, searchParams]
   );
   const messagesBasePath = useMemo(
-    () => (location.pathname.startsWith('/messages') ? '/messages' : '/profile/messages'),
+    () => {
+      if (location.pathname.startsWith('/spotlight/messages')) return '/spotlight/messages';
+      return location.pathname.startsWith('/messages') ? '/messages' : '/profile/messages';
+    },
     [location.pathname]
   );
 
@@ -377,6 +466,7 @@ const MessagesPage: React.FC = () => {
   }, []);
 
   const threadViewModels = useMemo<ThreadViewModel[]>(() => {
+    const hydratingIds = new Set(hydratingThreadIds);
     return threads.map((thread) => {
       const latestMessage = getLatestMessage(thread);
       const bucket = getThreadBucket(thread, latestMessage);
@@ -396,10 +486,15 @@ const MessagesPage: React.FC = () => {
         hasUnread,
         contextLabel: getContextLabel(thread, bucket),
         presence: presenceByUserId[thread.otherUser.id] || null,
-        latestMessage
+        latestMessage,
+        isUserHydrating:
+          hydratingIds.has(thread.id)
+          || !String(thread.otherUser?.name || '').trim()
+          || String(thread.otherUser?.name || '').trim() === 'Loading profile'
+          || isGenericThreadUserName(thread.otherUser?.name)
       };
     });
-  }, [threads, threadReadReceiptsById, presenceByUserId, user?.id]);
+  }, [hydratingThreadIds, threads, threadReadReceiptsById, presenceByUserId, user?.id]);
 
   const activeViewModel = useMemo(
     () => threadViewModels.find((viewModel) => viewModel.thread.id === activeThread?.id) || null,
@@ -536,6 +631,16 @@ const MessagesPage: React.FC = () => {
   }, [commitThreadMessages]);
 
   useEffect(() => {
+    if (!user?.id || !threadId) return undefined;
+    return spotlightRealtime.subscribeThreads(user.id, threadId, (_source, table) => {
+      if (table !== 'chat_messages') return;
+      void refreshThreadMessages(threadId, {
+        preserveLoadedMessages: true
+      });
+    }, { fallbackMs: 12000 });
+  }, [refreshThreadMessages, threadId, user?.id]);
+
+  useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
@@ -624,8 +729,64 @@ const MessagesPage: React.FC = () => {
   }, [messagesBasePath, navigate, pendingPushAction, threadId, user]);
 
   useEffect(() => {
+    if (!user || hydratingThreadIds.length === 0 || threads.length === 0) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const pendingSet = new Set(hydratingThreadIds);
+      const pendingThreads = threads.filter((thread) => pendingSet.has(thread.id));
+      if (pendingThreads.length === 0) return;
+
+      const resolvedProfiles = await Promise.all(
+        pendingThreads.map(async (thread) => {
+          const otherUserId = thread.sellerId === user.id ? thread.buyerId : thread.sellerId;
+          const resolvedUser = await userService.getUserById(otherUserId).catch(() => null);
+          const nextIdentity = buildThreadIdentityState(resolvedUser, otherUserId);
+          return {
+            threadId: thread.id,
+            otherUser: nextIdentity.user,
+            isHydrating: nextIdentity.isHydrating
+          };
+        })
+      );
+
+      if (cancelled) return;
+
+      const resolvedById = new Map(resolvedProfiles.map((entry) => [entry.threadId, entry]));
+      startTransition(() => {
+        setThreads((current) =>
+          current.map((thread) => {
+            const update = resolvedById.get(thread.id);
+            if (!update) return thread;
+            return {
+              ...thread,
+              otherUser: update.otherUser,
+              item: {
+                ...thread.item,
+                owner: {
+                  ...thread.item.owner,
+                  id: thread.item.owner?.id || update.otherUser.id,
+                  name: update.otherUser.name,
+                  avatar: update.otherUser.avatar || thread.item.owner?.avatar || '/icons/urbanprime.svg'
+                }
+              }
+            };
+          })
+        );
+        setHydratingThreadIds(resolvedProfiles.filter((entry) => entry.isHydrating).map((entry) => entry.threadId));
+      });
+    }, 900);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [hydratingThreadIds, threads, user]);
+
+  useEffect(() => {
     if (!user) {
       setThreads([]);
+      setHydratingThreadIds([]);
       return;
     }
 
@@ -635,6 +796,11 @@ const MessagesPage: React.FC = () => {
       const cachedThreads = readCachedJson<ThreadWithDetails[]>(threadCacheKey) || [];
       if (cachedThreads.length > 0 && !cancelled) {
         setThreads(sortThreadsByActivity(cachedThreads));
+        setHydratingThreadIds(
+          cachedThreads
+            .filter((thread) => isGenericThreadUserName(thread.otherUser?.name))
+            .map((thread) => thread.id)
+        );
       }
       setIsLoading(true);
       try {
@@ -651,6 +817,7 @@ const MessagesPage: React.FC = () => {
           return resolved;
         };
 
+        const pendingHydrationIds: string[] = [];
         const threadsWithDetails: ThreadWithDetails[] = await Promise.all(
           userThreads.map(async (thread) => {
             let otherUserId = thread.sellerId === user.id ? thread.buyerId : thread.sellerId;
@@ -682,19 +849,10 @@ const MessagesPage: React.FC = () => {
               thread.itemId ? itemService.getItemById(thread.itemId) : Promise.resolve(null)
             ]);
 
-            const fallbackUser: User = otherUser || {
-              id: otherUserId,
-              name: 'Urban Prime User',
-              email: '',
-              avatar: '/icons/urbanprime.svg',
-              following: [],
-              followers: [],
-              wishlist: [],
-              cart: [],
-              badges: [],
-              memberSince: new Date().toISOString(),
-              status: 'active'
-            };
+            const threadIdentity = buildThreadIdentityState(otherUser, otherUserId);
+            if (threadIdentity.isHydrating) {
+              pendingHydrationIds.push(thread.id);
+            }
 
             const fallbackItem: Item = item || ({
               id: thread.itemId || `direct-${thread.id}`,
@@ -707,8 +865,8 @@ const MessagesPage: React.FC = () => {
               images: [],
               owner: {
                 id: otherUserId,
-                name: fallbackUser.name,
-                avatar: fallbackUser.avatar || '/icons/urbanprime.svg'
+                name: threadIdentity.user.name,
+                avatar: threadIdentity.user.avatar || '/icons/urbanprime.svg'
               },
               avgRating: 0,
               reviews: [],
@@ -716,7 +874,7 @@ const MessagesPage: React.FC = () => {
               createdAt: new Date().toISOString()
             } as Item);
 
-            return { ...thread, otherUser: fallbackUser, item: fallbackItem };
+            return { ...thread, otherUser: threadIdentity.user, item: fallbackItem };
           })
         );
 
@@ -724,6 +882,7 @@ const MessagesPage: React.FC = () => {
         const resolvedThreads = sortThreadsByActivity(threadsWithDetails.length > 0 ? threadsWithDetails : cachedThreads);
         startTransition(() => {
           setThreads(resolvedThreads);
+          setHydratingThreadIds(pendingHydrationIds);
         });
         if (resolvedThreads.length > 0) {
           writeCachedJson(threadCacheKey, resolvedThreads);
@@ -732,6 +891,11 @@ const MessagesPage: React.FC = () => {
         console.error('Failed to fetch threads:', error);
         if (!cancelled && cachedThreads.length > 0) {
           setThreads(sortThreadsByActivity(cachedThreads));
+          setHydratingThreadIds(
+            cachedThreads
+              .filter((thread) => isGenericThreadUserName(thread.otherUser?.name))
+              .map((thread) => thread.id)
+          );
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -1551,6 +1715,8 @@ const MessagesPage: React.FC = () => {
         });
       } else {
         const previousMessages = stripTempMessages(messagesRef.current);
+        const previousDraft = newMessage;
+        const previousImage = imageToSend;
         const optimisticMessage: ChatMessage = {
           id: `temp-${Date.now()}`,
           senderId: user.id,
@@ -1566,6 +1732,15 @@ const MessagesPage: React.FC = () => {
           scrollToBottom: true
         });
 
+        setNewMessage('');
+        setImageToSend(null);
+        setReplyingToMessageId(null);
+        setIsComposerActionsOpen(false);
+        typingStateRef.current = false;
+        if (isBackendConfigured()) {
+          void itemService.setThreadTypingState(activeThread.id, user.id, false);
+        }
+
         try {
           await itemService.sendMessageToThread(
             activeThread.id,
@@ -1576,16 +1751,9 @@ const MessagesPage: React.FC = () => {
           );
         } catch (error) {
           commitThreadMessages(activeThread.id, previousMessages, { cache: true });
+          setNewMessage(previousDraft);
+          setImageToSend(previousImage || null);
           throw error;
-        }
-
-        setNewMessage('');
-        setImageToSend(null);
-        setReplyingToMessageId(null);
-        setIsComposerActionsOpen(false);
-        typingStateRef.current = false;
-        if (isBackendConfigured()) {
-          await itemService.setThreadTypingState(activeThread.id, user.id, false);
         }
         await refreshThreadMessages(activeThread.id, {
           scrollToBottom: true,
@@ -1767,10 +1935,6 @@ const MessagesPage: React.FC = () => {
     );
   }
 
-  if (isLoading && threads.length === 0) {
-    return <Spinner size="lg" className="mt-20" />;
-  }
-
   return (
     <>
       <CreateOfferModal
@@ -1811,6 +1975,7 @@ const MessagesPage: React.FC = () => {
               onSelectThread={handleSelectThread}
               onToggleThreadMenu={(nextThreadId) => setThreadMenuId((current) => current === nextThreadId ? null : nextThreadId)}
               onMoveThread={handleMoveThread}
+              isLoading={isLoading}
             />
           </aside>
 

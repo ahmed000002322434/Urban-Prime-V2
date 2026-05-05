@@ -30,6 +30,7 @@ const BACKEND_OVERRIDE_KEY = 'urbanprime_backend_override_v1';
 const BACKEND_QUEUE_KEY = 'urbanprime_backend_write_queue_v1';
 const BACKEND_QUEUE_EVENT = 'urbanprime:backend-queue';
 const BACKEND_READ_CACHE_KEY = 'urbanprime_backend_read_cache_v1';
+const ACTIVE_FIREBASE_UID_KEY = 'urbanprime_active_firebase_uid_v1';
 const BACKEND_QUEUE_MAX_ITEMS = 500;
 const BACKEND_READ_CACHE_MAX_ITEMS = 250;
 const BACKEND_HEALTH_TIMEOUT_MS = 1800;
@@ -44,6 +45,14 @@ const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RETRYABLE_CANDIDATE_STATUS_CODES = new Set([404, 405, 408, 425, 500, 502, 503, 504]);
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const UNIFIED_PROFILE_CACHE_PREFIX = 'urbanprime_unified_profile_cache_v2:';
+const PRODUCTION_PRIMARY_SITE_BASE = 'https://urbanprime.tech';
+const PRODUCTION_WWW_SITE_BASE = 'https://www.urbanprime.tech';
+const PRODUCTION_VERCEL_SITE_BASE = 'https://urbanprim.vercel.app';
+const RUNTIME_DEFAULT_BACKEND_HOST_MAP = new Map<string, string[]>([
+  ['urbanprime.tech', [PRODUCTION_VERCEL_SITE_BASE]],
+  ['www.urbanprime.tech', [PRODUCTION_VERCEL_SITE_BASE]],
+  ['urbanprim.vercel.app', [PRODUCTION_VERCEL_SITE_BASE]]
+]);
 
 let activeBackendBaseUrl = '';
 let resolveBackendPromise: Promise<string> | null = null;
@@ -57,7 +66,9 @@ const normalizeBaseUrl = (value: string | null | undefined) => {
   if (!value) return '';
   const trimmed = String(value).trim();
   if (!trimmed) return '';
-  return trimmed.replace(/\/$/, '');
+  return trimmed
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
 };
 
 const parseCandidateList = (value: string | null | undefined) => {
@@ -103,6 +114,13 @@ const parseHostMappedCandidates = (value: string | null | undefined) => {
       map.set(host, urls);
     });
   return map;
+};
+
+const getRuntimeDefaultCandidatesForHost = () => {
+  if (!isBrowserRuntime()) return [];
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  if (!hostname) return [];
+  return RUNTIME_DEFAULT_BACKEND_HOST_MAP.get(hostname) || [];
 };
 
 const nowMs = () => Date.now();
@@ -167,11 +185,6 @@ const isSameOriginAllowed = () => {
   return false;
 };
 
-const isUrbanPrimeBetaHost = () => {
-  if (!isBrowserRuntime()) return false;
-  return String(window.location.hostname || '').trim().toLowerCase() === 'urbanprimebeta.vercel.app';
-};
-
 const isLocalBrowserHost = () => {
   if (!isBrowserRuntime()) return false;
   const hostname = String(window.location.hostname || '').trim().toLowerCase();
@@ -186,7 +199,7 @@ const isSameOriginCandidate = (candidate: string) => {
 
 const shouldSkipCandidate = (candidate: string) => {
   if (!candidate) return true;
-  if (isSameOriginCandidate(candidate) && !isSameOriginAllowed() && !isUrbanPrimeBetaHost()) return true;
+  if (isSameOriginCandidate(candidate) && !isSameOriginAllowed()) return true;
   return false;
 };
 
@@ -210,11 +223,47 @@ const setStorageValue = (key: string, value: string) => {
 
 const getBackendApiKey = () => (import.meta.env.VITE_BACKEND_API_KEY as string | undefined)?.trim();
 
+const shouldUseBackendAdapter = (baseUrl: string) => {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === 'urbanprime.tech'
+      || hostname === 'www.urbanprime.tech'
+      || hostname === 'urbanprim.vercel.app'
+      || hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+};
+
+export const buildBackendRequestUrl = (baseUrl: string, path: string) => {
+  const normalizedBase = normalizeBaseUrl(baseUrl);
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (!shouldUseBackendAdapter(normalizedBase) || normalizedPath === '/health' || normalizedPath.startsWith('/api/')) {
+    return `${normalizedBase}${normalizedPath}`;
+  }
+
+  const [pathname, queryString = ''] = normalizedPath.split('?');
+  const url = new URL(`${normalizedBase}/api/backend`);
+  url.searchParams.set('route', pathname.replace(/^\/+/, ''));
+  new URLSearchParams(queryString).forEach((value, key) => {
+    url.searchParams.append(key, value);
+  });
+  return url.toString();
+};
+
 const getPersistedFirebaseUid = () => {
   if (!isBrowserRuntime()) return '';
   if (auth.currentUser?.uid) return String(auth.currentUser.uid).trim();
 
   try {
+    const activeUid = String(window.localStorage.getItem(ACTIVE_FIREBASE_UID_KEY) || '').trim();
+    if (activeUid) return activeUid;
+  } catch {
+    // ignore local session uid failures
+  }
+
+  try {
+    const discoveredUids = new Set<string>();
     for (let index = 0; index < window.localStorage.length; index += 1) {
       const key = String(window.localStorage.key(index) || '');
       if (!key.startsWith('firebase:authUser:')) continue;
@@ -222,7 +271,10 @@ const getPersistedFirebaseUid = () => {
       if (!raw) continue;
       const parsed = JSON.parse(raw);
       const uid = String(parsed?.uid || '').trim();
-      if (uid) return uid;
+      if (uid) discoveredUids.add(uid);
+    }
+    if (discoveredUids.size === 1) {
+      return Array.from(discoveredUids)[0];
     }
   } catch {
     // ignore local auth cache parse failures
@@ -503,7 +555,6 @@ const applyOptimisticMutationToReadCache = (
 const getBackendCandidates = () => {
   const candidates: string[] = [];
   const hostMappedCandidates = parseHostMappedCandidates(import.meta.env.VITE_BACKEND_HOST_MAP as string | undefined);
-  const urbanPrimeBetaBackend = normalizeBaseUrl(import.meta.env.VITE_URBANPRIMEBETA_BACKEND_URL as string | undefined);
   const localBrowserCandidates = isLocalBrowserHost()
     ? [
       'http://127.0.0.1:5050',
@@ -519,6 +570,7 @@ const getBackendCandidates = () => {
   const lastHealthyUrl = getStorageValue(BACKEND_LAST_OK_KEY);
   const envPrimary = parseCandidateList((import.meta.env.VITE_BACKEND_URL as string | undefined) || '');
   const envCandidates = parseCandidateList((import.meta.env.VITE_BACKEND_CANDIDATES as string | undefined) || '');
+  const runtimeDefaultCandidates = getRuntimeDefaultCandidatesForHost();
 
   if (overrideUrl && !shouldSkipCandidate(overrideUrl)) {
     candidates.push(overrideUrl);
@@ -542,6 +594,7 @@ const getBackendCandidates = () => {
   }
   candidates.push(...envPrimary);
   candidates.push(...envCandidates);
+  candidates.push(...runtimeDefaultCandidates);
 
   if (isBrowserRuntime()) {
     const hostname = String(window.location.hostname || '').trim().toLowerCase();
@@ -552,12 +605,6 @@ const getBackendCandidates = () => {
         }
       });
 
-      if (hostname === 'urbanprimebeta.vercel.app' && urbanPrimeBetaBackend) {
-        candidates.push(urbanPrimeBetaBackend);
-      }
-      if (hostname === 'urbanprimebeta.vercel.app') {
-        candidates.push(normalizeBaseUrl(window.location.origin));
-      }
     }
 
     try {
@@ -741,11 +788,12 @@ const executeRequest = async (
   const timer = setTimeout(() => controller.abort(), BACKEND_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(buildBackendRequestUrl(baseUrl, path), {
       ...options,
       method,
       body,
       headers,
+      cache: 'no-store',
       credentials: 'include',
       signal: controller.signal
     });
@@ -1000,6 +1048,16 @@ export const backendFetch = async (
       if (response.status !== 404 && response.status !== 405) {
         preferredResponsePayload = payload;
         preferredStatus = response.status;
+      }
+
+      if (isReadRequest && response.status === 304) {
+        const cachedPayload = backendNoCache ? null : readCachedResponse(path, token);
+        if (cachedPayload !== null) {
+          activeBackendBaseUrl = candidate;
+          setStorageValue(BACKEND_LAST_OK_KEY, candidate);
+          clearCandidateCooldown(candidate);
+          return cachedPayload;
+        }
       }
 
       if (response.ok && isValidBackendPayload(response, payload)) {

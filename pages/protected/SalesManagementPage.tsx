@@ -29,6 +29,7 @@ type CounterOfferState = {
 
 const statusColors: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
+    processing: 'bg-slate-100 text-slate-800',
     confirmed: 'bg-blue-100 text-blue-800',
     shipped: 'bg-indigo-100 text-indigo-800',
     delivered: 'bg-purple-100 text-purple-800',
@@ -66,7 +67,7 @@ const bookingNextStep = (booking: Booking) => {
         if (booking.status === 'returned') return 'Return logged';
     }
 
-    if (booking.status === 'confirmed') return 'Ship the order';
+    if (booking.status === 'processing' || booking.status === 'confirmed') return 'Ship the order';
     if (booking.status === 'shipped') return 'Mark delivered when complete';
     if (booking.status === 'delivered') return 'Buyer can confirm receipt';
     return 'No immediate action';
@@ -321,7 +322,7 @@ const SalesManagementPage: React.FC = () => {
                 if (booking.type === 'rent') {
                     return ['pending', 'confirmed', 'delivered', 'returned'].includes(booking.status);
                 }
-                return ['confirmed', 'shipped'].includes(booking.status);
+                return ['processing', 'confirmed', 'shipped'].includes(booking.status);
             }),
         [bookings]
     );
@@ -360,7 +361,7 @@ const SalesManagementPage: React.FC = () => {
                     </button>
                 ) : null}
 
-                {booking.status === 'confirmed' && (booking.type !== 'rent' || booking.deliveryMode !== 'pickup') ? (
+                {['processing', 'confirmed'].includes(booking.status) && (booking.type !== 'rent' || booking.deliveryMode !== 'pickup') ? (
                     <button
                         type="button"
                         onClick={() => openShippingModal(booking)}

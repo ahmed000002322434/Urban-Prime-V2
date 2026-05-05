@@ -46,14 +46,29 @@ const DEFAULT_MEMBERSHIP_AMOUNT = 4.99;
 const ANALYTICS_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const ANALYTICS_VIEWER_WINDOW_MS = 15 * 60 * 1000;
 const ANALYTICS_IP_WINDOW_MS = 60 * 60 * 1000;
-const ANALYTICS_ALLOWED_EVENT_NAMES = new Set(['impression', 'view_3s', 'view_50', 'view_95', 'complete', 'product_click']);
+const ANALYTICS_ALLOWED_EVENT_NAMES = new Set([
+  'impression',
+  'view_3s',
+  'view_50',
+  'view_95',
+  'complete',
+  'product_click',
+  'dwell',
+  'skip',
+  'mute',
+  'unmute'
+]);
 const ANALYTICS_EVENT_RANK = {
   impression: 0,
   view_3s: 1,
   view_50: 2,
   view_95: 3,
   complete: 4,
-  product_click: 2
+  product_click: 2,
+  dwell: 1,
+  skip: 1,
+  mute: 0,
+  unmute: 0
 };
 const ANALYTICS_VIEWER_LIMITS = {
   impression: 120,
@@ -61,7 +76,11 @@ const ANALYTICS_VIEWER_LIMITS = {
   view_50: 70,
   view_95: 50,
   complete: 35,
-  product_click: 40
+  product_click: 40,
+  dwell: 120,
+  skip: 120,
+  mute: 120,
+  unmute: 120
 };
 const ANALYTICS_IP_LIMITS = {
   impression: 360,
@@ -69,7 +88,11 @@ const ANALYTICS_IP_LIMITS = {
   view_50: 180,
   view_95: 120,
   complete: 80,
-  product_click: 120
+  product_click: 120,
+  dwell: 360,
+  skip: 360,
+  mute: 360,
+  unmute: 360
 };
 const BOT_USER_AGENT_PATTERN = /(bot|crawl|spider|headless|puppeteer|playwright|selenium|phantom|scrapy|curl|wget|python-requests|aiohttp|okhttp|postman|insomnia|go-http-client)/i;
 const MUX_QOE_METRICS = [
@@ -563,22 +586,24 @@ const maybeSingleOrNull = async (query) => {
   }
 };
 
-const insertPixeNotification = async (supabase, userId, { title, body, link = '/pixe', type = 'info' }) => {
+const insertPixeNotification = async (supabase, userId, { title, body, link = '/pixe', type = 'info' }, scheduleEmailForNotifications = null) => {
   const targetUserId = safeString(userId).trim();
   const messageBody = safeString(body).trim();
   if (!targetUserId || !messageBody) return;
 
   try {
-    const { error } = await supabase.from('notifications').insert({
+    const { data, error } = await supabase.from('notifications').insert({
       user_id: targetUserId,
       title: safeString(title || 'Pixe update').trim() || 'Pixe update',
       body: messageBody,
       link: safeString(link || '/pixe').trim() || '/pixe',
       type: safeString(type || 'info').trim().toLowerCase() || 'info',
       created_at: new Date().toISOString()
-    });
+    }).select('*').maybeSingle();
     if (error) {
       console.warn('Insert Pixe notification failed:', error.message || error);
+    } else if (data && typeof scheduleEmailForNotifications === 'function') {
+      scheduleEmailForNotifications(data, null);
     }
   } catch (error) {
     console.warn('Insert Pixe notification failed:', error?.message || error);
@@ -2709,6 +2734,7 @@ export default function registerPixeRoutes({
   resolveAdminContext,
   createRateLimiter,
   writeAuditLog,
+  scheduleEmailForNotifications,
   uploadsRoot = ''
 }) {
   const optionalAuth = createOptionalAuthMiddleware(requireAuth);
@@ -2836,7 +2862,7 @@ export default function registerPixeRoutes({
     }
   });
 
-  app.put('/pixe/uploads/local/:token', express.raw({ type: '*/*', limit: '160mb' }), async (req, res) => {
+  const handleLocalPixeUpload = async (req, res) => {
     try {
       if (!hasLocalUploadFallback) {
         return res.status(503).json({ error: 'Local upload fallback is not configured.' });
@@ -2865,6 +2891,11 @@ export default function registerPixeRoutes({
         return res.status(404).json({ error: 'Video draft not found.' });
       }
 
+      const previousLocalFiles = [
+        deriveLocalUploadPath(uploadsRoot, video.manifest_url),
+        deriveLocalUploadPath(uploadsRoot, video.preview_url)
+      ].filter(Boolean);
+
       const extension = getVideoExtension(session.fileName, session.mimeType);
       const relativePath = ['pixe', 'videos', session.userId, `${sanitizeUploadStem(session.fileName)}-${randomUUID()}.${extension}`].join('/');
       const absolutePath = resolveWithinDirectory(uploadsRoot, relativePath);
@@ -2874,11 +2905,6 @@ export default function registerPixeRoutes({
 
       fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
       await fs.promises.writeFile(absolutePath, payload);
-
-      const previousLocalFiles = [
-        deriveLocalUploadPath(uploadsRoot, video.manifest_url),
-        deriveLocalUploadPath(uploadsRoot, video.preview_url)
-      ].filter(Boolean);
 
       const baseUrl = buildRequestBaseUrl(req);
       const publicUrl = `${baseUrl}/uploads/${relativePath}`;
@@ -2918,7 +2944,10 @@ export default function registerPixeRoutes({
       console.error('Complete local Pixe upload failed:', error);
       return res.status(500).json({ error: error?.message || 'Unable to finalize local upload.' });
     }
-  });
+  };
+
+  app.put('/pixe/uploads/local/:token', express.raw({ type: '*/*', limit: '160mb' }), handleLocalPixeUpload);
+  app.post('/pixe/uploads/local/:token', express.raw({ type: '*/*', limit: '160mb' }), handleLocalPixeUpload);
 
   app.post('/pixe/uploads/video-session', requireAuth, uploadSessionRateLimiter, async (req, res) => {
     try {
@@ -3091,6 +3120,22 @@ export default function registerPixeRoutes({
       }
 
       const updated = await enforceVideoOwnership(supabase, video.id, context.user.id);
+      if (!shouldSchedule && nextStatus === 'published' && updated?.creator_user_id) {
+        const publishedCount = await readRowsOrEmpty(
+          supabase
+            .from('pixe_videos')
+            .select('id')
+            .eq('creator_user_id', updated.creator_user_id)
+            .eq('status', 'published')
+            .limit(2)
+        );
+        await insertPixeNotification(supabase, updated.creator_user_id, {
+          title: publishedCount.length <= 1 ? 'Your first Pixe is live' : 'Your Pixe is live',
+          body: `${updated.title || 'Your clip'} is published and ready to be discovered.`,
+          link: `/pixe/watch/${updated.id}`,
+          type: 'info'
+        }, scheduleEmailForNotifications);
+      }
       const [hydrated] = await hydrateVideos({ supabase, rows: [updated], viewerUserId: context.user.id });
       return res.json({ data: hydrated });
     } catch (error) {
@@ -4090,7 +4135,7 @@ export default function registerPixeRoutes({
           body: `${actorName} commented on ${video.title || 'your clip'}.`,
           link: `/pixe/watch/${video.id}`,
           type: 'info'
-        });
+        }, scheduleEmailForNotifications);
       }
 
       const [comment] = await Promise.all([loadVideoComments(supabase, video.id, { viewerUserId: context.user.id })]);
@@ -4341,7 +4386,15 @@ export default function registerPixeRoutes({
             body: `${actorName} liked ${video.title || 'your clip'}.`,
             link: `/pixe/watch/${video.id}`,
             type: 'info'
-          });
+          }, scheduleEmailForNotifications);
+          if (likes.length === 10) {
+            await insertPixeNotification(supabase, channelOwner.user_id, {
+              title: 'Your Pixe reached 10 likes',
+              body: `${video.title || 'Your clip'} just crossed its first 10-like milestone.`,
+              link: `/pixe/watch/${video.id}`,
+              type: 'info'
+            }, scheduleEmailForNotifications);
+          }
         }
       }
 
@@ -4547,7 +4600,7 @@ export default function registerPixeRoutes({
           body: `${actorName} followed your Pixe channel.`,
           link: `/pixe/channel/${channel.handle}`,
           type: 'info'
-        });
+        }, scheduleEmailForNotifications);
       }
 
       const refreshed = await maybeSingle(
@@ -4556,6 +4609,19 @@ export default function registerPixeRoutes({
           .select('*')
           .eq('id', channel.id)
       );
+      if (subscribed && refreshed?.user_id) {
+        const subscriberCount = Number(refreshed.subscriber_count || 0);
+        if (subscriberCount === 1 || subscriberCount === 10) {
+          await insertPixeNotification(supabase, refreshed.user_id, {
+            title: subscriberCount === 1 ? 'Your first Pixe subscriber joined' : 'Your Pixe channel reached 10 subscribers',
+            body: subscriberCount === 1
+              ? 'Your channel has its first subscriber. This is the start of a real audience.'
+              : 'Ten people are now following your Pixe channel.',
+            link: `/pixe/channel/${channel.handle}`,
+            type: 'info'
+          }, scheduleEmailForNotifications);
+        }
+      }
 
       return res.json({
         data: {

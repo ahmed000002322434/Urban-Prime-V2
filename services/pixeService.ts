@@ -205,6 +205,81 @@ export interface PixeFeedResponse {
   totalCount?: number;
 }
 
+export type PixeMixedFeedScope = 'for-you' | 'following' | 'explore';
+export type PixeMixedFeedItemType = 'video' | 'image' | 'text';
+
+export interface PixeMixedFeedAuthor {
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bannerUrl?: string | null;
+  bio?: string;
+  followerCount?: number;
+  isFollowing?: boolean;
+}
+
+export interface PixeMixedFeedMedia {
+  url: string | null;
+  posterUrl?: string | null;
+  alt?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  playbackId?: string | null;
+  manifestUrl?: string | null;
+}
+
+export interface PixeMixedFeedMetrics {
+  impressions: number;
+  views: number;
+  watchTimeMs: number;
+  completions: number;
+  likes: number;
+  comments: number;
+  saves: number;
+  shares: number;
+  completionRate?: number;
+  averageViewDurationMs?: number;
+}
+
+export interface PixeMixedFeedViewerState {
+  liked: boolean;
+  saved: boolean;
+  reported?: boolean;
+}
+
+export interface PixeMixedFeedItem {
+  id: string;
+  type: PixeMixedFeedItemType;
+  title?: string;
+  text: string;
+  hashtags: string[];
+  createdAt: string;
+  author: PixeMixedFeedAuthor;
+  media?: PixeMixedFeedMedia | null;
+  metrics: PixeMixedFeedMetrics;
+  viewerState: PixeMixedFeedViewerState;
+  sourceVideo?: PixeVideo;
+}
+
+export interface PixeMixedFeedResponse {
+  items: PixeMixedFeedItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  totalCount?: number;
+}
+
+export interface PixeFeedEvent {
+  eventId?: string;
+  itemId: string;
+  itemType: PixeMixedFeedItemType;
+  eventName: 'impression' | 'view_3s' | 'view_50' | 'view_95' | 'complete' | 'dwell' | 'skip' | 'mute' | 'unmute';
+  viewerSessionId?: string;
+  occurredAt?: string;
+  watchTimeMs?: number;
+}
+
 export interface PixeChannelResponse {
   channel: PixeChannel;
   videos: PixeVideo[];
@@ -388,6 +463,109 @@ const toQueryString = (params: Record<string, string | number | undefined | null
   return query.toString();
 };
 
+const pixeScopeToMode = (scope: PixeMixedFeedScope): PixeFeedMode => {
+  if (scope === 'following') return 'following';
+  if (scope === 'explore') return 'explore';
+  return 'for_you';
+};
+
+const normalizeMixedFeedMetrics = (value: any): PixeMixedFeedMetrics => ({
+  impressions: Number(value?.impressions || 0),
+  views: Number(value?.views ?? value?.qualified_views ?? 0),
+  watchTimeMs: Number(value?.watchTimeMs ?? value?.watch_time_ms ?? 0),
+  completions: Number(value?.completions || 0),
+  likes: Number(value?.likes || 0),
+  comments: Number(value?.comments || 0),
+  saves: Number(value?.saves || 0),
+  shares: Number(value?.shares || 0),
+  completionRate: Number(value?.completionRate ?? value?.completion_rate ?? 0),
+  averageViewDurationMs: Number(value?.averageViewDurationMs ?? value?.average_view_duration_ms ?? 0)
+});
+
+const adaptVideoToMixedFeedItem = (video: PixeVideo): PixeMixedFeedItem => ({
+  id: video.id,
+  type: 'video',
+  title: video.title,
+  text: video.caption || video.title || '',
+  hashtags: Array.isArray(video.hashtags) ? video.hashtags : [],
+  createdAt: video.published_at || video.created_at || new Date().toISOString(),
+  author: {
+    id: video.channel?.id || 'pixe',
+    handle: video.channel?.handle || 'pixe',
+    displayName: video.channel?.display_name || 'Pixe Creator',
+    avatarUrl: video.channel?.avatar_url || null,
+    bannerUrl: video.channel?.banner_url || null,
+    bio: video.channel?.bio || '',
+    followerCount: Number(video.channel?.subscriber_count || 0),
+    isFollowing: Boolean(video.channel?.is_subscribed)
+  },
+  media: {
+    url: video.manifest_url || null,
+    posterUrl: video.thumbnail_url || null,
+    alt: video.title || video.caption || 'Pixe video',
+    width: Number(video.width || 0),
+    height: Number(video.height || 0),
+    durationMs: Number(video.duration_ms || 0),
+    playbackId: video.playback_id || null,
+    manifestUrl: video.manifest_url || null
+  },
+  metrics: normalizeMixedFeedMetrics(video.metrics),
+  viewerState: {
+    liked: Boolean(video.viewer_state?.liked),
+    saved: Boolean(video.viewer_state?.saved)
+  },
+  sourceVideo: video
+});
+
+const normalizeMixedFeedItem = (raw: any): PixeMixedFeedItem | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  if (!raw.type && (raw.playback_id || raw.manifest_url || raw.duration_ms !== undefined || raw.viewer_state)) {
+    return adaptVideoToMixedFeedItem(raw as PixeVideo);
+  }
+
+  const type = String(raw.type || '').toLowerCase();
+  if (!['video', 'image', 'text'].includes(type)) return null;
+  const author = raw.author || raw.channel || {};
+  const media = raw.media || {};
+
+  return {
+    id: String(raw.id || raw.video_id || raw.content_id || ''),
+    type: type as PixeMixedFeedItemType,
+    title: raw.title ? String(raw.title) : undefined,
+    text: String(raw.text ?? raw.caption ?? raw.body ?? raw.title ?? ''),
+    hashtags: Array.isArray(raw.hashtags) ? raw.hashtags.map((tag: unknown) => String(tag).replace(/^#/, '')).filter(Boolean) : [],
+    createdAt: String(raw.createdAt || raw.created_at || raw.published_at || new Date().toISOString()),
+    author: {
+      id: String(author.id || author.channel_id || author.user_id || 'pixe'),
+      handle: String(author.handle || author.username || 'pixe'),
+      displayName: String(author.displayName || author.display_name || author.name || 'Pixe Creator'),
+      avatarUrl: author.avatarUrl || author.avatar_url || null,
+      bannerUrl: author.bannerUrl || author.banner_url || null,
+      bio: String(author.bio || ''),
+      followerCount: Number(author.followerCount ?? author.subscriber_count ?? author.followers_count ?? 0),
+      isFollowing: Boolean(author.isFollowing ?? author.is_subscribed ?? author.is_following)
+    },
+    media: type === 'text' ? null : {
+      url: media.url || raw.media_url || raw.manifest_url || null,
+      posterUrl: media.posterUrl || media.poster_url || raw.thumbnail_url || null,
+      alt: media.alt || raw.title || raw.caption || 'Pixe post',
+      width: Number(media.width ?? raw.width ?? 0),
+      height: Number(media.height ?? raw.height ?? 0),
+      durationMs: Number(media.durationMs ?? media.duration_ms ?? raw.duration_ms ?? 0),
+      playbackId: media.playbackId || media.playback_id || raw.playback_id || null,
+      manifestUrl: media.manifestUrl || media.manifest_url || raw.manifest_url || null
+    },
+    metrics: normalizeMixedFeedMetrics(raw.metrics || raw),
+    viewerState: {
+      liked: Boolean(raw.viewerState?.liked ?? raw.viewer_state?.liked),
+      saved: Boolean(raw.viewerState?.saved ?? raw.viewer_state?.saved),
+      reported: Boolean(raw.viewerState?.reported ?? raw.viewer_state?.reported)
+    },
+    sourceVideo: raw.sourceVideo || (type === 'video' && (raw.playback_id || raw.manifest_url) ? raw as PixeVideo : undefined)
+  };
+};
+
 const get = async <T,>(path: string, authRequired = false, options?: { backendNoCache?: boolean }) => {
   const token = authRequired ? await getToken() : await getToken();
   const payload = await backendFetch(
@@ -427,28 +605,38 @@ const mutate = async <T,>(
 
 export const uploadFileToMux = (uploadUrl: string, file: File, onProgress?: (progress: number) => void) =>
   new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', uploadUrl, true);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    const attemptUpload = (method: 'PUT' | 'POST', allowFallback = false) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, uploadUrl, true);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
 
-    xhr.upload.addEventListener('progress', (event) => {
-      if (!event.lengthComputable) return;
-      const progress = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
-      onProgress?.(progress);
-    });
+      xhr.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable) return;
+        const progress = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress?.(progress);
+      });
 
-    xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress?.(100);
-        resolve();
-        return;
-      }
-      reject(new Error(`Upload failed with status ${xhr.status}.`));
-    });
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress?.(100);
+          resolve();
+          return;
+        }
 
-    xhr.addEventListener('error', () => reject(new Error('Upload failed.')));
-    xhr.addEventListener('abort', () => reject(new Error('Upload aborted.')));
-    xhr.send(file);
+        if (allowFallback && xhr.status === 405) {
+          attemptUpload('POST', false);
+          return;
+        }
+
+        reject(new Error(`Upload failed with status ${xhr.status}.`));
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Upload failed.')));
+      xhr.addEventListener('abort', () => reject(new Error('Upload aborted.')));
+      xhr.send(file);
+    };
+
+    attemptUpload('PUT', true);
   });
 
 export const pixeService = {
@@ -467,6 +655,24 @@ export const pixeService = {
       nextCursor: (payload?.next_cursor || null) as string | null,
       hasMore: Boolean(payload?.has_more)
     } as PixeFeedResponse;
+  },
+
+  async getMixedFeed(scope: PixeMixedFeedScope, cursor?: string | null, limit = 12) {
+    const token = await getToken();
+    const mode = pixeScopeToMode(scope);
+    const query = toQueryString({ mode, scope, cursor: cursor || undefined, limit });
+    const payload = await backendFetch(`/pixe/feed?${query}`, { headers: getAuthHeaders(), backendNoCache: true }, token);
+    const rawItems = Array.isArray(payload?.items) ? payload.items : (payload?.data || []);
+    const items = rawItems
+      .map((entry: unknown) => normalizeMixedFeedItem(entry))
+      .filter(Boolean) as PixeMixedFeedItem[];
+
+    return {
+      items,
+      nextCursor: (payload?.nextCursor || payload?.next_cursor || null) as string | null,
+      hasMore: Boolean(payload?.hasMore ?? payload?.has_more),
+      totalCount: payload?.totalCount ?? payload?.total_count
+    } as PixeMixedFeedResponse;
   },
 
   async getVideo(videoId: string) {
@@ -601,6 +807,25 @@ export const pixeService = {
       { events },
       false
     );
+  },
+
+  async sendFeedEvents(events: PixeFeedEvent[]) {
+    const videoEvents = events
+      .filter((event) => event.itemType === 'video')
+      .map((event) => ({
+        event_id: event.eventId,
+        video_id: event.itemId,
+        event_name: event.eventName,
+        viewer_session_id: event.viewerSessionId,
+        occurred_at: event.occurredAt,
+        watch_time_ms: event.watchTimeMs
+      }));
+
+    if (videoEvents.length === 0) {
+      return { accepted_count: 0 };
+    }
+
+    return await pixeService.sendEvents(videoEvents);
   },
 
   async recordWatchProgress(payload: {

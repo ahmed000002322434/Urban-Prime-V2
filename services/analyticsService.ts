@@ -13,7 +13,104 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { auth } from '../firebase';
-import { backendFetch, isBackendConfigured, resolveBackendBaseUrl } from './backendClient';
+import { backendFetch, buildBackendRequestUrl, isBackendConfigured, resolveBackendBaseUrl } from './backendClient';
+
+const ANALYTICS_VISITOR_STORAGE_KEY = 'urbanprime:analytics:visitor-id';
+const ANALYTICS_SESSION_STORAGE_KEY = 'urbanprime:analytics:session-id';
+
+const getStoredBrowserValue = (storage: Storage | null, key: string) => {
+  if (!storage) return '';
+  try {
+    return String(storage.getItem(key) || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+const setStoredBrowserValue = (storage: Storage | null, key: string, value: string) => {
+  if (!storage || !value) return;
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // ignore storage failures
+  }
+};
+
+const createClientTrackingId = (prefix: string) =>
+  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+const getAnalyticsVisitorId = () => {
+  if (typeof window === 'undefined') {
+    return createClientTrackingId('visitor');
+  }
+
+  const existing = getStoredBrowserValue(window.localStorage, ANALYTICS_VISITOR_STORAGE_KEY);
+  if (existing) return existing;
+
+  const next = createClientTrackingId('visitor');
+  setStoredBrowserValue(window.localStorage, ANALYTICS_VISITOR_STORAGE_KEY, next);
+  return next;
+};
+
+const getAnalyticsSessionId = () => {
+  if (typeof window === 'undefined') {
+    return createClientTrackingId('session');
+  }
+
+  const existing = getStoredBrowserValue(window.sessionStorage, ANALYTICS_SESSION_STORAGE_KEY);
+  if (existing) return existing;
+
+  const next = createClientTrackingId('session');
+  setStoredBrowserValue(window.sessionStorage, ANALYTICS_SESSION_STORAGE_KEY, next);
+  return next;
+};
+
+const detectAnalyticsDeviceType = () => {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const userAgent = String(navigator.userAgent || '').toLowerCase();
+  if (/ipad|tablet/.test(userAgent)) return 'tablet';
+  if (/iphone|android|mobile/.test(userAgent)) return 'mobile';
+  if (userAgent) return 'desktop';
+  return 'unknown';
+};
+
+const resolveAnalyticsSource = (preferredSource?: string) => {
+  const source = String(preferredSource || '').trim();
+  if (source) return source;
+
+  if (typeof document !== 'undefined') {
+    const referrer = String(document.referrer || '').trim();
+    if (referrer) {
+      try {
+        return new URL(referrer).hostname || 'referral';
+      } catch {
+        return 'referral';
+      }
+    }
+  }
+
+  return 'direct';
+};
+
+const getCurrentAnalyticsPath = () => {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.pathname || ''}${window.location.search || ''}${window.location.hash || ''}` || '';
+};
+
+const buildAnalyticsIdentity = (preferredId?: string | null, preferredName?: string | null) => {
+  const actorFirebaseUid = String(auth.currentUser?.uid || '').trim();
+  const viewerName = String(preferredName || auth.currentUser?.displayName || auth.currentUser?.email || '').trim() || 'Anonymous';
+
+  return {
+    actorFirebaseUid: actorFirebaseUid || undefined,
+    visitorId: String(preferredId || actorFirebaseUid || getAnalyticsVisitorId()).trim(),
+    viewerName,
+    sessionId: getAnalyticsSessionId(),
+    deviceType: detectAnalyticsDeviceType(),
+    referrer: typeof document === 'undefined' ? '' : String(document.referrer || '').trim(),
+    urlPath: getCurrentAnalyticsPath()
+  };
+};
 
 // Get Firebase Auth token for backend requests
 const getBackendToken = async (): Promise<string | undefined> => {
@@ -290,33 +387,33 @@ const analyticsService = {
   // Track a product view with duration
   recordView: async (
     itemId: string,
-    visitorId: string,
-    visitorName: string | null,
+    visitorId: string | null | undefined,
+    visitorName: string | null | undefined,
     durationMs: number,
     deviceType?: string,
     source?: string
   ): Promise<void> => {
-    if (!itemId || !visitorId) return;
+    if (!itemId) return;
 
     try {
-      // Get item to capture owner information
-      let ownerPersonaId = '';
-      const itemDoc = await getDoc(doc(db, 'items', itemId));
-      if (itemDoc.exists()) {
-        const itemData = itemDoc.data() as any;
-        ownerPersonaId = itemData.ownerPersonaId || '';
-      }
+      const identity = buildAnalyticsIdentity(visitorId, visitorName);
+      const occurredAt = Timestamp.now().toDate().toISOString();
 
       const viewEvent = {
         id: `view_${Date.now()}_${Math.random()}`,
-        visitorId,
-        visitorName: visitorName || 'Anonymous',
+        visitorId: identity.visitorId,
+        visitorName: identity.viewerName,
+        actorFirebaseUid: identity.actorFirebaseUid,
+        actorName: identity.viewerName,
         itemId,
-        ownerPersonaId,
-        viewedAt: Timestamp.now().toDate().toISOString(),
-        durationMs,
-        deviceType: deviceType || 'unknown',
-        source: source || 'direct',
+        viewedAt: occurredAt,
+        occurredAt,
+        durationMs: Math.max(0, Math.round(durationMs || 0)),
+        deviceType: deviceType || identity.deviceType,
+        source: resolveAnalyticsSource(source),
+        referrer: identity.referrer,
+        sessionId: identity.sessionId,
+        urlPath: identity.urlPath,
         timestamp: Timestamp.now()
       };
 
@@ -345,30 +442,34 @@ const analyticsService = {
   // Track cart additions
   recordCartAdd: async (
     itemId: string,
-    userId: string,
-    userName: string | null,
+    userId: string | null | undefined,
+    userName: string | null | undefined,
     quantity: number = 1
   ): Promise<void> => {
-    if (!itemId || !userId) return;
+    if (!itemId) return;
 
     try {
-      // Get item to capture owner information
-      let ownerPersonaId = '';
-      const itemDoc = await getDoc(doc(db, 'items', itemId));
-      if (itemDoc.exists()) {
-        const itemData = itemDoc.data() as any;
-        ownerPersonaId = itemData.ownerPersonaId || '';
-      }
+      const identity = buildAnalyticsIdentity(userId, userName);
+      const occurredAt = Timestamp.now().toDate().toISOString();
 
       const cartEvent = {
         id: `cart_${Date.now()}_${Math.random()}`,
-        userId,
-        userName: userName || 'Anonymous',
+        userId: identity.actorFirebaseUid || identity.visitorId,
+        userName: identity.viewerName,
+        visitorId: identity.visitorId,
+        visitorName: identity.viewerName,
+        actorFirebaseUid: identity.actorFirebaseUid,
+        actorName: identity.viewerName,
         itemId,
-        ownerPersonaId,
-        addedAt: Timestamp.now().toDate().toISOString(),
-        quantity,
+        addedAt: occurredAt,
+        occurredAt,
+        quantity: Math.max(1, Math.round(quantity || 1)),
         completedCheckout: false,
+        deviceType: identity.deviceType,
+        source: resolveAnalyticsSource(),
+        referrer: identity.referrer,
+        sessionId: identity.sessionId,
+        urlPath: identity.urlPath,
         timestamp: Timestamp.now()
       };
 
@@ -1082,7 +1183,7 @@ const analyticsService = {
         };
         if (token) headers.Authorization = `Bearer ${token}`;
 
-        const response = await fetch(`${baseUrl}/analytics/stream/${encodeURIComponent(sellerId)}`, {
+    const response = await fetch(buildBackendRequestUrl(baseUrl, `/analytics/stream/${encodeURIComponent(sellerId)}`), {
           method: 'GET',
           headers,
           signal: controller.signal

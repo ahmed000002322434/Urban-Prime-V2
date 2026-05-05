@@ -1,7 +1,22 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const AI_UNAVAILABLE_MESSAGE = 'AI unavailable: configure VITE_GEMINI_API_KEY.';
+
+const getApiKey = () => {
+  const viteKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  if (viteKey) return viteKey;
+  if (typeof process !== 'undefined') {
+    return (process.env as any)?.API_KEY as string | undefined;
+  }
+  return undefined;
+};
+
+const getAiClient = () => {
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 export interface VisualAuditResult {
   itemName: string;
@@ -12,6 +27,10 @@ export interface VisualAuditResult {
 
 export const visionService = {
   analyzeProductImage: async (base64Data: string, mimeType: string): Promise<VisualAuditResult> => {
+    const ai = getAiClient();
+    if (!ai) {
+      throw new Error(AI_UNAVAILABLE_MESSAGE);
+    }
     const prompt = "Analyze this specific image. Return JSON for: Item Name, Category, and 3 specific visual flaws (scratches/wear/imperfections). If the image is not a clearly identifiable product, return ERROR.";
 
     const response = await ai.models.generateContent({

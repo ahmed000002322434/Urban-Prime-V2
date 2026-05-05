@@ -21,6 +21,10 @@ export const useAuth = () => {
         console.warn('AuthProvider not ready: login ignored.');
         return null as any;
       },
+      requestPhoneSignupPin: async () => ({}),
+      confirmPhoneSignupPin: async () => null as any,
+      requestPhoneLoginPin: async () => ({}),
+      confirmPhoneLoginPin: async () => null as any,
       register: async () => {
         console.warn('AuthProvider not ready: register ignored.');
         return null as any;
@@ -29,6 +33,10 @@ export const useAuth = () => {
         console.warn('AuthProvider not ready: Google sign-in ignored.');
         return null as any;
       },
+      signInWithSocialProvider: async () => {
+        console.warn('AuthProvider not ready: social sign-in ignored.');
+      },
+      completeSupabaseOAuthSignIn: async () => null,
       logout: () => {},
       switchUser: async () => {},
       completeOnboarding: async () => {},

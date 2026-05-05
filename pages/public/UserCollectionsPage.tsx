@@ -5,6 +5,7 @@ import type { ItemCollection, User } from '../../types';
 import Spinner from '../../components/Spinner';
 import LottieAnimation from '../../components/LottieAnimation';
 import { uiLottieAnimations } from '../../utils/uiAnimationAssets';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 const CollectionCard: React.FC<{ collection: ItemCollection }> = ({ collection }) => (
     <div className="bg-white dark:bg-dark-surface rounded-lg shadow-soft border border-gray-200 dark:border-gray-700 p-6">
@@ -60,7 +61,7 @@ const UserCollectionsPage: React.FC = () => {
                     <h1 className="text-4xl font-extrabold text-gray-900 dark:text-dark-text font-display">
                         {user.name}'s Collections
                     </h1>
-                    <Link to={`/user/${user.id}`} className="text-lg text-gray-600 dark:text-gray-400 hover:underline">
+                    <Link to={buildPublicProfilePath(user)} className="text-lg text-gray-600 dark:text-gray-400 hover:underline">
                         &larr; Back to Profile
                     </Link>
                 </header>

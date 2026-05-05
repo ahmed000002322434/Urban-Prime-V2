@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { storefrontService } from '../../services/storefrontService';
 import type { Store, User } from '../../types';
 import Spinner from '../../components/Spinner';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 type EnrichedStore = Store & { owner: User };
 type StoreSort = 'featured' | 'recent' | 'followers' | 'products' | 'name';
@@ -426,7 +427,7 @@ const StoresDirectoryPage: React.FC = () => {
                                                         Visit
                                                     </Link>
                                                     <Link
-                                                        to={`/user/${store.owner?.id}`}
+                                                        to={buildPublicProfilePath(store.owner)}
                                                         className="inline-flex items-center justify-center rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-soft"
                                                     >
                                                         Owner

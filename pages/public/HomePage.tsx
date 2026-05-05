@@ -227,12 +227,12 @@ const HeroSection: React.FC = () => {
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
                             </span>
-                            <span className="uppercase tracking-[0.25em] text-[10px] font-bold">The Future of Commerce</span>
+                            <span className="uppercase tracking-[0.25em] text-[10px] font-bold">Social Marketplace</span>
                         </div>
                     </motion.div>
 
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.1 }} className="mb-6 relative">
-                         <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-9xl font-serif font-black tracking-tighter leading-[0.9] drop-shadow-2xl">
+                         <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-9xl font-serif font-black tracking-tighter leading-[0.9] [text-shadow:0_14px_40px_rgba(15,23,42,0.16)] dark:[text-shadow:0_18px_50px_rgba(0,0,0,0.48)]">
                             <span className={`block bg-clip-text text-transparent bg-gradient-to-b transition-all duration-700
                                 ${theme === 'sandstone' 
                                     ? 'from-[#3E2723] via-[#5D4037] to-[#8D6E63]' 
@@ -240,14 +240,14 @@ const HeroSection: React.FC = () => {
                                         ? 'from-[#023E8A] via-[#0077B6] to-[#00B4D8]'
                                         : theme === 'hydra'
                                             ? 'from-[#E0F7FA] via-[#B2EBF2] to-[#4DD0E1]'
-                                            : 'from-gray-900 via-gray-800 to-gray-500 dark:from-white dark:via-white dark:to-white/60'
+                                            : 'from-[#111827] via-[#1f2937] to-[#5b6473] dark:from-white dark:via-[#f8fafc] dark:to-white/78'
                                 }`}>
                                 URBAN
                             </span>
                             <span className={`block text-transparent bg-clip-text bg-gradient-to-r 
                                 ${theme === 'hydra' 
                                     ? 'from-[#00E5FF] via-[#00BCD4] to-[#006064]' 
-                                    : 'from-cyan-500 via-blue-500 to-purple-600 dark:from-cyan-300 dark:via-white dark:to-purple-400'
+                                    : 'from-[#56c8f7] via-[#2f6df6] to-[#b685ff] dark:from-cyan-300 dark:via-white dark:to-purple-300'
                                 }`}>
                                 PRIME
                             </span>
@@ -258,13 +258,13 @@ const HeroSection: React.FC = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.8, delay: 0.3 }}
-                        className={`max-w-lg mx-auto text-sm sm:text-base md:text-lg font-medium leading-relaxed mb-10 drop-shadow-md tracking-wide transition-colors duration-700
+                        className={`max-w-lg mx-auto text-sm sm:text-base md:text-lg font-semibold leading-relaxed mb-10 tracking-wide transition-colors duration-700 [text-shadow:0_10px_26px_rgba(15,23,42,0.12)] dark:[text-shadow:0_12px_28px_rgba(0,0,0,0.45)]
                             ${theme === 'sandstone' ? 'text-[#4E342E]' 
                             : theme === 'icy' ? 'text-[#022B3A]' 
                             : theme === 'hydra' ? 'text-[#B2EBF2]'
-                            : 'text-gray-600 dark:text-gray-300/90'}`}
+                            : 'text-[#4b5563] dark:text-gray-200'}`}
                     >
-                        Experience possession without ownership. <br className="hidden md:block" /> Curated luxury rentals and exclusive sales.
+                        Shop products, discover creators, watch Pixe, and explore stores, services, rentals, and auctions. <br className="hidden md:block" /> One social marketplace, built for public discovery.
                     </motion.p>
                     
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5 }} className="flex flex-col sm:flex-row gap-5 items-center">
@@ -546,11 +546,11 @@ const CollectionDiscovery: React.FC = () => {
                             <span className="inline-flex rounded-full border border-current/20 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em]">
                                 Smart Explore Deck
                             </span>
-                            <h2 className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold leading-[0.95] tracking-tight">
+                            <h2 className="max-w-[10ch] text-4xl sm:text-5xl md:text-6xl font-serif font-bold leading-[0.95] tracking-tight [text-shadow:0_12px_26px_rgba(255,255,255,0.25)]">
                                 Urban Prime
                             </h2>
-                            <p className={`max-w-md text-base md:text-xl ${textSecondary}`}>
-                                Everything you need. One platform. Hover the deck and scroll to fluidly rotate Buyables, Rentables, Pixe, and Stores.
+                            <p className={`max-w-md text-base font-medium md:text-xl ${textSecondary}`}>
+                                Your products, creators, clips, and stores in one social marketplace. Hover the deck and scroll to rotate Buyables, Rentables, Pixe, and Stores.
                             </p>
                             <div className={`inline-flex rounded-xl border border-current/15 px-4 py-2 text-xs uppercase tracking-[0.14em] ${prefersNoirTuning ? 'bg-white/38 dark:bg-black/32' : 'bg-white/30 backdrop-blur-xl dark:bg-black/25'} ${hintTone}`}>
                                 {supportsWheelLock && !prefersNoirTuning ? 'Hover Deck: Page Scroll Locks For Immersive Card Control' : 'Touch Device: Tap Dots Or Cards To Navigate'}

@@ -7,7 +7,8 @@ import morgan from 'morgan';
 import { createClient } from '@supabase/supabase-js';
 import admin from 'firebase-admin';
 import fs from 'fs';
-import { createHash, randomUUID, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, pbkdf2Sync, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'crypto';
+import nodemailer from 'nodemailer';
 import createAnalyticsEngine from './analyticsEngine.js';
 import registerSpotlightRoutes from './spotlightEngine.js';
 import registerPixeRoutes from './pixeRoutes.js';
@@ -122,7 +123,45 @@ const {
   CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_UPLOAD_PRESET,
   CLOUDINARY_FOLDER,
-  CLOUDINARY_DELIVERY_BASE_URL
+  CLOUDINARY_DELIVERY_BASE_URL,
+  PASSWORD_RESET_PIN_TTL_MS,
+  PASSWORD_RESET_EXPOSE_PIN,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_FROM,
+  SMTP_SERVICE,
+  SUPPORT_EMAIL,
+  EMAIL_NOTIFICATIONS_ENABLED,
+  EMAIL_AI_ENABLED,
+  EMAIL_AI_MODEL,
+  EMAIL_OVERRIDE_TO,
+  EMAIL_UNREAD_MESSAGE_DEDUPE_MS,
+  EMAIL_EVENT_DEDUPE_MS,
+  EMAIL_REENGAGEMENT_AFTER_HOURS,
+  GEMINI_API_KEY,
+  GOOGLE_AI_API_KEY,
+  WHATSAPP_ENABLED,
+  WHATSAPP_GRAPH_VERSION,
+  WHATSAPP_PHONE_NUMBER_ID,
+  WHATSAPP_BUSINESS_ACCOUNT_ID,
+  WHATSAPP_ACCESS_TOKEN,
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+  WHATSAPP_APP_SECRET,
+  WHATSAPP_DEFAULT_LOCALE,
+  WHATSAPP_DRY_RUN,
+  WHATSAPP_TEMPLATE_AUTH_CODE,
+  WHATSAPP_TEMPLATE_LOGIN_ALERT,
+  WHATSAPP_TEMPLATE_OFFER_UPDATE,
+  WHATSAPP_TEMPLATE_DISCOUNT_ALERT,
+  WHATSAPP_TEMPLATE_SELLER_UPDATE,
+  WHATSAPP_TEMPLATE_FEED_ALERT,
+  WHATSAPP_TEMPLATE_VERIFICATION_UPDATE,
+  WHATSAPP_TEMPLATE_RENTAL_REMINDER,
+  PHONE_AUTH_PIN_TTL_MS,
+  PHONE_AUTH_EXPOSE_PIN
 } = process.env;
 
 const parsePort = (value, fallback = 5050) => {
@@ -134,6 +173,8 @@ const START_PORT = parsePort(ENV_PORT, 5050);
 const START_HOST = String(ENV_HOST || '0.0.0.0').trim() || '0.0.0.0';
 const PORT_RETRY_LIMIT = parsePort(process.env.PORT_RETRY_LIMIT ?? '20', 20);
 const IS_PRODUCTION = NODE_ENV === 'production';
+const MUX_VIDEO_CONFIGURED = Boolean(String(process.env.MUX_TOKEN_ID || '').trim() && String(process.env.MUX_TOKEN_SECRET || '').trim());
+const MUX_WEBHOOK_CONFIGURED = Boolean(String(process.env.MUX_WEBHOOK_SECRET || '').trim());
 const AUTH_ENFORCED_IN_PRODUCTION = toBool(ENFORCE_AUTH_IN_PROD, true);
 const RATE_LIMITING_ENABLED = toBool(RATE_LIMIT_ENABLED, true);
 const GLOBAL_RATE_LIMIT_WINDOW_MS = parsePort(RATE_LIMIT_WINDOW_MS ?? '60000', 60000);
@@ -152,6 +193,38 @@ const CLOUDINARY_PRESET = String(CLOUDINARY_UPLOAD_PRESET || '').trim();
 const CLOUDINARY_FOLDER_PREFIX = String(CLOUDINARY_FOLDER || 'urbanprime').trim().replace(/^\/+|\/+$/g, '');
 const CLOUDINARY_PUBLIC_BASE = String(CLOUDINARY_DELIVERY_BASE_URL || '').trim().replace(/\/$/, '');
 const CLOUDINARY_ENABLED = Boolean(CLOUDINARY_CLOUD && CLOUDINARY_PRESET);
+const PASSWORD_RESET_COLLECTION = 'auth_password_reset_pins';
+const PASSWORD_RESET_TTL_MS = parsePort(PASSWORD_RESET_PIN_TTL_MS ?? '600000', 600000);
+const PASSWORD_RESET_DEBUG_PIN_ENABLED = toBool(PASSWORD_RESET_EXPOSE_PIN, false);
+const PHONE_AUTH_PIN_COLLECTION = 'auth_phone_pins';
+const PHONE_AUTH_ACCOUNT_COLLECTION = 'auth_phone_accounts';
+const PHONE_AUTH_TTL_MS = parsePort(PHONE_AUTH_PIN_TTL_MS ?? '600000', 600000);
+const PHONE_AUTH_DEBUG_PIN_ENABLED = toBool(PHONE_AUTH_EXPOSE_PIN, false);
+const PHONE_PASSWORD_ITERATIONS = 120000;
+const WHATSAPP_ACTIVE = toBool(WHATSAPP_ENABLED, false);
+const WHATSAPP_DRY_RUN_ACTIVE = toBool(WHATSAPP_DRY_RUN, false);
+const WHATSAPP_GRAPH_API_VERSION = String(WHATSAPP_GRAPH_VERSION || 'v24.0').trim().replace(/^\/+|\/+$/g, '') || 'v24.0';
+const WHATSAPP_LOCALE = String(WHATSAPP_DEFAULT_LOCALE || 'en_US').trim() || 'en_US';
+const WHATSAPP_TEMPLATES = {
+  authCode: String(WHATSAPP_TEMPLATE_AUTH_CODE || 'urbanprime_auth_code').trim(),
+  loginAlert: String(WHATSAPP_TEMPLATE_LOGIN_ALERT || 'urbanprime_login_alert').trim(),
+  offerUpdate: String(WHATSAPP_TEMPLATE_OFFER_UPDATE || 'urbanprime_offer_update').trim(),
+  discountAlert: String(WHATSAPP_TEMPLATE_DISCOUNT_ALERT || 'urbanprime_discount_alert').trim(),
+  sellerUpdate: String(WHATSAPP_TEMPLATE_SELLER_UPDATE || 'urbanprime_seller_update').trim(),
+  feedAlert: String(WHATSAPP_TEMPLATE_FEED_ALERT || 'urbanprime_feed_alert').trim(),
+  verificationUpdate: String(WHATSAPP_TEMPLATE_VERIFICATION_UPDATE || 'urbanprime_verification_update').trim(),
+  rentalReminder: String(WHATSAPP_TEMPLATE_RENTAL_REMINDER || 'urbanprime_rental_reminder').trim()
+};
+const SMTP_PORT_NUMBER = parsePort(SMTP_PORT ?? '587', 587);
+const SMTP_SECURE_ENABLED = toBool(SMTP_SECURE, SMTP_PORT_NUMBER === 465);
+const EMAIL_NOTIFICATIONS_ACTIVE = toBool(EMAIL_NOTIFICATIONS_ENABLED, true);
+const EMAIL_AI_ACTIVE = toBool(EMAIL_AI_ENABLED, false);
+const EMAIL_OVERRIDE_RECIPIENT = String(EMAIL_OVERRIDE_TO || '').trim().toLowerCase();
+const EMAIL_AI_KEY = String(GEMINI_API_KEY || GOOGLE_AI_API_KEY || process.env.VITE_GEMINI_API_KEY || '').trim();
+const EMAIL_AI_MODEL_NAME = String(EMAIL_AI_MODEL || 'gemini-1.5-flash').trim();
+const EMAIL_UNREAD_MESSAGE_DEDUPE_WINDOW_MS = parsePort(EMAIL_UNREAD_MESSAGE_DEDUPE_MS ?? '1800000', 1800000);
+const EMAIL_EVENT_DEDUPE_WINDOW_MS = parsePort(EMAIL_EVENT_DEDUPE_MS ?? '21600000', 21600000);
+const EMAIL_REENGAGEMENT_AFTER_MS = parsePort(String(Number(EMAIL_REENGAGEMENT_AFTER_HOURS || 48) * 60 * 60 * 1000), 172800000);
 
 const PROFILE_ONBOARDING_V2_ENABLED = toBool(PROFILE_ONBOARDING_V2, true);
 const CHAT_RELIABILITY_V2_ENABLED = toBool(CHAT_RELIABILITY_V2, true);
@@ -199,6 +272,12 @@ if (IS_PRODUCTION && AUTH_ENFORCED_IN_PRODUCTION && !BACKEND_API_KEY && !firebas
   process.exit(1);
 }
 
+if (MUX_VIDEO_CONFIGURED && !MUX_WEBHOOK_CONFIGURED) {
+  console.warn(
+    'Mux video upload is configured without MUX_WEBHOOK_SECRET. Signed webhook processing will fail until this variable is set in every deploy target.'
+  );
+}
+
 const ALLOWED_TABLES = new Set([
   'users', 'user_profiles', 'stores', 'store_settings', 'categories',
   'items', 'item_images', 'item_variants', 'item_collections', 'item_collection_items',
@@ -207,6 +286,7 @@ const ALLOWED_TABLES = new Set([
   'rental_bookings', 'rental_blocks', 'auction_bids', 'auction_sessions', 'commerce_disputes',
   'reviews', 'wishlists', 'wishlist_items', 'user_follows', 'store_follows',
   'chat_threads', 'chat_messages', 'custom_offers', 'notifications',
+  'message_consents', 'message_outbox', 'message_deliveries', 'message_preferences',
   'payout_methods', 'payouts', 'suppliers', 'supplier_products', 'supplier_orders',
   'stores_v2', 'store_layouts', 'store_analytics', 'affiliate_programs',
   'affiliate_profiles', 'affiliate_users', 'affiliate_links', 'affiliate_coupons', 'affiliate_clicks',
@@ -239,7 +319,8 @@ app.set('trust proxy', TRUST_PROXY_VALUE);
 app.disable('x-powered-by');
 
 const getRequestOrigin = (req) => {
-  const host = req.get('host');
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const host = forwardedHost || req.get('host');
   if (!host) return '';
   const protoHeader = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
   const protocol = protoHeader || req.protocol || 'http';
@@ -281,7 +362,12 @@ app.use((req, res, next) => {
 app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), createStripeWebhookHandler(supabase));
 app.post('/webhooks/mux', express.raw({ type: 'application/json' }), createMuxWebhookHandler(supabase));
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({
+  limit: '25mb',
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 app.post('/webhooks/paypal', createPaypalWebhookHandler(supabase));
 app.use(morgan('dev'));
@@ -338,6 +424,46 @@ const resolvePublicBaseUrl = (req) => APP_PUBLIC_URL_NORMALIZED || getRequestOri
 
 const buildAbsoluteUrl = (req, pathname) => {
   const baseUrl = resolvePublicBaseUrl(req);
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return baseUrl ? `${baseUrl}${normalizedPath}` : normalizedPath;
+};
+
+const normalizeHttpOrigin = (value) => {
+  try {
+    const parsed = new URL(String(value || '').trim());
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return `${parsed.protocol}//${parsed.host}`.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+};
+
+const isTrustedEmailActionOrigin = (origin, req) => {
+  if (!origin) return false;
+  try {
+    const hostname = new URL(origin).hostname.toLowerCase();
+    if (['localhost', '127.0.0.1', '::1'].includes(hostname)) return true;
+    if (['urbanprime.tech', 'www.urbanprime.tech', 'urbanprim.vercel.app', 'urbanprimebeta.vercel.app'].includes(hostname)) return true;
+
+    const configuredOrigin = normalizeHttpOrigin(APP_PUBLIC_URL_NORMALIZED);
+    if (configuredOrigin && origin === configuredOrigin) return true;
+
+    const requestOrigin = normalizeHttpOrigin(getRequestOrigin(req));
+    if (requestOrigin && origin === requestOrigin) return true;
+  } catch {
+    return false;
+  }
+  return false;
+};
+
+const resolveEmailActionBaseUrl = (req) => {
+  const requestedOrigin = normalizeHttpOrigin(req.body?.appUrl);
+  if (isTrustedEmailActionOrigin(requestedOrigin, req)) return requestedOrigin;
+  return resolvePublicBaseUrl(req);
+};
+
+const buildEmailActionUrl = (req, pathname) => {
+  const baseUrl = resolveEmailActionBaseUrl(req);
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
   return baseUrl ? `${baseUrl}${normalizedPath}` : normalizedPath;
 };
@@ -518,6 +644,16 @@ const normalizeHandle = (value) => {
     .slice(0, 40) || null;
 };
 
+const normalizePublicUsername = (value) => {
+  if (!hasText(value)) return null;
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9._-]/g, '')
+    .slice(0, 32) || null;
+};
+
 const normalizeBrandText = (value) => String(value || '')
   .trim()
   .toLowerCase()
@@ -650,6 +786,740 @@ const normalizeWorkListingStatus = (value, fallback = 'draft') => {
   return fallback;
 };
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const isEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+const normalizePin = (value) => String(value || '').replace(/\D/g, '').slice(0, 6);
+
+const passwordResetSecret = () =>
+  String(BACKEND_API_KEY || FIREBASE_PRIVATE_KEY || SUPABASE_SERVICE_ROLE_KEY || 'urban-prime-password-reset-dev-secret');
+
+const hashPasswordResetValue = (value) =>
+  createHash('sha256').update(String(value)).digest('hex');
+
+const hashPasswordResetPin = ({ email, uid, pin, salt }) =>
+  hashPasswordResetValue(`${passwordResetSecret()}:${email}:${uid}:${pin}:${salt}`);
+
+const passwordResetDocId = (email) => hashPasswordResetValue(`password-reset:${normalizeEmail(email)}`);
+const phonePinDocId = ({ phone, purpose }) => hashPasswordResetValue(`phone-pin:${purpose}:${normalizePhone(phone)}`);
+const phoneAccountDocId = (phone) => hashPasswordResetValue(`phone-account:${normalizePhone(phone)}`);
+
+const safeEqualHash = (leftValue, rightValue) => {
+  const left = Buffer.from(String(leftValue || ''), 'hex');
+  const right = Buffer.from(String(rightValue || ''), 'hex');
+  if (left.length === 0 || left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+};
+
+const hashPhonePin = ({ phone, purpose, pin, salt }) =>
+  hashPasswordResetValue(`${passwordResetSecret()}:phone-pin:${purpose}:${normalizePhone(phone)}:${pin}:${salt}`);
+
+const createPasswordHash = ({ phone, password, salt = randomBytes(16).toString('hex') }) => ({
+  salt,
+  iterations: PHONE_PASSWORD_ITERATIONS,
+  hash: pbkdf2Sync(
+    `${passwordResetSecret()}:phone-password:${normalizePhone(phone)}:${password}`,
+    salt,
+    PHONE_PASSWORD_ITERATIONS,
+    32,
+    'sha256'
+  ).toString('hex')
+});
+
+const verifyPasswordHash = ({ phone, password, account }) => {
+  const data = normalizeJsonObject(account);
+  const salt = String(data.password_salt || '');
+  const expectedHash = String(data.password_hash || '');
+  const iterations = Number(data.password_iterations || PHONE_PASSWORD_ITERATIONS);
+  if (!salt || !expectedHash || !Number.isFinite(iterations) || iterations < 1) return false;
+  const actualHash = pbkdf2Sync(
+    `${passwordResetSecret()}:phone-password:${normalizePhone(phone)}:${password}`,
+    salt,
+    iterations,
+    32,
+    'sha256'
+  ).toString('hex');
+  return safeEqualHash(actualHash, expectedHash);
+};
+
+const isPasswordResetEmailConfigured = () =>
+  Boolean((SMTP_SERVICE || SMTP_HOST) && SMTP_USER && SMTP_PASS && (SMTP_FROM || SMTP_USER));
+
+let passwordResetMailer = null;
+const getPasswordResetMailer = () => {
+  if (!isPasswordResetEmailConfigured()) return null;
+  if (passwordResetMailer) return passwordResetMailer;
+
+  const transportOptions = SMTP_SERVICE
+    ? {
+        service: SMTP_SERVICE,
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+      }
+    : {
+        host: SMTP_HOST,
+        port: SMTP_PORT_NUMBER,
+        secure: SMTP_SECURE_ENABLED,
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+      };
+
+  passwordResetMailer = nodemailer.createTransport(transportOptions);
+  return passwordResetMailer;
+};
+
+const escapeEmailHtml = (value) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const resolveSupportEmail = () => String(SUPPORT_EMAIL || SMTP_USER || 'support@urbanprime.com').trim();
+const resolveMailFromAddress = () => {
+  const fallbackAddress = String(SMTP_USER || '').trim();
+  const configuredFrom = String(SMTP_FROM || '').trim();
+  if (!configuredFrom) {
+    return fallbackAddress ? `"Urban Prime" <${fallbackAddress}>` : 'Urban Prime';
+  }
+  if (configuredFrom.includes('<') && configuredFrom.includes('>')) {
+    return configuredFrom;
+  }
+  if (configuredFrom.includes('@')) {
+    return `"Urban Prime" <${configuredFrom}>`;
+  }
+  return fallbackAddress ? `"Urban Prime" <${fallbackAddress}>` : '"Urban Prime"';
+};
+
+const buildEmailButton = ({ href, label, variant = 'primary' }) => {
+  const safeHref = escapeEmailHtml(href);
+  const safeLabel = escapeEmailHtml(label);
+  const styles = {
+    primary: 'background:linear-gradient(135deg,#0f766e,#14b8a6);color:#ffffff;border:1px solid #0f766e;box-shadow:0 12px 24px rgba(20,184,166,.28);',
+    secondary: 'background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;box-shadow:0 7px 18px rgba(15,23,42,.08);',
+    ghost: 'background:transparent;color:#0f766e;border:1px solid transparent;'
+  };
+  const style = styles[variant] || styles.primary;
+  return `<a href="${safeHref}" style="display:inline-block;${style}border-radius:14px;padding:14px 22px;font-size:14px;line-height:18px;font-weight:800;text-decoration:none;letter-spacing:.01em">${safeLabel}</a>`;
+};
+
+const buildUrbanPrimeEmail = ({
+  preheader,
+  eyebrow,
+  title,
+  intro,
+  code,
+  details = [],
+  primaryAction,
+  secondaryActions = [],
+  trustLabel = 'Protected by Urban Prime Security',
+  statusLabel = 'Security verified',
+  warning,
+  footer
+}) => {
+  const safePreheader = escapeEmailHtml(preheader);
+  const detailRows = details
+    .filter((entry) => entry?.label && entry?.value)
+    .map((entry) => `
+      <tr>
+        <td style="padding:16px 18px;color:#64748b;font-size:12px;line-height:18px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #e5e7eb">${escapeEmailHtml(entry.label)}</td>
+        <td style="padding:16px 18px;color:#0f172a;font-size:14px;line-height:20px;font-weight:800;text-align:right;border-bottom:1px solid #e5e7eb">${escapeEmailHtml(entry.value)}</td>
+      </tr>
+    `)
+    .join('');
+  const actionButtons = [
+    primaryAction ? buildEmailButton(primaryAction) : '',
+    ...secondaryActions.map((action, index) => buildEmailButton({
+      ...action,
+      variant: action.variant || (index === 0 ? 'secondary' : 'ghost')
+    }))
+  ].filter(Boolean).join('<span style="display:inline-block;width:10px"></span>');
+
+  return [
+    '<!doctype html>',
+    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<body style="margin:0;background:#edf7f6;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a">',
+    `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${safePreheader}</div>`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:radial-gradient(circle at 50% 0%,#d8fffb 0,#edf7f6 34%,#f8fafc 78%);padding:44px 14px">',
+    '<tr><td align="center">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:660px;background:#ffffff;border:1px solid rgba(15,118,110,.14);border-radius:28px;overflow:hidden;box-shadow:0 28px 80px rgba(15,23,42,.13),0 2px 0 rgba(255,255,255,.7) inset">',
+    '<tr><td style="background:linear-gradient(135deg,#f8fffd 0%,#eefcf8 38%,#ecfeff 100%);padding:28px 32px 26px;color:#0f172a;border-bottom:1px solid #dbeafe">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>',
+    '<td style="vertical-align:middle"><div style="display:inline-block;background:#0f766e;color:#ffffff;border-radius:16px;padding:11px 13px;font-size:15px;line-height:15px;font-weight:900;letter-spacing:.03em;box-shadow:0 10px 26px rgba(15,118,110,.24)">UP</div></td>',
+    `<td align="right" style="vertical-align:middle"><span style="display:inline-block;background:#ffffff;border:1px solid #ccfbf1;color:#0f766e;border-radius:999px;padding:8px 12px;font-size:12px;line-height:14px;font-weight:800">${escapeEmailHtml(statusLabel)}</span></td>`,
+    '</tr></table>',
+    '<div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#0f766e;font-weight:900;margin-top:22px">Urban Prime</div>',
+    `<h1 style="margin:10px 0 0;font-size:31px;line-height:1.18;color:#0f172a;font-weight:900;letter-spacing:0">${escapeEmailHtml(title)}</h1>`,
+    '</td></tr>',
+    '<tr><td style="padding:34px 32px 32px">',
+    `<div style="display:inline-block;background:#f0fdfa;border:1px solid #ccfbf1;color:#0f766e;border-radius:999px;padding:8px 12px;font-size:12px;line-height:14px;font-weight:900;margin-bottom:18px">${escapeEmailHtml(trustLabel)}</div>`,
+    eyebrow ? `<div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#0f766e;font-weight:900;margin-bottom:12px">${escapeEmailHtml(eyebrow)}</div>` : '',
+    `<p style="font-size:16px;line-height:1.75;color:#475569;margin:0 0 26px;font-weight:400">${escapeEmailHtml(intro)}</p>`,
+    code ? `<div style="border:1px solid #99f6e4;background:linear-gradient(180deg,#f0fdfa,#ffffff);border-radius:22px;padding:26px;text-align:center;margin:26px 0;box-shadow:0 16px 36px rgba(15,118,110,.1)">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.2em;color:#0f766e;font-weight:900">Secure PIN</div>
+      <div style="font-size:38px;line-height:44px;letter-spacing:.34em;font-weight:900;color:#0f172a;margin-top:10px">${escapeEmailHtml(code)}</div>
+    </div>` : '',
+    detailRows ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;margin:28px 0;box-shadow:0 10px 30px rgba(15,23,42,.04)"><table role="presentation" width="100%" cellspacing="0" cellpadding="0">${detailRows}</table></div>` : '',
+    warning ? `<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:18px;padding:16px 18px;font-size:14px;line-height:1.7;font-weight:600;margin:24px 0">${escapeEmailHtml(warning)}</div>` : '',
+    actionButtons ? `<div style="margin:30px 0 10px">${actionButtons}</div>` : '',
+    footer ? `<p style="font-size:13px;line-height:1.7;color:#64748b;margin:26px 0 0;font-weight:400">${escapeEmailHtml(footer)}</p>` : '',
+    '</td></tr>',
+    '</table>',
+    `<p style="max-width:620px;margin:20px auto 0;font-size:12px;line-height:1.7;color:#64748b;text-align:center">This security email was sent by Urban Prime. Support: <a href="mailto:${escapeEmailHtml(resolveSupportEmail())}" style="color:#0f766e;font-weight:700;text-decoration:none">${escapeEmailHtml(resolveSupportEmail())}</a></p>`,
+    '</td></tr></table>',
+    '</body></html>'
+  ].join('');
+};
+
+const sendUrbanPrimeEmail = async ({ to, subject, text, html }) => {
+  const mailer = getPasswordResetMailer();
+  if (!mailer) {
+    throw new Error('Reset PIN email delivery is not configured.');
+  }
+
+  const from = resolveMailFromAddress();
+  const originalTo = normalizeEmail(to);
+  const overrideTo = isEmailAddress(EMAIL_OVERRIDE_RECIPIENT) ? EMAIL_OVERRIDE_RECIPIENT : '';
+  await mailer.sendMail({
+    from,
+    to: overrideTo || to,
+    subject,
+    text,
+    html,
+    headers: overrideTo && originalTo
+      ? { 'X-UrbanPrime-Original-To': originalTo }
+      : undefined
+  });
+};
+
+const buildUrbanPrimeMomentEmail = ({
+  preheader,
+  badge = 'Urban Prime',
+  title,
+  intro,
+  highlight,
+  stats = [],
+  previewItems = [],
+  primaryAction,
+  secondaryActions = [],
+  footer = 'You are receiving this because this activity belongs to your Urban Prime account.'
+}) => {
+  const statCards = stats
+    .filter((entry) => entry?.label && entry?.value !== undefined && entry?.value !== null)
+    .slice(0, 4)
+    .map((entry) => `
+      <td style="width:50%;padding:7px">
+        <div style="background:rgba(255,255,255,.78);border:1px solid rgba(15,118,110,.13);border-radius:18px;padding:16px 16px 15px;box-shadow:0 12px 28px rgba(15,23,42,.06)">
+          <div style="font-size:11px;line-height:15px;letter-spacing:.12em;text-transform:uppercase;color:#64748b;font-weight:850">${escapeEmailHtml(entry.label)}</div>
+          <div style="font-size:22px;line-height:28px;color:#0f172a;font-weight:950;margin-top:5px">${escapeEmailHtml(entry.value)}</div>
+        </div>
+      </td>
+    `);
+  const statRows = [];
+  for (let index = 0; index < statCards.length; index += 2) {
+    statRows.push(`<tr>${statCards[index]}${statCards[index + 1] || '<td style="width:50%;padding:7px"></td>'}</tr>`);
+  }
+
+  const previews = previewItems
+    .filter((entry) => entry?.title || entry?.body)
+    .slice(0, 5)
+    .map((entry) => `
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:15px 16px;margin-top:10px;box-shadow:0 8px 20px rgba(15,23,42,.035)">
+        ${entry.title ? `<div style="font-size:14px;line-height:20px;color:#0f172a;font-weight:850">${escapeEmailHtml(entry.title)}</div>` : ''}
+        ${entry.body ? `<div style="font-size:13px;line-height:20px;color:#64748b;font-weight:450;margin-top:4px">${escapeEmailHtml(entry.body)}</div>` : ''}
+      </div>
+    `)
+    .join('');
+
+  const actionButtons = [
+    primaryAction ? buildEmailButton(primaryAction) : '',
+    ...secondaryActions.map((action, index) => buildEmailButton({
+      ...action,
+      variant: action.variant || (index === 0 ? 'secondary' : 'ghost')
+    }))
+  ].filter(Boolean).join('<span style="display:inline-block;width:10px"></span>');
+
+  return [
+    '<!doctype html>',
+    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<body style="margin:0;background:#f3f7f5;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a">',
+    `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeEmailHtml(preheader || intro || title)}</div>`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:radial-gradient(circle at 50% -8%,rgba(20,184,166,.24),rgba(255,255,255,0) 35%),linear-gradient(135deg,#f8fafc 0%,#effaf6 44%,#fdfefe 100%);padding:46px 14px">',
+    '<tr><td align="center">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;border-collapse:separate;border-spacing:0">',
+    '<tr><td style="padding:0 8px 14px">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>',
+    '<td><div style="display:inline-block;background:#0f172a;color:#ffffff;border-radius:18px;padding:11px 14px;font-size:15px;line-height:16px;font-weight:950;letter-spacing:.04em;box-shadow:0 16px 34px rgba(15,23,42,.18)">UP</div></td>',
+    '<td align="right"><div style="display:inline-block;background:#ffffff;border:1px solid rgba(15,118,110,.18);color:#0f766e;border-radius:999px;padding:9px 13px;font-size:12px;line-height:14px;font-weight:850">Protected by Urban Prime</div></td>',
+    '</tr></table>',
+    '</td></tr>',
+    '<tr><td style="background:rgba(255,255,255,.92);border:1px solid rgba(15,23,42,.08);border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(15,23,42,.12),0 1px 0 rgba(255,255,255,.9) inset">',
+    '<div style="background:linear-gradient(135deg,#ecfeff 0%,#f8fafc 48%,#f0fdf4 100%);border-bottom:1px solid #dbeafe;padding:32px 34px 30px">',
+    `<div style="display:inline-block;background:#ffffff;border:1px solid #99f6e4;border-radius:999px;padding:8px 12px;font-size:12px;line-height:14px;letter-spacing:.12em;text-transform:uppercase;color:#0f766e;font-weight:950">${escapeEmailHtml(badge)}</div>`,
+    `<h1 style="margin:15px 0 0;font-size:33px;line-height:1.14;color:#0f172a;font-weight:950;letter-spacing:0">${escapeEmailHtml(title)}</h1>`,
+    '</div>',
+    '<div style="padding:34px">',
+    `<p style="margin:0;color:#475569;font-size:16px;line-height:1.78;font-weight:430">${escapeEmailHtml(intro)}</p>`,
+    highlight ? `<div style="margin:26px 0 0;background:linear-gradient(135deg,#0f172a,#164e63);border-radius:24px;padding:24px;color:#ffffff;box-shadow:0 18px 40px rgba(15,23,42,.18)">
+      <div style="font-size:12px;line-height:16px;letter-spacing:.14em;text-transform:uppercase;color:#99f6e4;font-weight:900">Next best move</div>
+      <div style="font-size:19px;line-height:1.55;font-weight:850;margin-top:8px">${escapeEmailHtml(highlight)}</div>
+    </div>` : '',
+    statRows.length ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:25px -7px 0">${statRows.join('')}</table>` : '',
+    previews ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:24px;padding:16px;margin:28px 0 0">${previews}</div>` : '',
+    actionButtons ? `<div style="margin:30px 0 4px">${actionButtons}</div>` : '',
+    footer ? `<p style="font-size:12px;line-height:1.75;color:#64748b;margin:26px 0 0;font-weight:420">${escapeEmailHtml(footer)}</p>` : '',
+    '</div>',
+    '</td></tr>',
+    `<tr><td align="center" style="padding:20px 16px 0;color:#64748b;font-size:12px;line-height:1.7">Urban Prime notifications. Support: <a href="mailto:${escapeEmailHtml(resolveSupportEmail())}" style="color:#0f766e;font-weight:800;text-decoration:none">${escapeEmailHtml(resolveSupportEmail())}</a></td></tr>`,
+    '</table>',
+    '</td></tr></table>',
+    '</body></html>'
+  ].join('');
+};
+
+const extractJsonObject = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+};
+
+const generateMomentEmailCopy = async ({ eventType, name, title, body, link, stats = [] }) => {
+  const fallback = {
+    badge: 'Urban Prime',
+    title,
+    intro: body || 'Something worth checking is waiting for you on Urban Prime.',
+    highlight: 'Open Urban Prime to see the full update and take the next step.',
+    subject: title
+  };
+  if (!EMAIL_AI_ACTIVE || !EMAIL_AI_KEY) return fallback;
+
+  try {
+    const prompt = [
+      'Create premium transactional email copy for Urban Prime.',
+      'Return strict JSON only with keys: badge, subject, title, intro, highlight.',
+      'No markdown, no emojis, no raw HTML. Keep it concise and human.',
+      'Never say the user was inactive, absent, or away for two days. Use indirect curiosity and momentum.',
+      `Event: ${eventType}`,
+      `Recipient: ${name || 'there'}`,
+      `Current title: ${title || ''}`,
+      `Current body: ${body || ''}`,
+      `Link path: ${link || ''}`,
+      `Stats: ${JSON.stringify(stats || [])}`
+    ].join('\n');
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(EMAIL_AI_MODEL_NAME)}:generateContent?key=${encodeURIComponent(EMAIL_AI_KEY)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.45, maxOutputTokens: 420, responseMimeType: 'application/json' }
+      })
+    });
+    if (!response.ok) throw new Error(`Gemini email copy failed with ${response.status}`);
+    const payload = await response.json();
+    const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part?.text || '').join('\n') || '';
+    const parsed = extractJsonObject(text);
+    if (!parsed) return fallback;
+    return {
+      badge: String(parsed.badge || fallback.badge).slice(0, 48),
+      subject: String(parsed.subject || fallback.subject).slice(0, 120),
+      title: String(parsed.title || fallback.title).slice(0, 120),
+      intro: String(parsed.intro || fallback.intro).slice(0, 480),
+      highlight: String(parsed.highlight || fallback.highlight).slice(0, 240)
+    };
+  } catch (error) {
+    console.warn('AI email copy skipped:', error?.message || error);
+    return fallback;
+  }
+};
+
+const hasRecentEmailOutbox = async (dedupeKey, windowMs = EMAIL_EVENT_DEDUPE_WINDOW_MS) => {
+  if (!dedupeKey || windowMs <= 0) return false;
+  try {
+    const since = new Date(Date.now() - windowMs).toISOString();
+    const { data, error } = await supabase
+      .from('message_outbox')
+      .select('id')
+      .eq('channel', 'email')
+      .eq('dedupe_key', dedupeKey)
+      .gte('created_at', since)
+      .limit(1);
+    if (error) throw error;
+    return (data || []).length > 0;
+  } catch (error) {
+    console.warn('Email outbox dedupe skipped:', error?.message || error);
+    return false;
+  }
+};
+
+const sendMomentEmail = async ({
+  userId,
+  eventType,
+  title,
+  body,
+  link = '/',
+  ctaLabel = 'Open Urban Prime',
+  stats = [],
+  previewItems = [],
+  dedupeKey = null,
+  dedupeMs = EMAIL_EVENT_DEDUPE_WINDOW_MS,
+  badge = 'Urban Prime',
+  highlight = null,
+  req = null
+}) => {
+  if (!EMAIL_NOTIFICATIONS_ACTIVE) return { skipped: true, reason: 'disabled' };
+  if (!userId) return { skipped: true, reason: 'missing_user' };
+  if (dedupeKey && await hasRecentEmailOutbox(dedupeKey, dedupeMs)) {
+    return { skipped: true, reason: 'deduped' };
+  }
+
+  const profile = await getUserMessagingProfile(userId);
+  const email = normalizeEmail(profile?.email);
+  if (!isEmailAddress(email)) return { skipped: true, reason: 'missing_email' };
+
+  const safeName = String(profile?.name || email.split('@')[0] || 'there').trim();
+  const actionUrl = req ? buildEmailActionUrl(req, link || '/') : `${APP_PUBLIC_URL_NORMALIZED || ''}${String(link || '/').startsWith('/') ? link || '/' : `/${link || ''}`}`;
+  const copy = await generateMomentEmailCopy({
+    eventType,
+    name: safeName,
+    title,
+    body,
+    link,
+    stats
+  });
+  const subject = copy.subject || title || 'Urban Prime update';
+  const text = [
+    `Hi ${safeName},`,
+    '',
+    copy.intro || body || title,
+    highlight || copy.highlight || '',
+    '',
+    actionUrl,
+    '',
+    `Support: ${resolveSupportEmail()}`
+  ].filter(Boolean).join('\n');
+  const html = buildUrbanPrimeMomentEmail({
+    preheader: copy.intro || body || title,
+    badge: copy.badge || badge,
+    title: copy.title || title,
+    intro: `Hi ${safeName}, ${copy.intro || body || title}`,
+    highlight: highlight || copy.highlight,
+    stats,
+    previewItems,
+    primaryAction: { href: actionUrl, label: ctaLabel },
+    secondaryActions: [{ href: `mailto:${resolveSupportEmail()}`, label: 'Contact support', variant: 'ghost' }]
+  });
+
+  const outbox = await createMessageOutbox({
+    userId,
+    channel: 'email',
+    eventType,
+    templateName: 'urbanprime_moment_email',
+    recipient: email,
+    payload: { title, body, link, stats, previewItems },
+    dedupeKey
+  });
+
+  try {
+    await sendUrbanPrimeEmail({ to: email, subject, text, html });
+    await updateMessageOutbox(outbox?.id, {
+      status: 'sent',
+      attempt_count: Number(outbox?.attempt_count || 0) + 1,
+      sent_at: new Date().toISOString(),
+      last_error: null
+    });
+    return { ok: true };
+  } catch (error) {
+    await updateMessageOutbox(outbox?.id, {
+      status: 'failed',
+      attempt_count: Number(outbox?.attempt_count || 0) + 1,
+      last_error: String(error?.message || error).slice(0, 900)
+    });
+    throw error;
+  }
+};
+
+const WHATSAPP_MESSAGE_CATEGORIES = new Set(['authentication', 'security', 'utility', 'marketing']);
+
+const normalizeMessageCategory = (value, fallback = 'utility') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return WHATSAPP_MESSAGE_CATEGORIES.has(normalized) ? normalized : fallback;
+};
+
+const isWhatsAppConfigured = () =>
+  Boolean(WHATSAPP_ACTIVE && WHATSAPP_PHONE_NUMBER_ID && WHATSAPP_ACCESS_TOKEN);
+
+const normalizeWhatsAppTo = (value) => {
+  const normalized = normalizePhone(value);
+  return normalized ? normalized.replace(/\D/g, '') : '';
+};
+
+const maskPhone = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length <= 4) return digits ? `...${digits}` : '';
+  return `+${digits.slice(0, Math.min(3, digits.length - 4))}...${digits.slice(-4)}`;
+};
+
+const compactTemplateParameters = (values = []) =>
+  values
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .map((text) => ({ type: 'text', text: text.slice(0, 900) }));
+
+const buildWhatsAppTemplatePayload = ({ to, templateName, locale = WHATSAPP_LOCALE, bodyParams = [] }) => {
+  const components = [];
+  const parameters = compactTemplateParameters(bodyParams);
+  if (parameters.length > 0) {
+    components.push({ type: 'body', parameters });
+  }
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: normalizeWhatsAppTo(to),
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: locale },
+      ...(components.length > 0 ? { components } : {})
+    }
+  };
+};
+
+const createMessageOutbox = async ({
+  userId = null,
+  channel,
+  eventType,
+  templateName = null,
+  recipient,
+  payload = {},
+  status = 'queued',
+  dedupeKey = null,
+  providerMessageId = null,
+  lastError = null
+}) => {
+  try {
+    const now = new Date().toISOString();
+    const insertPayload = {
+      user_id: userId,
+      channel,
+      event_type: eventType,
+      template_name: templateName,
+      recipient,
+      payload,
+      status,
+      dedupe_key: dedupeKey,
+      attempt_count: status === 'queued' ? 0 : 1,
+      last_error: lastError,
+      provider_message_id: providerMessageId,
+      sent_at: ['accepted', 'sent', 'delivered', 'read'].includes(status) ? now : null,
+      updated_at: now
+    };
+    const { data, error } = await supabase
+      .from('message_outbox')
+      .insert(insertPayload)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.warn('Message outbox insert skipped:', error?.message || error);
+    return null;
+  }
+};
+
+const updateMessageOutbox = async (outboxId, patch = {}) => {
+  if (!outboxId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('message_outbox')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', outboxId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.warn('Message outbox update skipped:', error?.message || error);
+    return null;
+  }
+};
+
+const recordMessageDelivery = async ({ outboxId = null, provider = 'meta_whatsapp', providerMessageId, status, rawEvent = {} }) => {
+  try {
+    const { error } = await supabase.from('message_deliveries').insert({
+      outbox_id: outboxId,
+      provider,
+      provider_message_id: providerMessageId || null,
+      status,
+      raw_event: rawEvent
+    });
+    if (error) throw error;
+  } catch (error) {
+    console.warn('Message delivery insert skipped:', error?.message || error);
+  }
+};
+
+const sendWhatsAppTemplate = async ({
+  to,
+  templateName,
+  locale = WHATSAPP_LOCALE,
+  bodyParams = [],
+  userId = null,
+  eventType,
+  category = 'utility',
+  dedupeKey = null,
+  fallbackText = ''
+}) => {
+  const recipient = normalizePhone(to);
+  if (!recipient) {
+    throw new Error('Enter a valid WhatsApp phone number with country code.');
+  }
+  const payload = buildWhatsAppTemplatePayload({ to: recipient, templateName, locale, bodyParams });
+  const outbox = await createMessageOutbox({
+    userId,
+    channel: 'whatsapp',
+    eventType,
+    templateName,
+    recipient,
+    payload: { category: normalizeMessageCategory(category), template: payload.template, fallbackText },
+    status: WHATSAPP_DRY_RUN_ACTIVE ? 'dry_run' : 'queued',
+    dedupeKey
+  });
+
+  if (!isWhatsAppConfigured()) {
+    const error = new Error('WhatsApp Business delivery is not configured.');
+    await updateMessageOutbox(outbox?.id, { status: 'failed', last_error: error.message, attempt_count: 1 });
+    throw error;
+  }
+
+  if (WHATSAPP_DRY_RUN_ACTIVE) {
+    console.info('WhatsApp dry run:', JSON.stringify({ to: maskPhone(recipient), templateName, bodyParams }));
+    return { ok: true, dryRun: true, outboxId: outbox?.id || null };
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${encodeURIComponent(WHATSAPP_PHONE_NUMBER_ID)}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+  const responsePayload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = responsePayload?.error?.message || responsePayload?.message || `WhatsApp provider error ${response.status}`;
+    await updateMessageOutbox(outbox?.id, { status: 'failed', last_error: message, attempt_count: 1 });
+    throw new Error(message);
+  }
+
+  const providerMessageId = responsePayload?.messages?.[0]?.id || null;
+  await updateMessageOutbox(outbox?.id, {
+    status: responsePayload?.messages?.[0]?.message_status || 'accepted',
+    provider_message_id: providerMessageId,
+    sent_at: new Date().toISOString(),
+    attempt_count: 1
+  });
+  await recordMessageDelivery({
+    outboxId: outbox?.id || null,
+    providerMessageId,
+    status: responsePayload?.messages?.[0]?.message_status || 'accepted',
+    rawEvent: responsePayload || {}
+  });
+  return { ok: true, providerMessageId, outboxId: outbox?.id || null };
+};
+
+const sendWhatsAppText = async ({ to, text, userId = null, eventType = 'service_reply' }) => {
+  const recipient = normalizePhone(to);
+  if (!recipient || !text) return null;
+  const payload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: normalizeWhatsAppTo(recipient),
+    type: 'text',
+    text: { preview_url: false, body: String(text).slice(0, 4000) }
+  };
+  const outbox = await createMessageOutbox({
+    userId,
+    channel: 'whatsapp',
+    eventType,
+    templateName: null,
+    recipient,
+    payload,
+    status: WHATSAPP_DRY_RUN_ACTIVE ? 'dry_run' : 'queued'
+  });
+  if (!isWhatsAppConfigured() || WHATSAPP_DRY_RUN_ACTIVE) return { ok: true, outboxId: outbox?.id || null };
+  const response = await fetch(
+    `https://graph.facebook.com/${WHATSAPP_GRAPH_API_VERSION}/${encodeURIComponent(WHATSAPP_PHONE_NUMBER_ID)}/messages`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }
+  );
+  const responsePayload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = responsePayload?.error?.message || `WhatsApp provider error ${response.status}`;
+    await updateMessageOutbox(outbox?.id, { status: 'failed', last_error: message, attempt_count: 1 });
+    throw new Error(message);
+  }
+  const providerMessageId = responsePayload?.messages?.[0]?.id || null;
+  await updateMessageOutbox(outbox?.id, { status: 'accepted', provider_message_id: providerMessageId, sent_at: new Date().toISOString(), attempt_count: 1 });
+  return { ok: true, providerMessageId, outboxId: outbox?.id || null };
+};
+
+const sendPhonePinWhatsApp = async ({ phone, pin, purpose, userId = null, name = '' }) => {
+  const expiresInMinutes = Math.max(1, Math.round(PHONE_AUTH_TTL_MS / 60000));
+  const purposeLabel = purpose === 'signup' ? 'create your account' : 'sign in';
+  return sendWhatsAppTemplate({
+    to: phone,
+    templateName: WHATSAPP_TEMPLATES.authCode,
+    userId,
+    eventType: `phone_${purpose}_otp`,
+    category: 'authentication',
+    bodyParams: [
+      pin,
+      String(expiresInMinutes),
+      String(name || 'there'),
+      purposeLabel
+    ],
+    fallbackText: `Urban Prime PIN: ${pin}. It expires in ${expiresInMinutes} minutes. Do not share it.`
+  });
+};
+
+const sendPasswordResetPinEmail = async ({ email, pin, expiresInMinutes }) => {
+  const subject = 'Your Urban Prime password reset PIN';
+  const text = [
+    `Your Urban Prime password reset PIN is ${pin}.`,
+    '',
+    `This PIN expires in ${expiresInMinutes} minutes.`,
+    "Don't share this PIN with anyone.",
+    '',
+    'If you did not request a password reset, you can ignore this email.'
+  ].join('\n');
+  const html = buildUrbanPrimeEmail({
+    preheader: 'Use this private PIN to finish resetting your Urban Prime password.',
+    eyebrow: 'Password Reset',
+    title: 'Reset your Urban Prime password',
+    intro: 'Use the secure PIN below to continue resetting your password. This code is private and should never be shared.',
+    code: pin,
+    details: [
+      { label: 'Account', value: email },
+      { label: 'Expires in', value: `${expiresInMinutes} minutes` }
+    ],
+    warning: "Don't share this PIN with anyone. Urban Prime support will never ask for it.",
+    footer: 'If you did not request this, you can safely ignore the email or contact support.'
+  });
+
+  await sendUrbanPrimeEmail({ to: email, subject, text, html });
+};
+
 const normalizeWorkRequestStatus = (value, fallback = 'open') => {
   const normalized = String(value || '').trim().toLowerCase();
   if (['open', 'in_review', 'matched', 'cancelled', 'closed'].includes(normalized)) return normalized;
@@ -725,6 +1595,146 @@ const parsePositiveNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return parsed;
+};
+
+const WORK_MATCH_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'be', 'by', 'for', 'from', 'in', 'into', 'is', 'it', 'of', 'on', 'or', 'that',
+  'the', 'this', 'to', 'with', 'you', 'your', 'need', 'needs', 'want', 'wants', 'will', 'must', 'can', 'our'
+]);
+
+const tokenizeWorkMatchText = (value) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9+#./ -]+/g, ' ')
+    .split(/\s+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length >= 2 && !WORK_MATCH_STOP_WORDS.has(entry));
+  return Array.from(new Set(normalized));
+};
+
+const buildRequestedMatchSignals = (body) => {
+  const brief = toNullableText(body.brief) || '';
+  const requirements = Array.isArray(body.requirements)
+    ? body.requirements.map((entry) => String(entry).trim()).filter(Boolean)
+    : [];
+  const requestedSkills = Array.isArray(body.skills)
+    ? body.skills.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  const tokenPool = new Set(requestedSkills);
+  requirements.forEach((entry) => tokenizeWorkMatchText(entry).forEach((token) => tokenPool.add(token)));
+  tokenizeWorkMatchText(brief).forEach((token) => tokenPool.add(token));
+
+  return {
+    brief,
+    requirements,
+    requestedSkills,
+    requestedTokens: Array.from(tokenPool).slice(0, 36)
+  };
+};
+
+const getListingStartingPrice = (listing) => {
+  const packagePrices = Array.isArray(listing?.packages)
+    ? listing.packages.map((entry) => parsePositiveNumber(entry?.price, 0)).filter((value) => value > 0)
+    : [];
+  const basePrice = parsePositiveNumber(listing?.base_price, 0);
+  const prices = [...packagePrices, ...(basePrice > 0 ? [basePrice] : [])];
+  return prices.length > 0 ? Math.min(...prices) : 0;
+};
+
+const computePriceFitScore = (startingPrice, budgetMin, budgetMax) => {
+  const min = parsePositiveNumber(budgetMin, 0);
+  const max = parsePositiveNumber(budgetMax, 0);
+
+  if (startingPrice <= 0 && !min && !max) return 58;
+  if (!min && !max) return 68;
+  if (startingPrice <= 0) return 45;
+
+  if (min && max && startingPrice >= min && startingPrice <= max) {
+    return 96;
+  }
+
+  if (max && startingPrice <= max) {
+    return 88;
+  }
+
+  if (min && startingPrice >= min && !max) {
+    return 84;
+  }
+
+  if (max && startingPrice > max) {
+    const overRatio = (startingPrice - max) / Math.max(max, 1);
+    return Math.max(8, 72 - overRatio * 120);
+  }
+
+  if (min && startingPrice < min) {
+    const underRatio = (min - startingPrice) / Math.max(min, 1);
+    return Math.max(24, 78 - underRatio * 80);
+  }
+
+  return 60;
+};
+
+const mapAutopilotListingForClient = (listing, providerApplication, providerUser) => {
+  const providerSnapshot = normalizeJsonObject(listing?.provider_snapshot);
+  const details = normalizeJsonObject(listing?.details);
+  const packages = Array.isArray(listing?.packages) ? listing.packages : [];
+  const trustBadges = new Set(Array.isArray(details.trustBadges) ? details.trustBadges : []);
+  const responseSlaHours = parsePositiveNumber(
+    details.responseSlaHours ?? providerApplication?.response_sla_hours,
+    0
+  );
+
+  if (providerApplication?.status === 'approved') trustBadges.add('Approved provider');
+  if (providerApplication?.payout_ready) trustBadges.add('Payout ready');
+  if (Array.isArray(providerApplication?.portfolio) && providerApplication.portfolio.length > 0) trustBadges.add('Portfolio available');
+  if (responseSlaHours > 0 && responseSlaHours <= 24) trustBadges.add('Fast response');
+
+  const providerId = String(
+    providerUser?.firebase_uid ||
+    providerSnapshot.id ||
+    listing?.seller_id ||
+    ''
+  ).trim();
+
+  return {
+    id: String(listing?.id || ''),
+    title: String(listing?.title || 'Untitled service'),
+    description: String(listing?.description || ''),
+    category: String(listing?.category || 'general'),
+    mode: normalizeWorkMode(listing?.mode, 'hybrid'),
+    fulfillmentKind: normalizeFulfillmentKind(listing?.fulfillment_kind, 'hybrid'),
+    sellerId: providerId || String(listing?.seller_id || ''),
+    sellerPersonaId: listing?.seller_persona_id || null,
+    providerSnapshot: {
+      id: providerId || String(listing?.seller_id || ''),
+      name: providerSnapshot.name || providerUser?.name || providerApplication?.business_name || 'Provider',
+      avatar: providerSnapshot.avatar || providerUser?.avatar_url || '/icons/urbanprime.svg',
+      rating: parsePositiveNumber(providerSnapshot.rating, 0),
+      reviews: Array.isArray(providerSnapshot.reviews) ? providerSnapshot.reviews : []
+    },
+    currency: normalizeCurrencyCode(listing?.currency, 'USD'),
+    timezone: toNullableText(listing?.timezone) || 'UTC',
+    basePrice: parsePositiveNumber(listing?.base_price, 0),
+    packages,
+    skills: Array.isArray(listing?.skills) ? listing.skills : [],
+    media: Array.isArray(listing?.media) ? listing.media : [],
+    availability: normalizeJsonObject(listing?.availability),
+    details: {
+      ...details,
+      responseSlaHours: responseSlaHours > 0 ? responseSlaHours : details.responseSlaHours,
+      trustBadges: Array.from(trustBadges)
+    },
+    riskScore: parsePositiveNumber(listing?.risk_score, 0),
+    status: normalizeWorkListingStatus(listing?.status, 'draft'),
+    visibility: toNullableText(listing?.visibility) || 'public',
+    reviewNotes: toNullableText(listing?.review_notes),
+    submittedAt: listing?.submitted_at || null,
+    reviewedAt: listing?.reviewed_at || null,
+    publishedAt: listing?.published_at || null,
+    createdAt: listing?.created_at || new Date().toISOString(),
+    updatedAt: listing?.updated_at || null
+  };
 };
 
 const resolveUserById = async (userId) => {
@@ -1076,6 +2086,114 @@ const ensureUserRow = async (firebaseUid, hints = {}) => {
   }
 
   return { user: updateResult.data || existingUser, error: updateResult.error || null };
+};
+
+const getUserMessagingProfile = async (userId) => {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id,firebase_uid,email,name,phone')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    console.warn('Unable to load messaging profile:', error.message);
+    return null;
+  }
+  return data || null;
+};
+
+const resolveUserIdByEmail = async (email) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+  if (error) {
+    console.warn('Unable to resolve user by email:', error.message);
+    return null;
+  }
+  return data?.id || null;
+};
+
+const upsertMessagePreference = async ({ userId, phone, category, enabled, source = 'settings' }) => {
+  const normalizedCategory = normalizeMessageCategory(category);
+  const normalizedPhone = normalizePhone(phone);
+  if (!userId || !normalizedPhone) return;
+  const now = new Date().toISOString();
+  try {
+    await supabase.from('message_preferences').upsert({
+      user_id: userId,
+      channel: 'whatsapp',
+      category: normalizedCategory,
+      enabled: Boolean(enabled),
+      updated_at: now
+    }, { onConflict: 'user_id,channel,category', ignoreDuplicates: false });
+    await supabase.from('message_consents').upsert({
+      user_id: userId,
+      channel: 'whatsapp',
+      phone_e164: normalizedPhone,
+      category: normalizedCategory,
+      status: enabled ? 'opted_in' : 'opted_out',
+      source,
+      updated_at: now
+    }, { onConflict: 'user_id,channel,category', ignoreDuplicates: false });
+  } catch (error) {
+    console.warn('Unable to save WhatsApp preference:', error?.message || error);
+  }
+};
+
+const ensureDefaultWhatsAppConsents = async ({ userId, phone, source = 'phone_auth' }) => {
+  for (const category of ['authentication', 'security', 'utility']) {
+    await upsertMessagePreference({ userId, phone, category, enabled: true, source });
+  }
+};
+
+const getWhatsAppPreferenceSnapshot = async (userId) => {
+  const defaults = {
+    authentication: false,
+    security: false,
+    utility: false,
+    marketing: false
+  };
+  if (!userId) return defaults;
+  try {
+    const { data, error } = await supabase
+      .from('message_preferences')
+      .select('category,enabled')
+      .eq('user_id', userId)
+      .eq('channel', 'whatsapp');
+    if (error) throw error;
+    const output = { ...defaults };
+    (data || []).forEach((row) => {
+      const category = normalizeMessageCategory(row?.category, '');
+      if (category) output[category] = row?.enabled === true;
+    });
+    return output;
+  } catch (error) {
+    console.warn('WhatsApp preference snapshot skipped:', error?.message || error);
+    return defaults;
+  }
+};
+
+const canSendWhatsAppCategory = async ({ userId, category }) => {
+  const normalizedCategory = normalizeMessageCategory(category);
+  if (!userId) return normalizedCategory === 'authentication';
+  try {
+    const { data, error } = await supabase
+      .from('message_preferences')
+      .select('enabled')
+      .eq('user_id', userId)
+      .eq('channel', 'whatsapp')
+      .eq('category', normalizedCategory)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.enabled === true;
+  } catch (error) {
+    console.warn('WhatsApp preference check skipped:', error?.message || error);
+    return false;
+  }
 };
 
 const ensureUserProfileRow = async (userId) => {
@@ -1463,6 +2581,24 @@ const getUserContext = async (req) => {
     user: ensuredUser.user,
     profile: ensuredProfile.profile
   };
+};
+
+const resolveOptionalUserContext = async (req) => {
+  hydrateRequestUserFromFirebaseUid(req);
+  const firebaseUid = getRequestFirebaseUid(req);
+  if (!firebaseUid) return null;
+
+  try {
+    const context = await getUserContext(req);
+    if (context?.error) {
+      console.warn('Optional user context resolution failed:', context.error?.message || context.error);
+      return null;
+    }
+    return context;
+  } catch (error) {
+    console.warn('Optional user context resolution threw:', error?.message || error);
+    return null;
+  }
 };
 
 const resolveBrandBySlug = async (slugValue) => {
@@ -2173,6 +3309,597 @@ const strictAuthRateLimiter = createRateLimiter({
 
 app.use(globalRateLimiter);
 
+const verifyWhatsAppWebhookSignature = (req) => {
+  if (!WHATSAPP_APP_SECRET) return true;
+  const signature = String(req.headers['x-hub-signature-256'] || '').trim();
+  if (!signature.startsWith('sha256=')) return false;
+  const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body || {}));
+  const expected = `sha256=${createHmac('sha256', WHATSAPP_APP_SECRET).update(rawBody).digest('hex')}`;
+  return secureCompare(signature, expected);
+};
+
+app.get('/webhooks/whatsapp', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token && token === WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.status(200).send(String(challenge || ''));
+  }
+  return res.status(403).send('Forbidden');
+});
+
+app.post('/webhooks/whatsapp', async (req, res) => {
+  try {
+    if (!verifyWhatsAppWebhookSignature(req)) {
+      return res.status(403).json({ error: 'Invalid webhook signature.' });
+    }
+
+    const entries = Array.isArray(req.body?.entry) ? req.body.entry : [];
+    for (const entry of entries) {
+      const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+      for (const change of changes) {
+        const value = normalizeJsonObject(change?.value);
+        const statuses = Array.isArray(value.statuses) ? value.statuses : [];
+        for (const statusEvent of statuses) {
+          const providerMessageId = String(statusEvent?.id || '').trim();
+          const status = String(statusEvent?.status || '').trim().toLowerCase() || 'unknown';
+          let outboxId = null;
+          if (providerMessageId) {
+            try {
+              const { data: outboxRow } = await supabase
+                .from('message_outbox')
+                .select('id')
+                .eq('provider_message_id', providerMessageId)
+                .maybeSingle();
+              outboxId = outboxRow?.id || null;
+              if (outboxId) {
+                await updateMessageOutbox(outboxId, {
+                  status,
+                  last_error: status === 'failed' ? JSON.stringify(statusEvent?.errors || statusEvent?.error || {}) : null
+                });
+              }
+            } catch (error) {
+              console.warn('WhatsApp webhook outbox lookup skipped:', error?.message || error);
+            }
+          }
+          await recordMessageDelivery({
+            outboxId,
+            providerMessageId,
+            status,
+            rawEvent: statusEvent
+          });
+        }
+
+        const inboundMessages = Array.isArray(value.messages) ? value.messages : [];
+        for (const message of inboundMessages) {
+          const fromPhone = normalizePhone(message?.from);
+          const body = String(message?.text?.body || message?.button?.text || '').trim();
+          const command = body.toUpperCase();
+          if (!fromPhone || !command) continue;
+          if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(command)) {
+            try {
+              const { data: consentRows } = await supabase
+                .from('message_consents')
+                .select('user_id,category')
+                .eq('channel', 'whatsapp')
+                .eq('phone_e164', fromPhone);
+              for (const row of consentRows || []) {
+                await upsertMessagePreference({
+                  userId: row.user_id,
+                  phone: fromPhone,
+                  category: row.category,
+                  enabled: false,
+                  source: 'whatsapp_stop'
+                });
+              }
+              await sendWhatsAppText({
+                to: fromPhone,
+                text: 'You have been unsubscribed from Urban Prime WhatsApp messages. Reply HELP for support options.',
+                eventType: 'whatsapp_opt_out'
+              }).catch(() => null);
+            } catch (error) {
+              console.warn('WhatsApp STOP handling failed:', error?.message || error);
+            }
+          } else if (command === 'HELP') {
+            await sendWhatsAppText({
+              to: fromPhone,
+              text: `Urban Prime support: ${resolveSupportEmail()}. You can also manage notification settings in your Urban Prime profile.`,
+              eventType: 'whatsapp_help'
+            }).catch(() => null);
+          }
+        }
+      }
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('WhatsApp webhook failed:', error);
+    return res.status(500).json({ error: 'Unable to process WhatsApp webhook.' });
+  }
+});
+
+const requestPasswordResetPin = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+    if (!firebaseApp) {
+      return res.status(503).json({ error: 'Password reset requires Firebase Admin credentials on the backend.' });
+    }
+    if (!isPasswordResetEmailConfigured() && !PASSWORD_RESET_DEBUG_PIN_ENABLED) {
+      return res.status(501).json({ error: 'Reset PIN email delivery is not configured.' });
+    }
+
+    let firebaseUser = null;
+    try {
+      firebaseUser = await admin.auth().getUserByEmail(email);
+    } catch (error) {
+      const code = String(error?.code || '');
+      if (code !== 'auth/user-not-found') throw error;
+    }
+
+    if (!firebaseUser?.uid) {
+      return res.json({ ok: true, expiresInSeconds: Math.round(PASSWORD_RESET_TTL_MS / 1000) });
+    }
+
+    const pin = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const salt = randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MS).toISOString();
+    const payload = {
+      email,
+      uid: firebaseUser.uid,
+      pin_hash: hashPasswordResetPin({ email, uid: firebaseUser.uid, pin, salt }),
+      salt,
+      attempts: 0,
+      created_at: now.toISOString(),
+      expires_at: expiresAt
+    };
+
+    const { error } = await supabase.from('mirror_documents').upsert({
+      collection: PASSWORD_RESET_COLLECTION,
+      doc_id: passwordResetDocId(email),
+      data: payload,
+      updated_at: now.toISOString()
+    }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+    if (error) throw error;
+
+    if (isPasswordResetEmailConfigured()) {
+      try {
+        await sendPasswordResetPinEmail({
+          email,
+          pin,
+          expiresInMinutes: Math.max(1, Math.round(PASSWORD_RESET_TTL_MS / 60000))
+        });
+      } catch (mailError) {
+        await supabase.from('mirror_documents').delete().eq('collection', PASSWORD_RESET_COLLECTION).eq('doc_id', passwordResetDocId(email));
+        throw mailError;
+      }
+    } else if (PASSWORD_RESET_DEBUG_PIN_ENABLED) {
+      console.info(`Password reset PIN for ${email}: ${pin}`);
+    }
+
+    return res.json({
+      ok: true,
+      delivery: isPasswordResetEmailConfigured() ? 'email' : 'debug',
+      ...(PASSWORD_RESET_DEBUG_PIN_ENABLED && !isPasswordResetEmailConfigured() ? { pin } : {}),
+      expiresInSeconds: Math.round(PASSWORD_RESET_TTL_MS / 1000)
+    });
+  } catch (error) {
+    console.error('Password reset PIN request failed:', error);
+    return res.status(500).json({ error: 'Unable to create password reset PIN.' });
+  }
+};
+
+app.post('/auth/password-reset/request', strictAuthRateLimiter, requestPasswordResetPin);
+app.post('/api/auth/password-reset/request', strictAuthRateLimiter, requestPasswordResetPin);
+
+const confirmPasswordResetPin = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const pin = normalizePin(req.body?.pin);
+    const newPassword = String(req.body?.password || req.body?.newPassword || '');
+
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+    if (pin.length !== 6) {
+      return res.status(400).json({ error: 'Enter the 6-digit reset PIN.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+    if (!firebaseApp) {
+      return res.status(503).json({ error: 'Password reset requires Firebase Admin credentials on the backend.' });
+    }
+
+    const docId = passwordResetDocId(email);
+    const { data: row, error: loadError } = await supabase
+      .from('mirror_documents')
+      .select('data,updated_at')
+      .eq('collection', PASSWORD_RESET_COLLECTION)
+      .eq('doc_id', docId)
+      .maybeSingle();
+    if (loadError) throw loadError;
+
+    const data = normalizeJsonObject(row?.data);
+    const genericError = 'Invalid or expired reset PIN.';
+    if (!row || data.email !== email || !data.uid || !data.pin_hash || !data.salt) {
+      return res.status(400).json({ error: genericError });
+    }
+    if (Date.parse(String(data.expires_at || '')) <= Date.now()) {
+      await supabase.from('mirror_documents').delete().eq('collection', PASSWORD_RESET_COLLECTION).eq('doc_id', docId);
+      return res.status(400).json({ error: genericError });
+    }
+    if (Number(data.attempts || 0) >= 5) {
+      await supabase.from('mirror_documents').delete().eq('collection', PASSWORD_RESET_COLLECTION).eq('doc_id', docId);
+      return res.status(400).json({ error: genericError });
+    }
+
+    const expectedHash = hashPasswordResetPin({ email, uid: data.uid, pin, salt: data.salt });
+    if (!safeEqualHash(expectedHash, data.pin_hash)) {
+      const attempts = Number(data.attempts || 0) + 1;
+      await supabase.from('mirror_documents').upsert({
+        collection: PASSWORD_RESET_COLLECTION,
+        doc_id: docId,
+        data: { ...data, attempts, last_failed_at: new Date().toISOString() },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+      return res.status(400).json({ error: genericError });
+    }
+
+    await admin.auth().updateUser(data.uid, { password: newPassword });
+    await supabase.from('mirror_documents').delete().eq('collection', PASSWORD_RESET_COLLECTION).eq('doc_id', docId);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Password reset PIN confirmation failed:', error);
+    return res.status(500).json({ error: 'Unable to reset password.' });
+  }
+};
+
+app.post('/auth/password-reset/confirm', strictAuthRateLimiter, confirmPasswordResetPin);
+app.post('/api/auth/password-reset/confirm', strictAuthRateLimiter, confirmPasswordResetPin);
+
+const savePhonePin = async ({ phone, purpose, name }) => {
+  const normalizedPhone = normalizePhone(phone);
+  const pin = generateResetPin();
+  const salt = randomUUID();
+  const now = new Date();
+  const payload = {
+    phone: normalizedPhone,
+    purpose,
+    name: toNullableText(name),
+    pin_hash: hashPhonePin({ phone: normalizedPhone, purpose, pin, salt }),
+    salt,
+    attempts: 0,
+    created_at: now.toISOString(),
+    expires_at: new Date(now.getTime() + PHONE_AUTH_TTL_MS).toISOString()
+  };
+
+  const { error } = await supabase.from('mirror_documents').upsert({
+    collection: PHONE_AUTH_PIN_COLLECTION,
+    doc_id: phonePinDocId({ phone: normalizedPhone, purpose }),
+    data: payload,
+    updated_at: now.toISOString()
+  }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+  if (error) throw error;
+  return { pin };
+};
+
+const loadPhoneAccount = async (phone) => {
+  const { data, error } = await supabase
+    .from('mirror_documents')
+    .select('data,updated_at')
+    .eq('collection', PHONE_AUTH_ACCOUNT_COLLECTION)
+    .eq('doc_id', phoneAccountDocId(phone))
+    .maybeSingle();
+  if (error) throw error;
+  return normalizeJsonObject(data?.data);
+};
+
+const verifyPhonePin = async ({ phone, purpose, pin }) => {
+  const normalizedPhone = normalizePhone(phone);
+  const docId = phonePinDocId({ phone: normalizedPhone, purpose });
+  const { data: row, error } = await supabase
+    .from('mirror_documents')
+    .select('data,updated_at')
+    .eq('collection', PHONE_AUTH_PIN_COLLECTION)
+    .eq('doc_id', docId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const data = normalizeJsonObject(row?.data);
+  const genericError = new Error('Invalid or expired phone PIN.');
+  genericError.statusCode = 400;
+  if (!row || data.phone !== normalizedPhone || data.purpose !== purpose || !data.pin_hash || !data.salt) throw genericError;
+  if (Date.parse(String(data.expires_at || '')) <= Date.now()) {
+    await supabase.from('mirror_documents').delete().eq('collection', PHONE_AUTH_PIN_COLLECTION).eq('doc_id', docId);
+    throw genericError;
+  }
+  if (Number(data.attempts || 0) >= 5) {
+    await supabase.from('mirror_documents').delete().eq('collection', PHONE_AUTH_PIN_COLLECTION).eq('doc_id', docId);
+    throw genericError;
+  }
+
+  const expectedHash = hashPhonePin({ phone: normalizedPhone, purpose, pin, salt: data.salt });
+  if (!safeEqualHash(expectedHash, data.pin_hash)) {
+    const attempts = Number(data.attempts || 0) + 1;
+    await supabase.from('mirror_documents').upsert({
+      collection: PHONE_AUTH_PIN_COLLECTION,
+      doc_id: docId,
+      data: { ...data, attempts, last_failed_at: new Date().toISOString() },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+    throw genericError;
+  }
+
+  await supabase.from('mirror_documents').delete().eq('collection', PHONE_AUTH_PIN_COLLECTION).eq('doc_id', docId);
+  return data;
+};
+
+const requestPhoneSignupPin = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const name = toNullableText(req.body?.name);
+    const password = String(req.body?.password || '');
+    if (!phone) return res.status(400).json({ error: 'Enter a valid phone number with country code.' });
+    if (!name) return res.status(400).json({ error: 'Enter your name.' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    if (!firebaseApp) return res.status(503).json({ error: 'Phone sign up requires Firebase Admin credentials.' });
+    if (!isWhatsAppConfigured() && !PHONE_AUTH_DEBUG_PIN_ENABLED) {
+      return res.status(503).json({ error: 'WhatsApp Business PIN delivery is not configured.' });
+    }
+
+    const existingAccount = await loadPhoneAccount(phone);
+    if (existingAccount?.uid) return res.status(409).json({ error: 'This phone number is already registered.' });
+    try {
+      await admin.auth().getUserByPhoneNumber(phone);
+      return res.status(409).json({ error: 'This phone number is already registered.' });
+    } catch (error) {
+      if (error?.code !== 'auth/user-not-found') throw error;
+    }
+
+    const { pin } = await savePhonePin({ phone, purpose: 'signup', name });
+    if (isWhatsAppConfigured()) {
+      await sendPhonePinWhatsApp({ phone, pin, purpose: 'signup', name });
+    } else if (PHONE_AUTH_DEBUG_PIN_ENABLED) {
+      console.info(`Phone sign-up PIN for ${phone}: ${pin}`);
+    } else {
+      throw new Error('WhatsApp Business PIN delivery is not configured.');
+    }
+
+    return res.json({
+      ok: true,
+      delivery: isWhatsAppConfigured() ? 'whatsapp' : 'debug',
+      ...(PHONE_AUTH_DEBUG_PIN_ENABLED && !isWhatsAppConfigured() ? { pin } : {}),
+      expiresInSeconds: Math.round(PHONE_AUTH_TTL_MS / 1000)
+    });
+  } catch (error) {
+    console.error('Phone sign-up PIN request failed:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to send phone PIN.' });
+  }
+};
+
+const confirmPhoneSignupPin = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const name = toNullableText(req.body?.name);
+    const password = String(req.body?.password || '');
+    const pin = normalizePin(req.body?.pin);
+    if (!phone) return res.status(400).json({ error: 'Enter a valid phone number with country code.' });
+    if (!name) return res.status(400).json({ error: 'Enter your name.' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    if (pin.length !== 6) return res.status(400).json({ error: 'Enter the 6-digit phone PIN.' });
+    if (!firebaseApp) return res.status(503).json({ error: 'Phone sign up requires Firebase Admin credentials.' });
+
+    await verifyPhonePin({ phone, purpose: 'signup', pin });
+    const userRecord = await admin.auth().createUser({ phoneNumber: phone, displayName: name, password });
+    const passwordRecord = createPasswordHash({ phone, password });
+    await supabase.from('mirror_documents').upsert({
+      collection: PHONE_AUTH_ACCOUNT_COLLECTION,
+      doc_id: phoneAccountDocId(phone),
+      data: {
+        uid: userRecord.uid,
+        phone,
+        name,
+        password_hash: passwordRecord.hash,
+        password_salt: passwordRecord.salt,
+        password_iterations: passwordRecord.iterations,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'collection,doc_id', ignoreDuplicates: false });
+
+    const ensured = await ensureUserRow(userRecord.uid, { phone, name });
+    if (ensured.error) console.warn('Phone user Supabase sync failed:', ensured.error);
+    if (ensured.user?.id) {
+      await ensureDefaultWhatsAppConsents({ userId: ensured.user.id, phone, source: 'phone_signup' });
+    }
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+    return res.json({ ok: true, customToken, user: { uid: userRecord.uid, phone, name } });
+  } catch (error) {
+    console.error('Phone sign-up PIN confirm failed:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to complete phone sign up.' });
+  }
+};
+
+const requestPhoneLoginPin = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const password = String(req.body?.password || '');
+    if (!phone) return res.status(400).json({ error: 'Enter a valid phone number with country code.' });
+    if (password.length < 6) return res.status(400).json({ error: 'Enter your password.' });
+    if (!isWhatsAppConfigured() && !PHONE_AUTH_DEBUG_PIN_ENABLED) {
+      return res.status(503).json({ error: 'WhatsApp Business PIN delivery is not configured.' });
+    }
+
+    const account = await loadPhoneAccount(phone);
+    if (!account?.uid || !verifyPasswordHash({ phone, password, account })) {
+      return res.status(401).json({ error: 'Invalid phone number or password.' });
+    }
+
+    const { pin } = await savePhonePin({ phone, purpose: 'login', name: account.name });
+    const userId = account?.uid ? await resolveUserIdFromFirebaseUid(account.uid) : null;
+    if (userId) {
+      await ensureDefaultWhatsAppConsents({ userId, phone, source: 'phone_login' });
+    }
+    if (isWhatsAppConfigured()) {
+      await sendPhonePinWhatsApp({ phone, pin, purpose: 'login', userId, name: account.name });
+    } else if (PHONE_AUTH_DEBUG_PIN_ENABLED) {
+      console.info(`Phone sign-in PIN for ${phone}: ${pin}`);
+    } else {
+      throw new Error('WhatsApp Business PIN delivery is not configured.');
+    }
+
+    return res.json({
+      ok: true,
+      delivery: isWhatsAppConfigured() ? 'whatsapp' : 'debug',
+      ...(PHONE_AUTH_DEBUG_PIN_ENABLED && !isWhatsAppConfigured() ? { pin } : {}),
+      expiresInSeconds: Math.round(PHONE_AUTH_TTL_MS / 1000)
+    });
+  } catch (error) {
+    console.error('Phone sign-in PIN request failed:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to send phone PIN.' });
+  }
+};
+
+const confirmPhoneLoginPin = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const pin = normalizePin(req.body?.pin);
+    if (!phone) return res.status(400).json({ error: 'Enter a valid phone number with country code.' });
+    if (pin.length !== 6) return res.status(400).json({ error: 'Enter the 6-digit phone PIN.' });
+    if (!firebaseApp) return res.status(503).json({ error: 'Phone sign in requires Firebase Admin credentials.' });
+
+    await verifyPhonePin({ phone, purpose: 'login', pin });
+    const account = await loadPhoneAccount(phone);
+    if (!account?.uid) return res.status(401).json({ error: 'Invalid phone number or PIN.' });
+
+    const customToken = await admin.auth().createCustomToken(account.uid);
+    return res.json({ ok: true, customToken, user: { uid: account.uid, phone, name: account.name || '' } });
+  } catch (error) {
+    console.error('Phone sign-in PIN confirm failed:', error);
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to complete phone sign in.' });
+  }
+};
+
+app.post('/auth/phone/signup/request', strictAuthRateLimiter, requestPhoneSignupPin);
+app.post('/api/auth/phone/signup/request', strictAuthRateLimiter, requestPhoneSignupPin);
+app.post('/auth/phone/signup/confirm', strictAuthRateLimiter, confirmPhoneSignupPin);
+app.post('/api/auth/phone/signup/confirm', strictAuthRateLimiter, confirmPhoneSignupPin);
+app.post('/auth/phone/login/request', strictAuthRateLimiter, requestPhoneLoginPin);
+app.post('/api/auth/phone/login/request', strictAuthRateLimiter, requestPhoneLoginPin);
+app.post('/auth/phone/login/confirm', strictAuthRateLimiter, confirmPhoneLoginPin);
+app.post('/api/auth/phone/login/confirm', strictAuthRateLimiter, confirmPhoneLoginPin);
+
+const resolveSupabaseOAuthName = (user) => {
+  const metadata = normalizeJsonObject(user?.user_metadata);
+  return String(
+    metadata.full_name ||
+    metadata.name ||
+    metadata.user_name ||
+    metadata.preferred_username ||
+    user?.email ||
+    'Urban Prime member'
+  ).trim();
+};
+
+const resolveSupabaseOAuthAvatar = (user) => {
+  const metadata = normalizeJsonObject(user?.user_metadata);
+  return String(metadata.avatar_url || metadata.picture || metadata.photo_url || '').trim();
+};
+
+const upsertFirebaseCustomUser = async ({ uid, email, name, avatarUrl }) => {
+  if (!firebaseApp) throw new Error('Firebase Admin is required for Supabase provider sign-in.');
+  const basePayload = {
+    displayName: name || undefined,
+    photoURL: avatarUrl || undefined,
+    disabled: false
+  };
+  const emailPayload = isEmailAddress(email) ? { ...basePayload, email, emailVerified: true } : basePayload;
+
+  try {
+    await admin.auth().getUser(uid);
+    try {
+      await admin.auth().updateUser(uid, emailPayload);
+    } catch (error) {
+      await admin.auth().updateUser(uid, basePayload);
+    }
+  } catch {
+    try {
+      await admin.auth().createUser({ uid, ...emailPayload });
+    } catch (error) {
+      await admin.auth().createUser({ uid, ...basePayload });
+    }
+  }
+};
+
+const exchangeSupabaseOAuthSession = async (req, res) => {
+  try {
+    const accessToken = String(req.body?.accessToken || req.body?.access_token || '').trim();
+    if (!accessToken) return res.status(400).json({ error: 'Supabase access token is required.' });
+    if (!firebaseApp) return res.status(503).json({ error: 'Firebase Admin is not configured.' });
+
+    const { data, error } = await supabase.auth.getUser(accessToken);
+    if (error || !data?.user?.id) {
+      return res.status(401).json({ error: error?.message || 'Invalid Supabase session.' });
+    }
+
+    const supabaseUser = data.user;
+    const firebaseUid = `supabase:${supabaseUser.id}`;
+    const email = normalizeEmail(supabaseUser.email);
+    const name = resolveSupabaseOAuthName(supabaseUser);
+    const avatarUrl = resolveSupabaseOAuthAvatar(supabaseUser);
+    const provider = String(supabaseUser.app_metadata?.provider || req.body?.provider || 'supabase').trim();
+
+    await upsertFirebaseCustomUser({ uid: firebaseUid, email, name, avatarUrl });
+
+    const payload = {
+      firebase_uid: firebaseUid,
+      email: email || null,
+      name: name || 'Urban Prime member',
+      avatar_url: avatarUrl || null,
+      phone: supabaseUser.phone || null
+    };
+
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .upsert(payload, { onConflict: 'firebase_uid', ignoreDuplicates: false })
+      .select('*')
+      .maybeSingle();
+    if (userError) throw userError;
+    if (user?.id) {
+      await supabase.from('user_profiles').upsert({ user_id: user.id }, { onConflict: 'user_id', ignoreDuplicates: true });
+    }
+
+    const customToken = await admin.auth().createCustomToken(firebaseUid, {
+      supabase_user_id: supabaseUser.id,
+      provider
+    });
+
+    return res.json({
+      ok: true,
+      customToken,
+      provider,
+      user: {
+        uid: firebaseUid,
+        email,
+        name,
+        avatarUrl,
+        supabaseUserId: supabaseUser.id
+      }
+    });
+  } catch (error) {
+    console.error('Supabase provider exchange failed:', error);
+    return res.status(500).json({ error: error?.message || 'Unable to finish provider sign-in.' });
+  }
+};
+
+app.post('/auth/supabase/exchange', strictAuthRateLimiter, exchangeSupabaseOAuthSession);
+app.post('/api/auth/supabase/exchange', strictAuthRateLimiter, exchangeSupabaseOAuthSession);
+
 const requireAuth = async (req, res, next) => {
   const hintedFirebaseUid = hydrateRequestUserFromFirebaseUid(req);
 
@@ -2210,6 +3937,759 @@ const requireAuth = async (req, res, next) => {
   return res.status(401).json({ error: 'Unauthorized' });
 };
 
+const resolveLoginProviderLabel = (provider) => {
+  const normalized = String(provider || '').trim().toLowerCase();
+  if (normalized === 'google') return 'Google';
+  if (normalized === 'apple') return 'Apple';
+  if (normalized === 'facebook') return 'Facebook';
+  if (normalized === 'linkedin' || normalized === 'linkedin_oidc') return 'LinkedIn';
+  if (normalized === 'phone') return 'phone number and password';
+  if (['email', 'password', 'email-password'].includes(normalized)) return 'email and password';
+  return 'your account credentials';
+};
+
+const pickClientHintBrowser = (clientHints) => {
+  const lists = [clientHints?.fullVersionList, clientHints?.brands].filter(Array.isArray);
+  for (const list of lists) {
+    const match = list.find((entry) => {
+      const brand = String(entry?.brand || '').toLowerCase();
+      return brand.includes('google chrome') || brand.includes('microsoft edge') || brand.includes('firefox') || brand === 'safari';
+    });
+    if (!match) continue;
+    const brand = String(match.brand || '').replace('Google Chrome', 'Chrome').replace('Microsoft Edge', 'Microsoft Edge');
+    const version = String(match.version || '').split('.')[0];
+    return version ? `${brand} ${version}` : brand;
+  }
+  return '';
+};
+
+const parseBrowserName = (userAgent, clientHints = {}) => {
+  const hintedBrowser = pickClientHintBrowser(clientHints);
+  if (hintedBrowser) return hintedBrowser;
+  const ua = String(userAgent || '');
+  const edge = /Edg\/([\d.]+)/i.exec(ua);
+  if (edge) return `Microsoft Edge ${edge[1].split('.')[0]}`;
+  const chrome = /Chrome\/([\d.]+)/i.exec(ua);
+  if (chrome && !/Chromium/i.test(ua)) return `Chrome ${chrome[1].split('.')[0]}`;
+  const firefox = /Firefox\/([\d.]+)/i.exec(ua);
+  if (firefox) return `Firefox ${firefox[1].split('.')[0]}`;
+  const safari = /Version\/([\d.]+).*Safari/i.exec(ua);
+  if (safari) return `Safari ${safari[1].split('.')[0]}`;
+  return 'Unknown browser';
+};
+
+const parseOperatingSystem = (userAgent, clientHints = {}) => {
+  const hintedPlatform = String(clientHints?.platform || '').trim();
+  const hintedPlatformVersion = String(clientHints?.platformVersion || '').trim();
+  if (/windows/i.test(hintedPlatform)) {
+    const major = Number.parseInt(hintedPlatformVersion.split('.')[0] || '0', 10);
+    if (major >= 13) return 'Windows 11';
+    if (major > 0) return 'Windows 10';
+    return 'Windows';
+  }
+  if (/macos/i.test(hintedPlatform)) return 'macOS';
+  if (/android/i.test(hintedPlatform)) return 'Android';
+  if (/ios/i.test(hintedPlatform)) return 'iOS';
+  if (/linux/i.test(hintedPlatform)) return 'Linux';
+
+  const ua = String(userAgent || '');
+  if (/Windows NT 10\.0/i.test(ua)) return 'Windows 11 or 10';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac OS X/i.test(ua)) return 'macOS';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return 'Unknown OS';
+};
+
+const parseDeviceType = (userAgent, clientHints = {}) => {
+  if (clientHints?.mobile === true) return 'Mobile device';
+  const ua = String(userAgent || '');
+  if (/iPad|Tablet/i.test(ua)) return 'Tablet device';
+  if (/Mobi|Android|iPhone|iPod/i.test(ua)) return 'Mobile device';
+  return 'Desktop device';
+};
+
+const describeUserAgent = (userAgent, clientHints = {}) => {
+  const browser = parseBrowserName(userAgent, clientHints);
+  const os = parseOperatingSystem(userAgent, clientHints);
+  if (browser === 'Unknown browser' && os === 'Unknown OS') return 'Unknown browser and device';
+  return `${browser} on ${os}`;
+};
+
+const resolveApproximateLocation = (req) => {
+  const city = String(req.headers['x-vercel-ip-city'] || req.headers['cf-ipcity'] || '').trim();
+  const region = String(req.headers['x-vercel-ip-country-region'] || req.headers['cf-region'] || '').trim();
+  const country = String(req.headers['x-vercel-ip-country'] || req.headers['cf-ipcountry'] || '').trim();
+  const parts = [city, region, country].filter(Boolean);
+  if (parts.length > 0) return parts.join(', ');
+
+  const ipAddress = String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || '')
+    .split(',')[0]
+    .trim();
+  if (!ipAddress || ['::1', '127.0.0.1', '::ffff:127.0.0.1'].includes(ipAddress)) {
+    return 'Local development device';
+  }
+  return 'Approximate location unavailable';
+};
+
+const sendLoginSecurityEmail = async ({ email, displayName, provider, req, localTime, timeZone, clientHints }) => {
+  if (!isPasswordResetEmailConfigured()) {
+    throw new Error('Login alert email delivery is not configured.');
+  }
+
+  const accountEmail = normalizeEmail(email);
+  const safeName = String(displayName || '').trim() || accountEmail.split('@')[0] || 'there';
+  const providerLabel = resolveLoginProviderLabel(provider);
+  const supportEmail = resolveSupportEmail();
+  const occurredAt = localTime || new Date().toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' });
+  const ipAddress = String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || 'Unknown')
+    .split(',')[0]
+    .trim();
+  const userAgent = String(req.headers['user-agent'] || 'Unknown device').slice(0, 180);
+  const browserDevice = describeUserAgent(userAgent, clientHints);
+  const deviceType = parseDeviceType(userAgent, clientHints);
+  const approximateLocation = resolveApproximateLocation(req);
+  const normalizedTimeZone = String(timeZone || '').trim() || 'Not provided';
+  const resetUrl = buildEmailActionUrl(req, `/forgot-password?email=${encodeURIComponent(accountEmail)}`);
+  const logoutUrl = buildEmailActionUrl(req, '/auth?logout=1');
+  const supportUrl = `mailto:${supportEmail}?subject=${encodeURIComponent('Urban Prime suspicious login')}`;
+  const subject = `Security notice: Urban Prime ${providerLabel} login`;
+  const text = [
+    `Hi ${safeName},`,
+    '',
+    `A login using ${providerLabel} was detected for your Urban Prime account.`,
+    '',
+    `Name: ${safeName}`,
+    `Account: ${accountEmail}`,
+    `Sign-in method: ${providerLabel}`,
+    `Time: ${occurredAt}`,
+    `Time zone: ${normalizedTimeZone}`,
+    `IP address: ${ipAddress}`,
+    `Device: ${browserDevice}`,
+    `Device type: ${deviceType}`,
+    `Approximate location: ${approximateLocation}`,
+    '',
+    'If this was you, no action is needed.',
+    `If this was not you, sign out here: ${logoutUrl}`,
+    `Then reset your password here: ${resetUrl}`,
+    `Contact support: ${supportEmail}`
+  ].join('\n');
+  const html = buildUrbanPrimeEmail({
+    preheader: `A ${providerLabel} login was detected on your Urban Prime account.`,
+    eyebrow: 'Security Alert',
+    title: `Hi ${safeName}, new login detected`,
+    intro: `A sign-in using ${providerLabel} just happened on your Urban Prime account. Review the details below so you can act quickly if this was not you.`,
+    details: [
+      { label: 'Name', value: safeName },
+      { label: 'Account', value: accountEmail },
+      { label: 'Sign-in method', value: providerLabel },
+      { label: 'Time', value: occurredAt },
+      { label: 'Time zone', value: normalizedTimeZone },
+      { label: 'Device', value: browserDevice },
+      { label: 'Device type', value: deviceType },
+      { label: 'Approx. location', value: approximateLocation },
+      { label: 'Risk level', value: 'Standard login alert' }
+    ],
+    warning: 'If this was not you, sign out and reset your password immediately. Then contact support so we can help protect your account.',
+    primaryAction: { href: resetUrl, label: 'Reset Password' },
+    secondaryActions: [
+      { href: logoutUrl, label: 'Sign Out' },
+      { href: supportUrl, label: 'Contact Support' }
+    ],
+    footer: 'If this was you, no action is needed. We send these alerts to help keep your Urban Prime account protected.'
+  });
+
+  await sendUrbanPrimeEmail({ to: accountEmail, subject, text, html });
+};
+
+const sendLoginSecurityWhatsApp = async ({ email, displayName, provider, req, localTime, timeZone, clientHints }) => {
+  const firebaseUid = getRequestFirebaseUid(req);
+  const userId = firebaseUid ? await resolveUserIdFromFirebaseUid(firebaseUid) : await resolveUserIdByEmail(email);
+  if (!userId) return { skipped: true, reason: 'user_not_found' };
+  const allowed = await canSendWhatsAppCategory({ userId, category: 'security' });
+  if (!allowed) return { skipped: true, reason: 'not_opted_in' };
+
+  const profile = await getUserMessagingProfile(userId);
+  const phone = normalizePhone(profile?.phone);
+  if (!phone) return { skipped: true, reason: 'missing_phone' };
+
+  const accountEmail = normalizeEmail(email || profile?.email);
+  const safeName = String(displayName || profile?.name || '').trim() || accountEmail.split('@')[0] || 'there';
+  const providerLabel = resolveLoginProviderLabel(provider);
+  const occurredAt = localTime || new Date().toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' });
+  const userAgent = String(req.headers['user-agent'] || 'Unknown device').slice(0, 180);
+  const browserDevice = describeUserAgent(userAgent, clientHints);
+  const deviceType = parseDeviceType(userAgent, clientHints);
+  const approximateLocation = resolveApproximateLocation(req);
+  const resetUrl = buildEmailActionUrl(req, `/forgot-password?email=${encodeURIComponent(accountEmail)}`);
+  const supportUrl = `mailto:${resolveSupportEmail()}?subject=${encodeURIComponent('Urban Prime suspicious login')}`;
+
+  return sendWhatsAppTemplate({
+    to: phone,
+    userId,
+    templateName: WHATSAPP_TEMPLATES.loginAlert,
+    eventType: 'login_alert',
+    category: 'security',
+    bodyParams: [
+      safeName,
+      providerLabel,
+      occurredAt,
+      browserDevice,
+      deviceType,
+      approximateLocation,
+      String(timeZone || 'Time zone unavailable'),
+      resetUrl,
+      supportUrl
+    ],
+    dedupeKey: `login-alert:${userId}:${providerLabel}:${Math.floor(Date.now() / 60000)}`
+  });
+};
+
+const loginAlertHandler = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.user?.email || req.body?.email);
+    if (!isEmailAddress(email)) {
+      return res.status(400).json({ error: 'A valid email address is required.' });
+    }
+    await sendLoginSecurityEmail({
+      email,
+      displayName: toNullableText(req.body?.displayName || req.user?.name),
+      provider: toNullableText(req.body?.provider),
+      req,
+      localTime: toNullableText(req.body?.localTime),
+      timeZone: toNullableText(req.body?.timeZone),
+      clientHints: normalizeJsonObject(req.body?.clientHints)
+    });
+    try {
+      await sendLoginSecurityWhatsApp({
+        email,
+        displayName: toNullableText(req.body?.displayName || req.user?.name),
+        provider: toNullableText(req.body?.provider),
+        req,
+        localTime: toNullableText(req.body?.localTime),
+        timeZone: toNullableText(req.body?.timeZone),
+        clientHints: normalizeJsonObject(req.body?.clientHints)
+      });
+    } catch (whatsAppError) {
+      console.warn('Login security WhatsApp failed:', whatsAppError?.message || whatsAppError);
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Login security email failed:', error);
+    return res.status(500).json({ error: 'Unable to send login security email.' });
+  }
+};
+
+app.post('/auth/login-alert', strictAuthRateLimiter, requireAuth, loginAlertHandler);
+app.post('/api/auth/login-alert', strictAuthRateLimiter, requireAuth, loginAlertHandler);
+
+app.get('/api/message-preferences/whatsapp', requireAuth, async (req, res) => {
+  try {
+    const firebaseUid = getRequestFirebaseUid(req);
+    const userId = firebaseUid ? await resolveUserIdFromFirebaseUid(firebaseUid) : null;
+    if (!userId) return res.status(404).json({ error: 'User profile not found.' });
+    const profile = await getUserMessagingProfile(userId);
+    const phone = normalizePhone(profile?.phone);
+    const preferences = await getWhatsAppPreferenceSnapshot(userId);
+    return res.json({
+      ok: true,
+      channel: 'whatsapp',
+      phone,
+      maskedPhone: maskPhone(phone),
+      configured: isWhatsAppConfigured(),
+      dryRun: WHATSAPP_DRY_RUN_ACTIVE,
+      preferences
+    });
+  } catch (error) {
+    console.error('WhatsApp preferences load failed:', error);
+    return res.status(500).json({ error: 'Unable to load WhatsApp notification settings.' });
+  }
+});
+
+app.patch('/api/message-preferences/whatsapp', requireAuth, async (req, res) => {
+  try {
+    const firebaseUid = getRequestFirebaseUid(req);
+    const userId = firebaseUid ? await resolveUserIdFromFirebaseUid(firebaseUid) : null;
+    if (!userId) return res.status(404).json({ error: 'User profile not found.' });
+    const profile = await getUserMessagingProfile(userId);
+    const phone = normalizePhone(req.body?.phone || profile?.phone);
+    if (!phone) return res.status(400).json({ error: 'Add a valid phone number before enabling WhatsApp messages.' });
+
+    const preferences = normalizeJsonObject(req.body?.preferences);
+    for (const [category, enabled] of Object.entries(preferences)) {
+      if (!WHATSAPP_MESSAGE_CATEGORIES.has(category)) continue;
+      await upsertMessagePreference({
+        userId,
+        phone,
+        category,
+        enabled: enabled === true,
+        source: category === 'marketing' ? 'settings_marketing_opt_in' : 'settings'
+      });
+    }
+
+    const snapshot = await getWhatsAppPreferenceSnapshot(userId);
+    return res.json({
+      ok: true,
+      channel: 'whatsapp',
+      phone,
+      maskedPhone: maskPhone(phone),
+      configured: isWhatsAppConfigured(),
+      dryRun: WHATSAPP_DRY_RUN_ACTIVE,
+      preferences: snapshot
+    });
+  } catch (error) {
+    console.error('WhatsApp preferences update failed:', error);
+    return res.status(500).json({ error: 'Unable to save WhatsApp notification settings.' });
+  }
+});
+
+const inferWhatsAppNotificationRoute = (notification = {}) => {
+  const type = String(notification.type || '').trim().toLowerCase();
+  const title = String(notification.title || '').trim();
+  const body = String(notification.body || notification.message || '').trim();
+  const copy = `${title} ${body}`.toLowerCase();
+
+  if (copy.includes('verification') || copy.includes('verify')) {
+    return { templateName: WHATSAPP_TEMPLATES.verificationUpdate, eventType: 'verification_update', category: 'utility' };
+  }
+  if (copy.includes('rental') || copy.includes('rent') || copy.includes('return') || copy.includes('pickup')) {
+    return { templateName: WHATSAPP_TEMPLATES.rentalReminder, eventType: 'rental_reminder', category: 'utility' };
+  }
+  if (copy.includes('offer') || copy.includes('bid') || copy.includes('counter')) {
+    return { templateName: WHATSAPP_TEMPLATES.offerUpdate, eventType: 'offer_update', category: 'utility' };
+  }
+  if (type === 'promo' || copy.includes('discount') || copy.includes('coupon') || copy.includes('sale')) {
+    return { templateName: WHATSAPP_TEMPLATES.discountAlert, eventType: 'discount_alert', category: 'marketing' };
+  }
+  if (type === 'listing' || copy.includes('listing') || copy.includes('seller') || copy.includes('order')) {
+    return { templateName: WHATSAPP_TEMPLATES.sellerUpdate, eventType: 'seller_update', category: 'utility' };
+  }
+  if (type === 'message' || copy.includes('feed') || copy.includes('post') || copy.includes('spotlight')) {
+    return { templateName: WHATSAPP_TEMPLATES.feedAlert, eventType: 'feed_alert', category: 'marketing' };
+  }
+  return { templateName: WHATSAPP_TEMPLATES.sellerUpdate, eventType: 'seller_update', category: 'utility' };
+};
+
+const sendWhatsAppForNotification = async (notification, req = null) => {
+  const userId = notification?.user_id || notification?.userId || null;
+  if (!userId) return { skipped: true, reason: 'missing_user' };
+  const route = inferWhatsAppNotificationRoute(notification);
+  const allowed = await canSendWhatsAppCategory({ userId, category: route.category });
+  if (!allowed) return { skipped: true, reason: 'not_opted_in' };
+
+  const profile = await getUserMessagingProfile(userId);
+  const phone = normalizePhone(profile?.phone);
+  if (!phone) return { skipped: true, reason: 'missing_phone' };
+
+  const title = String(notification.title || 'Urban Prime update').trim();
+  const body = String(notification.body || notification.message || '').trim();
+  const link = String(notification.link || '').trim();
+  const actionUrl = link
+    ? (req ? buildEmailActionUrl(req, link) : `${APP_PUBLIC_URL_NORMALIZED}${link.startsWith('/') ? link : `/${link}`}`)
+    : (APP_PUBLIC_URL_NORMALIZED || 'Open Urban Prime');
+  const safeName = String(profile?.name || '').trim() || String(profile?.email || '').split('@')[0] || 'there';
+
+  return sendWhatsAppTemplate({
+    to: phone,
+    userId,
+    templateName: route.templateName,
+    eventType: route.eventType,
+    category: route.category,
+    bodyParams: [
+      safeName,
+      title,
+      body,
+      actionUrl
+    ],
+    dedupeKey: notification?.id ? `${route.eventType}:${notification.id}` : null
+  });
+};
+
+const scheduleWhatsAppForNotifications = (rows, req = null) => {
+  const notifications = Array.isArray(rows) ? rows : [rows];
+  notifications
+    .filter(Boolean)
+    .forEach((notification) => {
+      void sendWhatsAppForNotification(notification, req)
+        .catch((error) => console.warn('Notification WhatsApp failed:', error?.message || error));
+    });
+};
+
+const inferEmailNotificationRoute = (notification = {}) => {
+  const type = String(notification.type || '').trim().toLowerCase();
+  const title = String(notification.title || '').trim();
+  const body = String(notification.body || notification.message || '').trim();
+  const copy = `${type} ${title} ${body}`.toLowerCase();
+
+  if (type === 'message' || copy.includes('message') || copy.includes('chat')) {
+    return { eventType: 'unread_messages', ctaLabel: 'Go to messages', badge: 'Inbox pulse' };
+  }
+  if (copy.includes('pixe')) {
+    return { eventType: 'pixe_moment', ctaLabel: 'Open Pixe', badge: 'Pixe creator' };
+  }
+  if (copy.includes('spotlight') || copy.includes('follower') || copy.includes('like') || copy.includes('comment')) {
+    return { eventType: 'spotlight_moment', ctaLabel: 'Open Spotlight', badge: 'Spotlight' };
+  }
+  if (copy.includes('trending') || copy.includes('surging') || copy.includes('popular')) {
+    return { eventType: 'trending_signal', ctaLabel: 'View performance', badge: 'Trend signal' };
+  }
+  if (copy.includes('rental') || copy.includes('rent') || copy.includes('pickup') || copy.includes('return')) {
+    return { eventType: 'rental_update', ctaLabel: 'View rental', badge: 'Rental desk' };
+  }
+  if (copy.includes('auction') || copy.includes('bid')) {
+    return { eventType: 'auction_update', ctaLabel: 'View auction', badge: 'Auction room' };
+  }
+  if (copy.includes('service') || copy.includes('work') || copy.includes('proposal') || copy.includes('booking')) {
+    return { eventType: 'service_update', ctaLabel: 'View service', badge: 'Service desk' };
+  }
+  if (copy.includes('sold') || copy.includes('bought') || copy.includes('order') || copy.includes('purchase')) {
+    return { eventType: 'commerce_update', ctaLabel: 'View order', badge: 'Marketplace' };
+  }
+  if (copy.includes('listing') || copy.includes('published')) {
+    return { eventType: 'listing_update', ctaLabel: 'View listing', badge: 'Seller studio' };
+  }
+  if (copy.includes('verification') || copy.includes('verify')) {
+    return { eventType: 'verification_update', ctaLabel: 'Review status', badge: 'Verification' };
+  }
+  return { eventType: 'account_activity', ctaLabel: 'Open Urban Prime', badge: 'Account activity' };
+};
+
+const loadUnreadMessagePreview = async (userId, fallbackNotification = {}) => {
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id,title,body,link,created_at')
+      .eq('user_id', userId)
+      .eq('type', 'message')
+      .is('read_at', null)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (error) throw error;
+    const rows = Array.isArray(data) && data.length > 0 ? data : [fallbackNotification];
+    return {
+      count: rows.filter(Boolean).length,
+      items: rows
+        .filter(Boolean)
+        .map((row) => ({
+          title: row.title || 'Unread message',
+          body: row.body || row.message || 'A conversation is ready for you.'
+        }))
+    };
+  } catch (error) {
+    console.warn('Unread message preview skipped:', error?.message || error);
+    return {
+      count: 1,
+      items: [{
+        title: fallbackNotification.title || 'Unread message',
+        body: fallbackNotification.body || fallbackNotification.message || 'A conversation is ready for you.'
+      }]
+    };
+  }
+};
+
+const sendEmailForNotification = async (notification, req = null) => {
+  const userId = notification?.user_id || notification?.userId || null;
+  if (!userId) return { skipped: true, reason: 'missing_user' };
+  const route = inferEmailNotificationRoute(notification);
+  const title = String(notification.title || 'Urban Prime update').trim();
+  const body = String(notification.body || notification.message || '').trim();
+  const link = String(notification.link || '').trim() || '/profile/notifications';
+
+  if (route.eventType === 'unread_messages') {
+    const preview = await loadUnreadMessagePreview(userId, notification);
+    return sendMomentEmail({
+      userId,
+      eventType: route.eventType,
+      title: preview.count > 1 ? `${preview.count} conversations are waiting` : 'A conversation is waiting',
+      body: 'Your inbox has something new to pick up.',
+      link: link || '/profile/messages',
+      ctaLabel: 'Go to messages',
+      badge: route.badge,
+      highlight: 'Open the conversation while the context is still fresh.',
+      previewItems: preview.items,
+      stats: [{ label: 'Unread', value: String(preview.count) }],
+      dedupeKey: `email:unread-message:${userId}:${link || 'inbox'}`,
+      dedupeMs: EMAIL_UNREAD_MESSAGE_DEDUPE_WINDOW_MS,
+      req
+    });
+  }
+
+  return sendMomentEmail({
+    userId,
+    eventType: route.eventType,
+    title,
+    body: body || title,
+    link,
+    ctaLabel: route.ctaLabel,
+    badge: route.badge,
+    highlight: 'The update is already organized inside your Urban Prime workspace.',
+    previewItems: [{ title, body }],
+    dedupeKey: notification?.id ? `email:notification:${notification.id}` : `email:notification:${userId}:${route.eventType}:${title}:${link}`,
+    req
+  });
+};
+
+const scheduleEmailForNotifications = (rows, req = null) => {
+  const notifications = Array.isArray(rows) ? rows : [rows];
+  notifications
+    .filter(Boolean)
+    .forEach((notification) => {
+      void sendEmailForNotification(notification, req)
+        .catch((error) => console.warn('Notification email failed:', error?.message || error));
+    });
+};
+
+const scheduleListingPublishedEmail = (rows, req = null) => {
+  const items = Array.isArray(rows) ? rows : [rows];
+  items
+    .filter(Boolean)
+    .forEach((item) => {
+      const status = String(item.status || item.listing_status || '').toLowerCase();
+      if (status && !['published', 'active', 'live'].includes(status)) return;
+      const sellerId = item.seller_id || item.owner_user_id || item.user_id || item.created_by_user_id || null;
+      if (!sellerId) return;
+      const title = String(item.title || item.name || 'Your listing').trim();
+      void sendMomentEmail({
+        userId: sellerId,
+        eventType: 'listing_published',
+        title: `${title} is live`,
+        body: 'Your listing is now placed in the marketplace with its first visibility moment ready.',
+        link: item.id ? `/item/${item.id}` : '/profile/listings',
+        ctaLabel: 'View listing',
+        badge: 'Seller launch',
+        highlight: 'Add a stronger cover image, pricing detail, or delivery note to turn early views into action.',
+        stats: [
+          { label: 'Status', value: 'Live' },
+          { label: 'Next goal', value: 'First buyer' }
+        ],
+        dedupeKey: item.id ? `email:listing-published:${item.id}` : null,
+        req
+      }).catch((error) => console.warn('Listing email failed:', error?.message || error));
+    });
+};
+
+const sendGoalInviteEmail = async ({ userId, goal, req = null }) => {
+  const goalMap = {
+    product: {
+      title: 'Your first product deserves a proper launch',
+      body: 'A polished listing helps buyers trust the item faster.',
+      link: '/sell',
+      ctaLabel: 'List first product',
+      badge: 'Seller start',
+      highlight: 'Start with one clear photo, a confident price, and the condition details buyers ask for first.'
+    },
+    rental: {
+      title: 'Turn an idle item into a rental',
+      body: 'A rental listing can create repeat demand without selling the item.',
+      link: '/rentals/new',
+      ctaLabel: 'Create rental listing',
+      badge: 'Rental start',
+      highlight: 'Set availability, pickup rules, and deposit terms so renters can move quickly.'
+    },
+    pixe: {
+      title: 'Your first Pixe can start the discovery loop',
+      body: 'Short product-led clips give your marketplace profile more personality.',
+      link: '/pixe/studio',
+      ctaLabel: 'Upload first Pixe',
+      badge: 'Pixe launch',
+      highlight: 'Use the first three seconds to show the item, the result, or the reason people should care.'
+    },
+    spotlight: {
+      title: 'Spotlight is ready for your first post',
+      body: 'A simple post can bring your profile into the social side of Urban Prime.',
+      link: '/spotlight',
+      ctaLabel: 'Create Spotlight post',
+      badge: 'Spotlight start',
+      highlight: 'Share a product moment, behind-the-scenes update, or quick story that makes your profile feel active.'
+    }
+  };
+  const config = goalMap[goal];
+  if (!config) return { skipped: true, reason: 'unknown_goal' };
+  return sendMomentEmail({
+    userId,
+    eventType: `invite_${goal}`,
+    ...config,
+    stats: [{ label: 'Goal', value: 'First step' }],
+    dedupeKey: `email:invite:${goal}:${userId}`,
+    dedupeMs: 7 * 24 * 60 * 60 * 1000,
+    req
+  });
+};
+
+const countRowsForUserColumn = async ({ table, column, userId, filters = {} }) => {
+  try {
+    let query = supabase
+      .from(table)
+      .select('id', { count: 'exact', head: true })
+      .eq(column, userId);
+    Object.entries(filters || {}).forEach(([key, value]) => {
+      if (value === null) query = query.is(key, null);
+      else if (Array.isArray(value)) query = query.in(key, value);
+      else query = query.eq(key, value);
+    });
+    const { count, error } = await query;
+    if (error) throw error;
+    return Number(count || 0);
+  } catch {
+    return 0;
+  }
+};
+
+const loadUserGoalSignals = async (userId) => {
+  const [
+    sellerIdItems,
+    ownerUserIdItems,
+    rentalItems,
+    pixeVideos,
+    spotlightPosts
+  ] = await Promise.all([
+    countRowsForUserColumn({ table: 'items', column: 'seller_id', userId }),
+    countRowsForUserColumn({ table: 'items', column: 'owner_user_id', userId }),
+    countRowsForUserColumn({ table: 'items', column: 'seller_id', userId, filters: { listing_type: 'rental' } }),
+    countRowsForUserColumn({ table: 'pixe_videos', column: 'creator_user_id', userId }),
+    countRowsForUserColumn({ table: 'spotlight_content', column: 'creator_user_id', userId })
+  ]);
+  const productListings = sellerIdItems + ownerUserIdItems;
+  return {
+    hasProduct: productListings > 0,
+    hasRental: rentalItems > 0,
+    hasPixe: pixeVideos > 0,
+    hasSpotlight: spotlightPosts > 0
+  };
+};
+
+const sendMissingGoalInviteEmails = async ({ userId, req = null }) => {
+  const signals = await loadUserGoalSignals(userId);
+  const goals = [];
+  if (!signals.hasProduct) goals.push('product');
+  if (!signals.hasRental) goals.push('rental');
+  if (!signals.hasPixe) goals.push('pixe');
+  if (!signals.hasSpotlight) goals.push('spotlight');
+  for (const goal of goals) {
+    try {
+      await sendGoalInviteEmail({ userId, goal, req });
+    } catch (error) {
+      console.warn(`Goal invite email failed for ${goal}:`, error?.message || error);
+    }
+  }
+  return goals;
+};
+
+const requireAutomationAuth = (req, res, next) => {
+  if (BACKEND_API_KEY && secureCompare(req.headers['x-backend-key'], BACKEND_API_KEY)) {
+    return next();
+  }
+  if (!IS_PRODUCTION) {
+    return next();
+  }
+  return res.status(401).json({ error: 'Automation key required.' });
+};
+
+app.post('/api/engagement/presence', requireAuth, async (req, res) => {
+  try {
+    const firebaseUid = getRequestFirebaseUid(req);
+    const userId = firebaseUid ? await resolveUserIdFromFirebaseUid(firebaseUid) : null;
+    if (!userId) return res.status(404).json({ error: 'User profile not found.' });
+    const now = new Date().toISOString();
+    const metadata = {
+      path: String(req.body?.path || '').slice(0, 240),
+      userAgent: String(req.headers['user-agent'] || '').slice(0, 300)
+    };
+    const { error } = await supabase.from('email_engagement_state').upsert({
+      user_id: userId,
+      last_seen_at: now,
+      metadata,
+      updated_at: now
+    }, { onConflict: 'user_id', ignoreDuplicates: false });
+    if (error) throw error;
+    return res.json({ ok: true, last_seen_at: now });
+  } catch (error) {
+    console.warn('Presence update failed:', error?.message || error);
+    return res.status(500).json({ error: 'Unable to update engagement presence.' });
+  }
+});
+
+app.post('/api/engagement/invites', requireAuth, async (req, res) => {
+  try {
+    const firebaseUid = getRequestFirebaseUid(req);
+    const userId = firebaseUid ? await resolveUserIdFromFirebaseUid(firebaseUid) : null;
+    if (!userId) return res.status(404).json({ error: 'User profile not found.' });
+    const requestedGoals = Array.isArray(req.body?.goals)
+      ? req.body.goals.map((goal) => String(goal || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    const goals = requestedGoals.length > 0
+      ? requestedGoals
+      : await sendMissingGoalInviteEmails({ userId, req });
+    for (const goal of requestedGoals) {
+      await sendGoalInviteEmail({ userId, goal, req });
+    }
+    return res.json({ ok: true, goals });
+  } catch (error) {
+    console.warn('Invite email request failed:', error?.message || error);
+    return res.status(500).json({ error: 'Unable to send invite emails.' });
+  }
+});
+
+app.post('/api/engagement/sweep', requireAutomationAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parsePort(req.body?.limit ?? '50', 50), 1), 100);
+    const cutoff = new Date(Date.now() - EMAIL_REENGAGEMENT_AFTER_MS).toISOString();
+    const { data, error } = await supabase
+      .from('email_engagement_state')
+      .select('user_id,last_seen_at,last_reengagement_at')
+      .not('last_seen_at', 'is', null)
+      .lt('last_seen_at', cutoff)
+      .order('last_seen_at', { ascending: true })
+      .limit(limit);
+    if (error) throw error;
+
+    const results = [];
+    for (const row of data || []) {
+      const lastSeenMs = new Date(row.last_seen_at).getTime();
+      const lastReengagementMs = row.last_reengagement_at ? new Date(row.last_reengagement_at).getTime() : 0;
+      if (Number.isFinite(lastReengagementMs) && lastReengagementMs >= lastSeenMs) {
+        results.push({ userId: row.user_id, skipped: 'already_sent' });
+        continue;
+      }
+
+      try {
+        const unread = await loadUnreadMessagePreview(row.user_id, {});
+        await sendMomentEmail({
+          userId: row.user_id,
+          eventType: 'reengagement_momentum',
+          title: 'Fresh movement is waiting on Urban Prime',
+          body: 'A few parts of your marketplace profile have new momentum to pick up.',
+          link: '/profile/notifications',
+          ctaLabel: 'See what is new',
+          badge: 'Market pulse',
+          highlight: 'Open your workspace and choose the next action while the feed is still warm.',
+          previewItems: unread.items,
+          stats: [
+            { label: 'Inbox', value: unread.count > 0 ? `${unread.count} new` : 'Ready' },
+            { label: 'Next step', value: 'Waiting' }
+          ],
+          dedupeKey: `email:reengagement:${row.user_id}:${new Date().toISOString().slice(0, 10)}`,
+          dedupeMs: 20 * 60 * 60 * 1000,
+          req
+        });
+        const inviteGoals = await sendMissingGoalInviteEmails({ userId: row.user_id, req });
+        await supabase
+          .from('email_engagement_state')
+          .update({ last_reengagement_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('user_id', row.user_id);
+        results.push({ userId: row.user_id, sent: true, inviteGoals });
+      } catch (sendError) {
+        results.push({ userId: row.user_id, error: String(sendError?.message || sendError) });
+      }
+    }
+    return res.json({ ok: true, processed: results.length, results });
+  } catch (error) {
+    console.error('Engagement sweep failed:', error);
+    return res.status(500).json({ error: 'Unable to run engagement sweep.' });
+  }
+});
+
 const requireTable = (req, res, next) => {
   const { table } = req.params;
   if (!ALLOWED_TABLES.has(table)) {
@@ -2235,7 +4715,8 @@ registerSpotlightRoutes({
   app,
   supabase,
   requireAuth,
-  resolveUserIdFromFirebaseUid
+  resolveUserIdFromFirebaseUid,
+  scheduleEmailForNotifications
 });
 
 registerPixeRoutes({
@@ -2246,6 +4727,7 @@ registerPixeRoutes({
   resolveAdminContext,
   createRateLimiter,
   writeAuditLog,
+  scheduleEmailForNotifications,
   uploadsRoot
 });
 
@@ -2422,6 +4904,7 @@ app.patch('/profile/me', requireAuth, async (req, res) => {
     const businessDescriptionValue = pick(body.businessDescription, body.business_description, profileSource.businessDescription, profileSource.business_description);
     const preferencesValue = pick(body.preferences, profileSource.preferences);
     const socialLinksValue = pick(body.socialLinks, body.social_links, profileSource.socialLinks, profileSource.social_links);
+    const usernameValue = pick(body.username, profileSource.username);
 
     if (purposeValue !== undefined) {
       if (Array.isArray(purposeValue)) {
@@ -2441,6 +4924,26 @@ app.patch('/profile/me', requireAuth, async (req, res) => {
     if (businessDescriptionValue !== undefined) profilePatch.business_description = toNullableText(businessDescriptionValue);
     if (preferencesValue !== undefined) profilePatch.preferences = normalizeJsonObject(preferencesValue);
     if (socialLinksValue !== undefined) profilePatch.social_links = normalizeJsonObject(socialLinksValue);
+    if (usernameValue !== undefined) {
+      const normalizedUsername = normalizePublicUsername(usernameValue);
+      if (!normalizedUsername || normalizedUsername.length < 3) {
+        return res.status(400).json({ error: 'Username must be at least 3 characters.' });
+      }
+      const { data: existingUsername, error: existingUsernameError } = await supabase
+        .from('user_profiles')
+        .select('user_id')
+        .eq('username', normalizedUsername)
+        .neq('user_id', context.user.id)
+        .limit(1)
+        .maybeSingle();
+      if (existingUsernameError) {
+        return res.status(400).json({ error: existingUsernameError.message || 'Unable to validate username.' });
+      }
+      if (existingUsername?.user_id) {
+        return res.status(409).json({ error: 'Username is already taken.' });
+      }
+      profilePatch.username = normalizedUsername;
+    }
 
     const patchResult = await applyProfilePatch({
       userRow: context.user,
@@ -4125,13 +6628,15 @@ app.post('/activity/events', requireAuth, async (req, res) => {
       });
     }
 
-    await supabase.from('notifications').insert({
+    const { data: ownerNotification } = await supabase.from('notifications').insert({
       user_id: ownerUserId,
       type: 'listing',
       title: 'Listing activity',
       body: notificationBody,
       link: `/item/${item_id}`
-    });
+    }).select('*').maybeSingle();
+    if (ownerNotification) scheduleWhatsAppForNotifications(ownerNotification, req);
+    if (ownerNotification) scheduleEmailForNotifications(ownerNotification, req);
   }
 
   try {
@@ -5496,24 +8001,85 @@ app.post('/work/proposals', requireAuth, async (req, res) => {
     }
 
     const body = normalizeJsonObject(req.body);
-    if (!body.clientId && !body.client_id) {
+    const requestId = body.requestId || body.request_id || null;
+    let requestRow = null;
+
+    if (requestId) {
+      const requestLookup = await supabase
+        .from('work_requests')
+        .select('*')
+        .eq('id', requestId)
+        .maybeSingle();
+      if (requestLookup.error) throw requestLookup.error;
+      requestRow = requestLookup.data;
+      if (!requestRow) {
+        return res.status(404).json({ error: 'Work request not found' });
+      }
+      if (String(requestRow.target_provider_id || '') !== String(context.user.id || '')) {
+        return res.status(403).json({ error: 'You do not have access to propose on this request.' });
+      }
+      if (['matched', 'cancelled', 'closed'].includes(String(requestRow.status || '').toLowerCase())) {
+        return res.status(409).json({ error: 'This lead can no longer receive proposals.' });
+      }
+      const requestDetails = normalizeJsonObject(requestRow.details);
+      const requestType = String(requestRow.request_type || requestDetails.requestType || '').toLowerCase();
+      if (requestType === 'booking') {
+        return res.status(409).json({ error: 'Booking leads should be accepted directly.' });
+      }
+    }
+
+    const listingId = body.listingId || body.listing_id || requestRow?.listing_id || null;
+    if (listingId) {
+      const listingLookup = await supabase
+        .from('work_listings')
+        .select('id,status')
+        .eq('id', listingId)
+        .maybeSingle();
+      if (listingLookup.error) throw listingLookup.error;
+      if (!listingLookup.data || String(listingLookup.data.status || '') !== 'published') {
+        return res.status(409).json({ error: 'Linked listing is no longer available.' });
+      }
+    }
+
+    const clientId = body.clientId || body.client_id || requestRow?.requester_id || null;
+    if (!clientId) {
       return res.status(400).json({ error: 'clientId is required' });
     }
 
+    let existingProposal = null;
+    if (requestId) {
+      const existingLookup = await supabase
+        .from('work_proposals')
+        .select('*')
+        .eq('request_id', requestId)
+        .eq('provider_id', context.user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existingLookup.error) throw existingLookup.error;
+      existingProposal = existingLookup.data || null;
+      if (existingProposal?.status === 'accepted') {
+        return res.status(409).json({ error: 'This proposal has already been accepted.' });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const providerSnapshotInput = normalizeJsonObject(body.providerSnapshot);
+    const clientSnapshotInput = normalizeJsonObject(body.clientSnapshot || body.client_snapshot);
     const payload = {
-      request_id: body.requestId || body.request_id || null,
-      listing_id: body.listingId || body.listing_id || null,
+      request_id: requestId,
+      listing_id: listingId,
       provider_id: context.user.id,
       provider_persona_id: body.providerPersonaId || body.provider_persona_id || null,
-      provider_snapshot: normalizeJsonObject(body.providerSnapshot) || {
+      provider_snapshot: Object.keys(providerSnapshotInput).length ? providerSnapshotInput : {
         id: context.user.id,
         name: context.user.name || 'Provider',
         avatar: context.user.avatar_url || '/icons/urbanprime.svg',
         rating: 0
       },
-      client_id: body.clientId || body.client_id,
-      client_persona_id: body.clientPersonaId || body.client_persona_id || null,
-      client_snapshot: normalizeJsonObject(body.clientSnapshot || body.client_snapshot),
+      client_id: clientId,
+      client_persona_id: body.clientPersonaId || body.client_persona_id || requestRow?.requester_persona_id || null,
+      client_snapshot: Object.keys(clientSnapshotInput).length ? clientSnapshotInput : normalizeJsonObject(requestRow?.requester_snapshot),
       title: toNullableText(body.title) || 'Proposal',
       cover_letter: toNullableText(body.coverLetter || body.cover_letter) || '',
       price_total: parsePositiveNumber(body.priceTotal ?? body.price_total, 0),
@@ -5523,32 +8089,64 @@ app.post('/work/proposals', requireAuth, async (req, res) => {
       terms: normalizeJsonObject(body.terms),
       revision_limit: parsePositiveNumber(body.revisionLimit ?? body.revision_limit, 0),
       risk_score: parsePositiveNumber(body.riskScore ?? body.risk_score, 0),
-      status: normalizeWorkProposalStatus(body.status, 'pending')
+      status: normalizeWorkProposalStatus(body.status, 'pending'),
+      updated_at: now
     };
 
-    const { data, error } = await supabase
-      .from('work_proposals')
-      .insert(payload)
-      .select('*')
-      .maybeSingle();
-    if (error) throw error;
+    const writeResult = existingProposal?.id
+      ? await supabase
+          .from('work_proposals')
+          .update({
+            ...payload,
+            responded_at: null
+          })
+          .eq('id', existingProposal.id)
+          .select('*')
+          .maybeSingle()
+      : await supabase
+          .from('work_proposals')
+          .insert(payload)
+          .select('*')
+          .maybeSingle();
+    if (writeResult.error) throw writeResult.error;
+    if (!writeResult.data) {
+      return res.status(400).json({ error: 'Unable to save proposal.' });
+    }
 
-    await mirrorWorkCollectionRecord('work_proposals', data.id, data);
+    let requestUpdate = null;
+    if (requestId && payload.status === 'pending') {
+      const requestStatusUpdate = await supabase
+        .from('work_requests')
+        .update({
+          status: 'in_review',
+          updated_at: now
+        })
+        .eq('id', requestId)
+        .select('*')
+        .maybeSingle();
+      if (requestStatusUpdate.error) throw requestStatusUpdate.error;
+      requestUpdate = requestStatusUpdate.data || null;
+    }
+
+    await mirrorWorkCollectionRecord('work_proposals', writeResult.data.id, writeResult.data);
+    if (requestUpdate?.id) {
+      await mirrorWorkCollectionRecord('work_requests', requestUpdate.id, requestUpdate);
+    }
 
     await writeAuditLog({
       actorUserId: context.user.id,
-      action: 'work_proposal_created',
+      action: existingProposal?.id ? 'work_proposal_updated' : 'work_proposal_created',
       entityType: 'work_proposal',
-      entityId: data.id,
+      entityId: writeResult.data.id,
       details: {
-        requestId: data.request_id,
-        listingId: data.listing_id,
-        status: data.status,
-        priceTotal: data.price_total
+        requestId: writeResult.data.request_id,
+        listingId: writeResult.data.listing_id,
+        status: writeResult.data.status,
+        priceTotal: writeResult.data.price_total
       }
     });
 
-    return res.status(201).json({ data });
+    return res.status(existingProposal?.id ? 200 : 201).json({ data: writeResult.data });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Unable to create proposal.' });
   }
@@ -5556,11 +8154,67 @@ app.post('/work/proposals', requireAuth, async (req, res) => {
 
 app.patch('/work/proposals/:id', requireAuth, async (req, res) => {
   try {
+    const context = await getUserContext(req);
+    if (context.error) {
+      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
+    }
+
     const { id } = req.params;
+    const existingLookup = await supabase
+      .from('work_proposals')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (existingLookup.error) throw existingLookup.error;
+    const existingProposal = existingLookup.data;
+    if (!existingProposal) return res.status(404).json({ error: 'Proposal not found' });
+    if (String(existingProposal.provider_id || '') !== String(context.user.id || '')) {
+      return res.status(403).json({ error: 'You do not have access to edit this proposal.' });
+    }
+
     const body = normalizeJsonObject(req.body);
+    const now = new Date().toISOString();
+    const nextStatus = body.status !== undefined
+      ? normalizeWorkProposalStatus(body.status, existingProposal.status || 'pending')
+      : existingProposal.status || 'pending';
+
+    if (existingProposal.request_id && nextStatus === 'pending') {
+      const requestLookup = await supabase
+        .from('work_requests')
+        .select('*')
+        .eq('id', existingProposal.request_id)
+        .maybeSingle();
+      if (requestLookup.error) throw requestLookup.error;
+      const requestRow = requestLookup.data;
+      if (!requestRow) {
+        return res.status(404).json({ error: 'Work request not found' });
+      }
+      if (['matched', 'cancelled', 'closed'].includes(String(requestRow.status || '').toLowerCase())) {
+        return res.status(409).json({ error: 'This lead can no longer receive proposals.' });
+      }
+      const requestDetails = normalizeJsonObject(requestRow.details);
+      const requestType = String(requestRow.request_type || requestDetails.requestType || '').toLowerCase();
+      if (requestType === 'booking') {
+        return res.status(409).json({ error: 'Booking leads should be accepted directly.' });
+      }
+    }
+
+    const listingId = body.listingId || body.listing_id || existingProposal.listing_id || null;
+    if (listingId && nextStatus === 'pending') {
+      const listingLookup = await supabase
+        .from('work_listings')
+        .select('id,status')
+        .eq('id', listingId)
+        .maybeSingle();
+      if (listingLookup.error) throw listingLookup.error;
+      if (!listingLookup.data || String(listingLookup.data.status || '') !== 'published') {
+        return res.status(409).json({ error: 'Linked listing is no longer available.' });
+      }
+    }
 
     const updates = {};
-    if (body.status !== undefined) updates.status = normalizeWorkProposalStatus(body.status, 'pending');
+    if (body.status !== undefined) updates.status = nextStatus;
+    if (body.title !== undefined) updates.title = toNullableText(body.title) || existingProposal.title || 'Proposal';
     if (body.coverLetter !== undefined || body.cover_letter !== undefined) {
       updates.cover_letter = toNullableText(body.coverLetter || body.cover_letter) || '';
     }
@@ -5572,10 +8226,16 @@ app.patch('/work/proposals/:id', requireAuth, async (req, res) => {
     }
     if (body.milestones !== undefined) updates.milestones = Array.isArray(body.milestones) ? body.milestones : [];
     if (body.terms !== undefined) updates.terms = normalizeJsonObject(body.terms);
-    if (updates.status && ['accepted', 'declined'].includes(updates.status)) {
-      updates.responded_at = new Date().toISOString();
+    if (body.revisionLimit !== undefined || body.revision_limit !== undefined) {
+      updates.revision_limit = parsePositiveNumber(body.revisionLimit ?? body.revision_limit, 0);
     }
-    updates.updated_at = new Date().toISOString();
+    if (updates.status && ['accepted', 'declined'].includes(updates.status)) {
+      updates.responded_at = now;
+    }
+    if (updates.status === 'pending') {
+      updates.responded_at = null;
+    }
+    updates.updated_at = now;
 
     const { data, error } = await supabase
       .from('work_proposals')
@@ -5586,10 +8246,28 @@ app.patch('/work/proposals/:id', requireAuth, async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Proposal not found' });
 
+    let requestUpdate = null;
+    if (data.request_id && updates.status === 'pending') {
+      const requestStatusUpdate = await supabase
+        .from('work_requests')
+        .update({
+          status: 'in_review',
+          updated_at: now
+        })
+        .eq('id', data.request_id)
+        .select('*')
+        .maybeSingle();
+      if (requestStatusUpdate.error) throw requestStatusUpdate.error;
+      requestUpdate = requestStatusUpdate.data || null;
+    }
+
     await mirrorWorkCollectionRecord('work_proposals', data.id, data);
+    if (requestUpdate?.id) {
+      await mirrorWorkCollectionRecord('work_requests', requestUpdate.id, requestUpdate);
+    }
 
     await writeAuditLog({
-      actorUserId: req.user?.uid ? (await resolveSupabaseUserId(req.user.uid)) : null,
+      actorUserId: context.user.id,
       action: 'work_proposal_updated',
       entityType: 'work_proposal',
       entityId: id,
@@ -5621,6 +8299,9 @@ app.post('/work/proposals/:id/accept', requireAuth, async (req, res) => {
     if (String(proposal.client_id || '') !== String(context.user.id || '')) {
       return res.status(403).json({ error: 'You do not have access to accept this proposal.' });
     }
+    if (['declined', 'withdrawn', 'expired'].includes(String(proposal.status || '').toLowerCase())) {
+      return res.status(409).json({ error: 'This proposal can no longer be accepted.' });
+    }
 
     const now = new Date().toISOString();
     const proposalUpdate = await supabase
@@ -5646,19 +8327,30 @@ app.post('/work/proposals/:id/accept', requireAuth, async (req, res) => {
 
     let contract = contractLookup.data || null;
     if (!contract) {
+      const requestLookup = proposal.request_id
+        ? await supabase.from('work_requests').select('*').eq('id', proposal.request_id).maybeSingle()
+        : { data: null, error: null };
+      if (requestLookup.error) throw requestLookup.error;
+      const requestRow = requestLookup.data || null;
+      const listingLookup = proposal.listing_id
+        ? await supabase.from('work_listings').select('*').eq('id', proposal.listing_id).maybeSingle()
+        : { data: null, error: null };
+      if (listingLookup.error) throw listingLookup.error;
+      const listing = listingLookup.data || null;
+
       const engagementInsert = await supabase
         .from('work_engagements')
         .insert({
           source_type: 'contract',
           source_id: 'pending',
-          mode: proposal.mode || 'hybrid',
-          fulfillment_kind: proposal.fulfillment_kind || 'hybrid',
+          mode: requestRow?.mode || listing?.mode || 'hybrid',
+          fulfillment_kind: requestRow?.fulfillment_kind || listing?.fulfillment_kind || 'hybrid',
           buyer_id: proposal.client_id,
           buyer_persona_id: proposal.client_persona_id || null,
           provider_id: proposal.provider_id,
           provider_persona_id: proposal.provider_persona_id || null,
           currency: proposal.currency || 'USD',
-          timezone: 'UTC',
+          timezone: requestRow?.timezone || listing?.timezone || 'UTC',
           gross_amount: Number(proposal.price_total || 0),
           escrow_status: 'none',
           risk_score: Number(proposal.risk_score || 0),
@@ -5687,10 +8379,10 @@ app.post('/work/proposals/:id/accept', requireAuth, async (req, res) => {
           provider_persona_id: proposal.provider_persona_id || null,
           provider_snapshot: normalizeJsonObject(proposal.provider_snapshot),
           scope: toNullableText(proposal.cover_letter) || toNullableText(proposal.title) || 'Accepted proposal',
-          mode: normalizeWorkMode(proposal.mode, 'hybrid'),
-          fulfillment_kind: normalizeFulfillmentKind(proposal.fulfillment_kind, 'hybrid'),
+          mode: normalizeWorkMode(requestRow?.mode || listing?.mode, 'hybrid'),
+          fulfillment_kind: normalizeFulfillmentKind(requestRow?.fulfillment_kind || listing?.fulfillment_kind, 'hybrid'),
           currency: normalizeCurrencyCode(proposal.currency, 'USD'),
-          timezone: 'UTC',
+          timezone: requestRow?.timezone || listing?.timezone || 'UTC',
           total_amount: Number(proposal.price_total || 0),
           escrow_held: 0,
           risk_score: Number(proposal.risk_score || 0),
@@ -5758,18 +8450,26 @@ app.post('/work/proposals/:id/accept', requireAuth, async (req, res) => {
         .eq('id', contract.engagement_id);
     }
 
+    let requestUpdate = null;
     if (proposal.request_id) {
-      await supabase
+      const requestStatusUpdate = await supabase
         .from('work_requests')
         .update({
           status: 'matched',
           accepted_at: now,
           updated_at: now
         })
-        .eq('id', proposal.request_id);
+        .eq('id', proposal.request_id)
+        .select('*')
+        .maybeSingle();
+      if (requestStatusUpdate.error) throw requestStatusUpdate.error;
+      requestUpdate = requestStatusUpdate.data || null;
     }
 
     await mirrorWorkCollectionRecord('work_proposals', proposalUpdate.data.id, proposalUpdate.data);
+    if (requestUpdate?.id) {
+      await mirrorWorkCollectionRecord('work_requests', requestUpdate.id, requestUpdate);
+    }
     if (contract?.id) {
       await mirrorWorkCollectionRecord('work_contracts', contract.id, contract);
     }
@@ -5807,6 +8507,9 @@ app.post('/work/proposals/:id/decline', requireAuth, async (req, res) => {
     if (String(proposal.client_id || '') !== String(context.user.id || '')) {
       return res.status(403).json({ error: 'You do not have access to decline this proposal.' });
     }
+    if (String(proposal.status || '').toLowerCase() === 'accepted') {
+      return res.status(409).json({ error: 'Accepted proposals can no longer be declined.' });
+    }
 
     const now = new Date().toISOString();
     const body = normalizeJsonObject(req.body);
@@ -5826,7 +8529,25 @@ app.post('/work/proposals/:id/decline', requireAuth, async (req, res) => {
       .maybeSingle();
     if (error) throw error;
 
+    let requestUpdate = null;
+    if (proposal.request_id) {
+      const requestStatusUpdate = await supabase
+        .from('work_requests')
+        .update({
+          status: 'open',
+          updated_at: now
+        })
+        .eq('id', proposal.request_id)
+        .select('*')
+        .maybeSingle();
+      if (requestStatusUpdate.error) throw requestStatusUpdate.error;
+      requestUpdate = requestStatusUpdate.data || null;
+    }
+
     await mirrorWorkCollectionRecord('work_proposals', data.id, data);
+    if (requestUpdate?.id) {
+      await mirrorWorkCollectionRecord('work_requests', requestUpdate.id, requestUpdate);
+    }
     await writeAuditLog({
       actorUserId: context.user.id,
       action: 'work_proposal_declined',
@@ -6634,13 +9355,10 @@ app.get('/work/provider/summary', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/work/autopilot/scope', requireAuth, async (req, res) => {
+app.post('/work/autopilot/scope', async (req, res) => {
   const startedAt = Date.now();
   try {
-    const context = await getUserContext(req);
-    if (context.error) {
-      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
-    }
+    const context = await resolveOptionalUserContext(req);
     const body = normalizeJsonObject(req.body);
     const brief = toNullableText(body.brief) || '';
     if (!brief) {
@@ -6679,19 +9397,23 @@ app.post('/work/autopilot/scope', requireAuth, async (req, res) => {
     };
 
     const latencyMs = Date.now() - startedAt;
-    await supabase.from('work_autopilot_runs').insert({
-      run_type: 'scope',
-      actor_user_id: context.user.id,
-      actor_persona_id: body.actorPersonaId || body.actor_persona_id || null,
-      request_id: body.requestId || body.request_id || null,
-      listing_id: body.listingId || body.listing_id || null,
-      contract_id: body.contractId || body.contract_id || null,
-      input_payload: body,
-      output_payload: output,
-      model: 'heuristic-v1',
-      status: 'succeeded',
-      latency_ms: latencyMs
-    });
+    try {
+      await supabase.from('work_autopilot_runs').insert({
+        run_type: 'scope',
+        actor_user_id: context?.user?.id || null,
+        actor_persona_id: body.actorPersonaId || body.actor_persona_id || null,
+        request_id: body.requestId || body.request_id || null,
+        listing_id: body.listingId || body.listing_id || null,
+        contract_id: body.contractId || body.contract_id || null,
+        input_payload: body,
+        output_payload: output,
+        model: 'heuristic-v1',
+        status: 'succeeded',
+        latency_ms: latencyMs
+      });
+    } catch (runError) {
+      console.warn('Autopilot scope run write failed:', runError?.message || runError);
+    }
 
     return res.status(201).json({ data: output });
   } catch (error) {
@@ -6699,21 +9421,18 @@ app.post('/work/autopilot/scope', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/work/autopilot/match', requireAuth, async (req, res) => {
+app.post('/work/autopilot/match', async (req, res) => {
   const startedAt = Date.now();
   try {
-    const context = await getUserContext(req);
-    if (context.error) {
-      return res.status(400).json({ error: context.error.message || 'Unable to resolve user context.' });
-    }
+    const context = await resolveOptionalUserContext(req);
     const body = normalizeJsonObject(req.body);
     const category = toNullableText(body.category);
     const mode = normalizeWorkMode(body.mode, 'hybrid');
     const fulfillmentKind = normalizeFulfillmentKind(body.fulfillmentKind || body.fulfillment_kind, 'hybrid');
     const limit = Math.min(Math.max(parseInt(String(body.limit || 20), 10) || 20, 1), 50);
-    const requestedSkills = Array.isArray(body.skills)
-      ? body.skills.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)
-      : [];
+    const budgetMin = parsePositiveNumber(body.budgetMin ?? body.budget_min, 0);
+    const budgetMax = parsePositiveNumber(body.budgetMax ?? body.budget_max, 0);
+    const { requestedSkills, requestedTokens } = buildRequestedMatchSignals(body);
 
     let listingQuery = supabase
       .from('work_listings')
@@ -6727,43 +9446,143 @@ app.post('/work/autopilot/match', requireAuth, async (req, res) => {
     const { data: listings, error } = await listingQuery;
     if (error) throw error;
 
+    const sellerIds = Array.from(new Set((listings || []).map((listing) => String(listing?.seller_id || '').trim()).filter(Boolean)));
+    const [providerApplicationsRes, providerUsersRes] = await Promise.all([
+      sellerIds.length > 0
+        ? supabase.from('work_provider_applications').select('*').in('user_id', sellerIds)
+        : Promise.resolve({ data: [], error: null }),
+      sellerIds.length > 0
+        ? supabase.from('users').select('id,firebase_uid,name,avatar_url').in('id', sellerIds)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    if (providerApplicationsRes.error) throw providerApplicationsRes.error;
+    if (providerUsersRes.error) throw providerUsersRes.error;
+
+    const providerApplicationMap = new Map();
+    (providerApplicationsRes.data || []).forEach((entry) => {
+      const key = String(entry?.user_id || '').trim();
+      if (!key) return;
+      const existing = providerApplicationMap.get(key);
+      if (!existing || (entry?.status === 'approved' && existing?.status !== 'approved')) {
+        providerApplicationMap.set(key, entry);
+      }
+    });
+    const providerUserMap = new Map((providerUsersRes.data || []).map((entry) => [String(entry.id), entry]));
+
     const matches = (listings || []).map((listing) => {
-      let score = 50;
+      let score = 18;
       const reasons = [];
+      const providerApplication = providerApplicationMap.get(String(listing?.seller_id || '').trim()) || null;
+      const providerUser = providerUserMap.get(String(listing?.seller_id || '').trim()) || null;
+      const listingDetails = normalizeJsonObject(listing?.details);
+      const startingPrice = getListingStartingPrice(listing);
+      const priceFit = Number(computePriceFitScore(startingPrice, budgetMin, budgetMax).toFixed(2));
+
+      let trustScore = 44;
+      const responseSlaHours = parsePositiveNumber(
+        listingDetails.responseSlaHours ?? providerApplication?.response_sla_hours,
+        0
+      );
+      const portfolioCount =
+        (Array.isArray(providerApplication?.portfolio) ? providerApplication.portfolio.length : 0) +
+        (Array.isArray(listingDetails.portfolio) ? listingDetails.portfolio.length : 0);
+      const riskScore = parsePositiveNumber(listing?.risk_score, 0);
 
       if (listing.mode === mode) {
-        score += 20;
-        reasons.push('Mode alignment');
+        score += 18;
+        reasons.push('Mode aligned');
       } else if (listing.mode === 'hybrid' || mode === 'hybrid') {
         score += 10;
         reasons.push('Flexible mode compatibility');
       }
 
       if ((listing.fulfillment_kind || 'hybrid') === fulfillmentKind) {
-        score += 15;
-        reasons.push('Fulfillment kind match');
+        score += 14;
+        reasons.push('Fulfillment aligned');
       } else if ((listing.fulfillment_kind || 'hybrid') === 'hybrid' || fulfillmentKind === 'hybrid') {
         score += 8;
         reasons.push('Hybrid fulfillment compatibility');
       }
 
+      if (category && String(listing.category || '').trim().toLowerCase() === category.toLowerCase()) {
+        score += 12;
+        reasons.push('Category match');
+      }
+
       const listingSkills = Array.isArray(listing.skills)
         ? listing.skills.map((entry) => String(entry).toLowerCase())
         : [];
+      const listingTokens = Array.from(new Set([
+        ...listingSkills,
+        ...tokenizeWorkMatchText(listing.title),
+        ...tokenizeWorkMatchText(listing.description),
+        ...tokenizeWorkMatchText(listing.category)
+      ]));
       const overlap = requestedSkills.filter((skill) => listingSkills.includes(skill)).length;
+      const tokenOverlap = requestedTokens.filter((token) => listingTokens.includes(token)).length;
       if (overlap > 0) {
-        score += Math.min(15, overlap * 5);
-        reasons.push(`${overlap} skill match${overlap > 1 ? 'es' : ''}`);
+        score += Math.min(16, overlap * 4);
+        reasons.push(`${overlap} requested skill match${overlap > 1 ? 'es' : ''}`);
+      } else if (tokenOverlap > 0) {
+        score += Math.min(12, tokenOverlap * 3);
+        reasons.push('Requirement overlap found');
       }
 
-      const riskScore = parsePositiveNumber(listing.risk_score, 0);
-      score -= Math.min(10, riskScore / 10);
-      if (riskScore <= 25) reasons.push('Low risk profile');
+      if (priceFit >= 85) {
+        reasons.push('Budget-friendly starting point');
+      } else if (priceFit >= 65) {
+        reasons.push('Budget range is workable');
+      }
+
+      if (providerApplication?.status === 'approved') {
+        trustScore += 24;
+        reasons.push('Approved provider');
+      }
+      if (providerApplication?.payout_ready) {
+        trustScore += 12;
+        reasons.push('Escrow and payout ready');
+      }
+      if (portfolioCount > 0) {
+        trustScore += Math.min(12, 4 + portfolioCount * 2);
+        reasons.push('Portfolio evidence available');
+      }
+      if (responseSlaHours > 0 && responseSlaHours <= 24) {
+        trustScore += 10;
+        reasons.push(`Responds within ${responseSlaHours}h`);
+      } else if (responseSlaHours > 0 && responseSlaHours <= 48) {
+        trustScore += 5;
+        reasons.push('Responsive provider lane');
+      }
+      if (riskScore <= 25) {
+        trustScore += 10;
+        reasons.push('Low risk profile');
+      } else {
+        trustScore -= Math.min(16, riskScore / 6);
+      }
+
+      trustScore = Math.max(0, Math.min(100, trustScore));
+      score += priceFit * 0.14;
+      score += trustScore * 0.16;
+
+      const recommendedPath =
+        listing.mode === 'instant' || (listing.mode === 'hybrid' && priceFit >= 80 && trustScore >= 72)
+          ? 'instant'
+          : 'proposal';
 
       return {
-        listing,
+        listing: mapAutopilotListingForClient(listing, providerApplication, providerUser),
+        providerId: String(
+          providerUser?.firebase_uid ||
+          providerUser?.id ||
+          listing?.seller_id ||
+          ''
+        ) || null,
         score: Number(Math.max(0, Math.min(100, score)).toFixed(2)),
-        reasons
+        reasons: Array.from(new Set(reasons)).slice(0, 5),
+        recommendedPath,
+        priceFit,
+        trustScore: Number(trustScore.toFixed(2)),
+        responseSlaHours: responseSlaHours > 0 ? responseSlaHours : null
       };
     })
       .sort((left, right) => right.score - left.score)
@@ -6771,17 +9590,21 @@ app.post('/work/autopilot/match', requireAuth, async (req, res) => {
 
     const output = { matches };
     const latencyMs = Date.now() - startedAt;
-    await supabase.from('work_autopilot_runs').insert({
-      run_type: 'match',
-      actor_user_id: context.user.id,
-      actor_persona_id: body.actorPersonaId || body.actor_persona_id || null,
-      request_id: body.requestId || body.request_id || null,
-      input_payload: body,
-      output_payload: output,
-      model: 'heuristic-match-v1',
-      status: 'succeeded',
-      latency_ms: latencyMs
-    });
+    try {
+      await supabase.from('work_autopilot_runs').insert({
+        run_type: 'match',
+        actor_user_id: context?.user?.id || null,
+        actor_persona_id: body.actorPersonaId || body.actor_persona_id || null,
+        request_id: body.requestId || body.request_id || null,
+        input_payload: body,
+        output_payload: output,
+        model: 'heuristic-match-v2',
+        status: 'succeeded',
+        latency_ms: latencyMs
+      });
+    } catch (runError) {
+      console.warn('Autopilot match run write failed:', runError?.message || runError);
+    }
 
     return res.status(201).json({ data: output });
   } catch (error) {
@@ -8363,6 +11186,13 @@ app.post('/api/:table', requireAuth, requireTable, async (req, res) => {
   if (error) {
     return res.status(400).json({ error: error.message });
   }
+  if (table === 'notifications') {
+    scheduleWhatsAppForNotifications(data, req);
+    scheduleEmailForNotifications(data, req);
+  }
+  if (table === 'items') {
+    scheduleListingPublishedEmail(data, req);
+  }
   return res.status(201).json({ data });
 });
 
@@ -8372,6 +11202,9 @@ app.patch('/api/:table/:id', requireAuth, requireTable, async (req, res) => {
   const { data, error } = await supabase.from(table).update(payload).eq('id', id).select('*').maybeSingle();
   if (error) {
     return res.status(400).json({ error: error.message });
+  }
+  if (table === 'items') {
+    scheduleListingPublishedEmail(data, req);
   }
   return res.json({ data });
 });
@@ -8640,7 +11473,14 @@ const startServer = (port, retriesRemaining) => {
   });
 };
 
-startServer(START_PORT, PORT_RETRY_LIMIT);
+const isDirectRun = Boolean(process.argv[1] && path.resolve(process.argv[1]) === __filename);
+
+if (isDirectRun) {
+  startServer(START_PORT, PORT_RETRY_LIMIT);
+}
+
+export { app, startServer };
+export default app;
 
 
 

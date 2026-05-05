@@ -107,6 +107,17 @@ const ComposerDock: React.FC<ComposerDockProps> = ({
     textarea.style.height = `${nextHeight}px`;
   }, [newMessage]);
 
+  useEffect(() => {
+    if (!replyPreview && !editPreview) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      const caretPosition = textarea.value.length;
+      textarea.setSelectionRange(caretPosition, caretPosition);
+    });
+  }, [editPreview, replyPreview]);
+
   const handleEmojiSelect = (emoji: string) => {
     const textarea = textareaRef.current;
     const selectionStart = textarea?.selectionStart ?? newMessage.length;

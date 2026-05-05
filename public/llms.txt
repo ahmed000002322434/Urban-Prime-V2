@@ -1,16 +1,20 @@
 # Urban Prime
 
-Urban Prime is a premium marketplace, creator hub, and social discovery platform.
+Urban Prime is a social marketplace for products, creator videos, Spotlight posts, stores, services, rentals, auctions, and local commerce.
 
 ## Public surfaces
 - `/` Home and marketplace discovery
 - `/spotlight` Prime Spotlight social feed
 - `/spotlight/post/:id` Spotlight post detail
 - `/reels` Immersive video viewer
-- `/pixe` Creator studio and media workflows
+- `/pixe` Public Pixe feed
+- `/pixe/explore` Pixe exploration feed
+- `/pixe/creators` Pixe creator directory
+- `/pixe/watch/:videoId` Public Pixe watch page
+- `/pixe/channel/:handle` Public Pixe channel page
 - `/community` Community surface
 - `/browse` Product browsing
-- `/browse-services` Service browsing
+- `/browse/services` Service browsing
 - `/stores` Store directory
 - `/brands` Brand discovery
 - `/events` Events and moments
@@ -23,5 +27,7 @@ Urban Prime is a premium marketplace, creator hub, and social discovery platform
 
 ## Notes
 - Public pages are indexable.
+- Canonical domain: `https://urbanprime.tech`.
+- Search, AI, and crawler agents may index public marketplace, Pixe, Spotlight, service, store, profile, and article pages.
 - Auth pages, admin pages, and account management pages are intentionally noindexed.
-- The sitemap is available at `/sitemap.xml`.
+- The sitemap is available at `https://urbanprime.tech/sitemap.xml`.

@@ -19,4 +19,5 @@ export interface ThreadViewModel {
   contextLabel: string;
   presence: ChatPresenceState | null;
   latestMessage: ChatMessage | null;
+  isUserHydrating?: boolean;
 }

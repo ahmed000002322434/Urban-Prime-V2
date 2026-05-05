@@ -40,10 +40,31 @@ async function probe(url: string): Promise<ProbeResult> {
   }
 }
 
+async function probeLegacyApiOrigin() {
+  const [rootHealth, apiHealth] = await Promise.all([
+    probe(`${legacyApiOrigin}/health`),
+    probe(`${legacyApiOrigin}/api/health`),
+  ]);
+
+  if (rootHealth.ok || rootHealth.status === 200) {
+    return {
+      origin: legacyApiOrigin,
+      path: "/health",
+      ...rootHealth,
+    };
+  }
+
+  return {
+    origin: legacyApiOrigin,
+    path: "/api/health",
+    ...apiHealth,
+  };
+}
+
 export async function GET() {
   const [legacyWeb, legacyApi] = await Promise.all([
     probe(legacyWebOrigin),
-    probe(`${legacyApiOrigin}/api/health`),
+    probeLegacyApiOrigin(),
   ]);
 
   return NextResponse.json(
@@ -56,10 +77,7 @@ export async function GET() {
           origin: legacyWebOrigin,
           ...legacyWeb,
         },
-        legacyApi: {
-          origin: legacyApiOrigin,
-          ...legacyApi,
-        },
+        legacyApi,
       },
     },
     {

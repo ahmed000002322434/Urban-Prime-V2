@@ -70,6 +70,7 @@ interface NotificationContextType {
   notificationSettings: NotificationSettings;
   updateNotificationSettings: (patch: Partial<NotificationSettings>) => void;
   unreadNotificationCount: number;
+  unreadMessageCount: number;
   refreshUnreadNotificationCount: () => Promise<void>;
   desktopPermission: NotificationPermission | 'unsupported';
   requestDesktopPermission: () => Promise<NotificationPermission | 'unsupported'>;
@@ -188,6 +189,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [floatingAnimation, setFloatingAnimation] = useState<FloatingMessageAnimation | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => readSettings());
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [desktopPermission, setDesktopPermission] = useState<NotificationPermission | 'unsupported'>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
   );
@@ -286,16 +288,39 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const refreshUnreadNotificationCount = useCallback(async () => {
     if (!authUserId) {
       setUnreadNotificationCount(0);
+      setUnreadMessageCount(0);
       return;
     }
 
     try {
-      const notifications = await withItemService((itemService) =>
-        itemService.getNotificationsForUser(authUserId, { includePersona: false, limit: 100 })
+      const { itemService } = await loadItemServiceModule();
+      const [notifications, threads] = await Promise.all([
+        itemService.getNotificationsForUser(authUserId, { includePersona: false, limit: 100 }),
+        itemService.getChatThreadsForUser(authUserId)
+      ]);
+      const unreadEntries = notifications.filter((entry) => !entry.isRead);
+      let unreadThreadCount = 0;
+
+      if (threads.length > 0 && typeof itemService.getReadReceiptsForThreads === 'function') {
+        const readReceiptsByThreadId = await itemService.getReadReceiptsForThreads(threads.map((thread) => thread.id));
+        unreadThreadCount = threads.filter((thread) => {
+          const latestMessage = thread.messages?.[thread.messages.length - 1];
+          if (!latestMessage || latestMessage.senderId === authUserId) return false;
+          const ownReadTimestamp = readReceiptsByThreadId?.[thread.id]?.[authUserId] || '';
+          return !ownReadTimestamp || new Date(ownReadTimestamp).getTime() < new Date(latestMessage.timestamp).getTime();
+        }).length;
+      }
+
+      setUnreadNotificationCount(unreadEntries.length);
+      setUnreadMessageCount(
+        Math.max(
+          unreadEntries.filter((entry) => String(entry.type || '').toUpperCase() === 'MESSAGE').length,
+          unreadThreadCount
+        )
       );
-      setUnreadNotificationCount(notifications.filter((entry) => !entry.isRead).length);
     } catch {
       setUnreadNotificationCount(0);
+      setUnreadMessageCount(0);
     }
   }, [authUserId]);
 
@@ -631,6 +656,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     notificationSettings,
     updateNotificationSettings,
     unreadNotificationCount,
+    unreadMessageCount,
     refreshUnreadNotificationCount,
     desktopPermission,
     requestDesktopPermission
@@ -641,6 +667,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     notificationSettings,
     updateNotificationSettings,
     unreadNotificationCount,
+    unreadMessageCount,
     refreshUnreadNotificationCount,
     desktopPermission,
     requestDesktopPermission

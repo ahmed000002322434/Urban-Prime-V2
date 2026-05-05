@@ -67,6 +67,7 @@ const ExploreHubPage = lazy(() => import('./pages/public/ExploreHubPage'));
 const BrowsePage = lazy(() => import('./pages/public/BrowsePage'));
 const BrowseServicesPage = lazy(() => import('./pages/public/BrowseServicesPage'));
 const ServicesMarketplacePage = lazy(() => import('./pages/public/ServicesMarketplacePage'));
+const ServicesConciergePage = lazy(() => import('./pages/public/ServicesConciergePage'));
 const RentalsPage = lazy(() => import('./pages/public/RentalsPage'));
 const AuctionsPage = lazy(() => import('./pages/public/AuctionsPage'));
 const ItemDetailPage = lazy(() => import('./pages/public/ItemDetailPage'));
@@ -79,6 +80,7 @@ const PixeCreatorsPage = lazy(() => import('./pages/public/PixeCreatorsPage'));
 const PixeWatchPage = lazy(() => import('./pages/public/PixeWatchPage'));
 const PixeChannelPage = lazy(() => import('./pages/public/PixeChannelPage'));
 const SpotlightPage = lazy(() => import('./pages/public/PrimeSpotlightPage'));
+const SpotlightSearchPage = lazy(() => import('./pages/public/SpotlightSearchPage'));
 const ProductBattlePage = lazy(() => import('./pages/public/ProductBattlePage'));
 const MysteryBoxPage = lazy(() => import('./pages/public/MysteryBoxPage'));
 const FeaturesHubPage = lazy(() => import('./pages/public/FeaturesHubPage'));
@@ -97,6 +99,10 @@ const UserCollectionsPage = lazy(() => import('./pages/public/UserCollectionsPag
 const PublicWishlistPage = lazy(() => import('./pages/public/PublicWishlistPage'));
 const PublicProfilePage = lazy(() => import('./pages/public/PublicProfilePage'));
 const SpotlightProfilePage = lazy(() => import('./pages/public/SpotlightProfilePage'));
+const SpotlightMessagesPage = lazy(() => import('./pages/public/SpotlightMessagesPage'));
+const SpotlightNotificationsPage = lazy(() => import('./pages/public/SpotlightNotificationsPage'));
+const SpotlightPostThreadPage = lazy(() => import('./pages/public/SpotlightPostThreadPage'));
+const SpotlightMorePage = lazy(() => import('./pages/public/SpotlightMorePage'));
 const NotificationsPage = lazy(() => import('./pages/public/NotificationsPage'));
 const MorePage = lazy(() => import('./pages/public/MorePage'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage'));
@@ -194,6 +200,7 @@ const DashboardOverview = lazy(() => import('./pages/protected/DashboardOverview
 const ActivityPage = lazy(() => import('./pages/protected/ActivityPage'));
 const OwnerControlsPage = lazy(() => import('./pages/protected/OwnerControlsPage'));
 const MyOrdersPage = lazy(() => import('./pages/protected/MyOrdersPage'));
+const ClientProposalsPage = lazy(() => import('./pages/protected/ClientProposalsPage'));
 const MyBidsPage = lazy(() => import('./pages/protected/MyBidsPage'));
 const OrderDetailsPage = lazy(() => import('./pages/protected/OrderDetailsPage'));
 const MessagesPage = lazy(() => import('./pages/protected/MessagesPage'));
@@ -203,6 +210,8 @@ const CouponsPage = lazy(() => import('./pages/protected/CouponsPage'));
 const FollowedStoresPage = lazy(() => import('./pages/protected/FollowedStoresPage'));
 const BrowsingHistoryPage = lazy(() => import('./pages/protected/BrowsingHistoryPage'));
 const SettingsPage = lazy(() => import('./pages/protected/SettingsPage'));
+const LanguageRegionSettingsPage = lazy(() => import('./pages/protected/LanguageRegionSettingsPage'));
+const AppearanceSettingsPage = lazy(() => import('./pages/protected/AppearanceSettingsPage'));
 const EditProfilePage = lazy(() => import('./pages/protected/EditProfilePage'));
 const AddressesPage = lazy(() => import('./pages/protected/AddressesPage'));
 const PaymentOptionsPage = lazy(() => import('./pages/protected/PaymentOptionsPage'));
@@ -234,6 +243,7 @@ const ProviderServicesPage = lazy(() => import('./pages/protected/provider/Provi
 const ProviderServiceEditorPage = lazy(() => import('./pages/protected/provider/ProviderServiceEditorPage'));
 const ProviderLeadsPage = lazy(() => import('./pages/protected/provider/ProviderLeadsPage'));
 const ProviderProposalsPage = lazy(() => import('./pages/protected/provider/ProviderProposalsPage'));
+const ProviderProposalComposerPage = lazy(() => import('./pages/protected/provider/ProviderProposalComposerPage'));
 const ProviderJobsPage = lazy(() => import('./pages/protected/provider/ProviderJobsPage'));
 const ProviderCalendarPage = lazy(() => import('./pages/protected/provider/ProviderCalendarPage'));
 const ProviderEarningsPage = lazy(() => import('./pages/protected/provider/ProviderEarningsPage'));
@@ -259,6 +269,7 @@ const PixeTermsPage = lazy(() => import('./pages/public/PixeTermsPage'));
 const CreateLiveStreamPage = lazy(() => import('./pages/protected/CreateLiveStreamPage'));
 const CreatePostPage = lazy(() => import('./pages/protected/CreatePostPage'));
 const CreateSpotlightPage = lazy(() => import('./pages/protected/CreateSpotlightPage'));
+const SpotlightSavedPage = lazy(() => import('./pages/protected/SpotlightSavedPage'));
 const WalletPage = lazy(() => import('./pages/protected/WalletPage'));
 const EarningsPage = lazy(() => import('./pages/protected/EarningsPage'));
 const PackagesPage = lazy(() => import('./pages/protected/PackagesPage'));
@@ -349,7 +360,7 @@ const AppContent: React.FC = () => {
         </Suspense>
       ) : null}
       {showWelcomeScreen ? <WelcomeScreen onComplete={() => setShowWelcomeScreen(false)} /> : null}
-      <Suspense fallback={<RouteSkeletonFallback />}>
+      <Suspense fallback={showWelcomeScreen ? null : <RouteSkeletonFallback />}>
         <Routes>
           {/* Standalone Store Pages */}
           <Route path="/s/:storeSlug" element={<StoreFront />} />
@@ -472,10 +483,21 @@ const AppContent: React.FC = () => {
             <Route path="rentals" element={<RentalsPage />} />
             <Route path="auctions" element={<AuctionsPage />} />
             <Route path="browse/services" element={<BrowseServicesPage />} />
+                <Route path="services/concierge" element={<ServicesConciergePage />} />
                 <Route path="services/marketplace" element={<ServicesMarketplacePage />} />
                 <Route path="reels" element={<ReelsPage />} />
                 <Route path="spotlight" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
-                <Route path="spotlight/post/:id" element={<SpotlightRouteFrame><SpotlightPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/explore" element={<SpotlightRouteFrame><SpotlightSearchPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/search" element={<SpotlightRouteFrame><SpotlightSearchPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/profile" element={<SpotlightRouteFrame><SpotlightProfilePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/profile/:username" element={<SpotlightRouteFrame><SpotlightProfilePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/post/:id" element={<SpotlightRouteFrame><SpotlightPostThreadPage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/more" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/lists" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/communities" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/premium" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/jobs" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
+                <Route path="spotlight/spaces" element={<SpotlightRouteFrame><SpotlightMorePage /></SpotlightRouteFrame>} />
                 <Route path="live" element={<LiveShoppingPage />} />
             <Route path="battles" element={<ProductBattlePage />} />
             <Route path="mystery-box" element={<MysteryBoxPage />} />
@@ -596,6 +618,7 @@ const AppContent: React.FC = () => {
                     <Route index element={<DashboardOverview />} />
                     <Route path="orders" element={<MyOrdersPage />} />
                     <Route path="orders/:bookingId" element={<OrderDetailsPage />} />
+                    <Route path="proposals" element={<ClientProposalsPage />} />
                     <Route path="bids" element={<MyBidsPage />} />
                     <Route path="messages" element={<MessagesPage />} />
                     <Route path="messages/:threadId" element={<MessagesPage />} />
@@ -612,6 +635,8 @@ const AppContent: React.FC = () => {
                         <Route index element={<ProfileHubPage />} />
                         <Route path="edit" element={<Navigate to="/profile/settings" replace />} />
                         <Route path="legacy-edit" element={<EditProfilePage />} />
+                        <Route path="language" element={<LanguageRegionSettingsPage />} />
+                        <Route path="appearance" element={<AppearanceSettingsPage />} />
                         <Route path="addresses" element={<AddressesPage />} />
                         <Route path="trust-and-verification" element={<TrustAndVerificationPage />} />
                         <Route path="privacy" element={<PrivacySettingsPage />} />
@@ -671,7 +696,9 @@ const AppContent: React.FC = () => {
                             <Route path="services/new" element={<ProviderServiceEditorPage />} />
                             <Route path="services/:serviceId/edit" element={<ProviderServiceEditorPage />} />
                             <Route path="leads" element={<ProviderLeadsPage />} />
+                            <Route path="leads/:leadId/proposal" element={<ProviderProposalComposerPage />} />
                             <Route path="proposals" element={<ProviderProposalsPage />} />
+                            <Route path="proposals/:proposalId/edit" element={<ProviderProposalComposerPage />} />
                             <Route path="jobs" element={<ProviderJobsPage />} />
                             <Route path="calendar" element={<ProviderCalendarPage />} />
                             <Route path="earnings" element={<ProviderEarningsPage />} />
@@ -739,6 +766,19 @@ const AppContent: React.FC = () => {
 
             <Route path="spotlight/create" element={<ProtectedRoute />}>
                 <Route index element={<SpotlightRouteFrame><CreateSpotlightPage /></SpotlightRouteFrame>} />
+            </Route>
+
+            <Route path="spotlight/messages" element={<ProtectedRoute />}>
+                <Route index element={<SpotlightRouteFrame><SpotlightMessagesPage /></SpotlightRouteFrame>} />
+                <Route path=":threadId" element={<SpotlightRouteFrame><SpotlightMessagesPage /></SpotlightRouteFrame>} />
+            </Route>
+
+            <Route path="spotlight/notifications" element={<ProtectedRoute />}>
+                <Route index element={<SpotlightRouteFrame><SpotlightNotificationsPage /></SpotlightRouteFrame>} />
+            </Route>
+
+            <Route path="spotlight/saved" element={<ProtectedRoute />}>
+                <Route index element={<SpotlightRouteFrame><SpotlightSavedPage /></SpotlightRouteFrame>} />
             </Route>
 
             <Route path="create-store" element={<ProtectedRoute />}>

@@ -37,8 +37,26 @@ const NotificationIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
   </svg>
 );
 
+const AppearanceIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v18" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 0 0 0 18" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 0 1 0 18" />
+  </svg>
+);
+
+const LanguageIcon: React.FC<IconProps> = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.4 2.7 3.6 5.7 3.6 9s-1.2 6.3-3.6 9c-2.4-2.7-3.6-5.7-3.6-9s1.2-6.3 3.6-9Z" />
+  </svg>
+);
+
 const settingsItems = [
   { to: '/profile/settings', label: 'Profile Hub', icon: ProfileIcon, end: true },
+  { to: '/profile/settings/language', label: 'Language & Region', icon: LanguageIcon },
+  { to: '/profile/settings/appearance', label: 'Appearance', icon: AppearanceIcon },
   { to: '/profile/settings/trust-and-verification', label: 'Trust & Verification', icon: VerifyIcon },
   { to: '/profile/settings/addresses', label: 'Addresses', icon: AddressIcon },
   { to: '/profile/settings/privacy', label: 'Privacy', icon: PrivacyIcon },

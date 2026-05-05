@@ -1,5 +1,11 @@
 export type DataMode = 'supabase' | 'firebase' | 'hybrid' | 'local';
 
+const RUNTIME_BACKEND_HOSTS = new Set([
+  'urbanprime.tech',
+  'www.urbanprime.tech',
+  'urbanprim.vercel.app'
+]);
+
 const toBool = (value: string | undefined, defaultValue: boolean) => {
   if (value === undefined) return defaultValue;
   const normalized = value.trim().toLowerCase();
@@ -32,10 +38,16 @@ const isBackendEnvConfigured = () => {
   return Boolean(primary.trim() || candidates.trim() || hostMap.trim());
 };
 
+const hasRuntimeBackendFallback = () => {
+  if (typeof window === 'undefined') return false;
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  return RUNTIME_BACKEND_HOSTS.has(hostname);
+};
+
 const isFirebaseDisabled = toBool(import.meta.env.VITE_DISABLE_FIREBASE as string | undefined, false);
 
 const resolveAutoMode = (): DataMode => {
-  if (isSupabaseEnvConfigured() || isBackendEnvConfigured()) return 'supabase';
+  if (isSupabaseEnvConfigured() || isBackendEnvConfigured() || hasRuntimeBackendFallback()) return 'supabase';
   if (!isFirebaseDisabled) return 'firebase';
   return 'local';
 };

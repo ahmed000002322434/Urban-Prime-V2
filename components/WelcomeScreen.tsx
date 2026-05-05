@@ -46,7 +46,7 @@ const UrbanPrimeLogo: React.FC = () => (
 
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
-    const tagline = "Experience Luxury On Demand";
+    const tagline = "Social Marketplace";
     const completedRef = useRef(false);
 
     const finish = () => {
@@ -58,7 +58,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
             finish();
-        }, 5200);
+        }, 3400);
 
         return () => {
             window.clearTimeout(timeoutId);
@@ -73,7 +73,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     return (
         <div 
             className="pointer-events-none fixed inset-0 bg-background z-[100] flex flex-col justify-center items-center text-text-primary transition-colors duration-300" 
-            style={{ animation: 'welcome-fade-out 0.5s ease-in-out 4.5s forwards' }}
+            style={{ animation: 'welcome-fade-out 0.45s ease-in-out 2.95s forwards' }}
             onAnimationEnd={handleAnimationEnd}
             aria-hidden="true"
         >

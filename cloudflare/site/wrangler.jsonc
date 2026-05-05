@@ -1,0 +1,30 @@
+{
+  "$schema": "../pixe-edge/node_modules/wrangler/config-schema.json",
+  "name": "urbanprime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-03",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "assets": {
+    "directory": "../../dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "routes": [
+    {
+      "pattern": "urbanprime.tech",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.urbanprime.tech",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "ORIGIN_APP": "https://urbanprim.vercel.app"
+  }
+}

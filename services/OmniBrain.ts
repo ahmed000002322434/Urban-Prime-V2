@@ -2,7 +2,22 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { GrowthInsight } from "./OmniGrowthService";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const AI_UNAVAILABLE_MESSAGE = 'AI unavailable: configure VITE_GEMINI_API_KEY.';
+
+const getApiKey = () => {
+  const viteKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  if (viteKey) return viteKey;
+  if (typeof process !== 'undefined') {
+    return (process.env as any)?.API_KEY as string | undefined;
+  }
+  return undefined;
+};
+
+const getAiClient = () => {
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 const omniTools: FunctionDeclaration[] = [
   {
@@ -91,6 +106,12 @@ export const generateOmniPlan = async (userPrompt: string) => {
     return { status: 'REQUIRE_ASSETS' };
   }
 
+  const ai = getAiClient();
+  if (!ai) {
+    console.warn(AI_UNAVAILABLE_MESSAGE);
+    return [];
+  }
+
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: userPrompt,
@@ -109,6 +130,11 @@ export const generateOmniPlan = async (userPrompt: string) => {
 
 export const summarizeGrowthInsights = async (insights: GrowthInsight[]) => {
     if (insights.length === 0) return "Omni is observing market fluctuations. No critical optimizations required.";
+
+    const ai = getAiClient();
+    if (!ai) {
+        return "Omni insights are unavailable until the AI browser key is configured.";
+    }
 
     const prompt = `Review these marketplace growth insights and provide a concise, professional, 1-sentence summary of the revenue opportunity. DATA: ${JSON.stringify(insights)}`;
 

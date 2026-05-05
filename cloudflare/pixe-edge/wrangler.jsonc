@@ -1,13 +1,15 @@
 {
-  "name": "pixe-edge",
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "urban-prime-edge",
   "main": "src/index.ts",
-  "compatibility_date": "2026-04-25",
+  "compatibility_date": "2026-04-30",
   "workers_dev": true,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.1
+    "head_sampling_rate": 1
   },
   "vars": {
-    "ORIGIN_API": "https://api.example.com"
+    "ORIGIN_API": "https://urbanprim.vercel.app",
+    "ALLOWED_ORIGINS": "https://urbanprime.tech,https://www.urbanprime.tech,https://*.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
   }
 }

@@ -9,6 +9,7 @@ import type { Reel, User, ReelComment } from '../../types';
 import Spinner from '../../components/Spinner';
 import { useNotification } from '../../context/NotificationContext';
 import BlueTickBadge from '../../components/spotlight/BlueTickBadge';
+import { buildPublicProfilePath } from '../../utils/profileIdentity';
 
 // --- ICONS ---
 const PixeLogo = () => <img src="https://i.ibb.co/jkyfqdFV/Gemini-Generated_Image-gqj0u3gqj0u3gqj0.png" alt="Pixe Logo" className="w-8 h-8 object-contain" />;
@@ -342,7 +343,7 @@ const ReelsPage: React.FC = () => {
 
                     <div className="mt-auto pt-4 border-t border-gray-200/50 dark:border-white/10">
                         {user ? (
-                            <Link to={`/user/${user.id}`} className="flex items-center gap-4 p-3 rounded-[20px] hover:bg-white/50 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-white/20">
+                            <Link to={buildPublicProfilePath(user)} className="flex items-center gap-4 p-3 rounded-[20px] hover:bg-white/50 dark:hover:bg-white/10 transition-colors border border-transparent hover:border-white/20">
                                 <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover border-2 border-white dark:border-gray-600 shadow-md" />
                                 <div className="overflow-hidden">
                                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{user.name}</p>
@@ -434,7 +435,7 @@ const ReelsPage: React.FC = () => {
                                 <div className="absolute bottom-0 left-0 right-0 p-6 pt-32 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-20 pointer-events-none">
                                     <div className="pointer-events-auto">
                                         <div className="flex items-center gap-3 mb-3">
-                                            <Link to={`/user/${activeReel.creatorId}`} className="text-white font-bold text-lg drop-shadow-md hover:underline">{creator?.name}</Link>
+                                            <Link to={buildPublicProfilePath({ id: activeReel.creatorId, name: creator?.name, username: (creator as { username?: string } | null | undefined)?.username })} className="text-white font-bold text-lg drop-shadow-md hover:underline">{creator?.name}</Link>
                                             <BlueTickBadge className="h-5 w-5" />
                                             {!isFollowing && (
                                                 <button onClick={handleFollow} className="px-3 py-1 bg-transparent border border-white/50 rounded-full text-xs font-bold text-white hover:bg-white/20 transition-colors">
@@ -474,7 +475,7 @@ const ReelsPage: React.FC = () => {
                     {/* ACTIONS SIDEBAR */}
                     <div className="flex flex-col gap-5 items-center z-20 h-full justify-center">
                          <div className="relative cursor-pointer group/avatar mb-2">
-                            <Link to={`/user/${activeReel.creatorId}`}>
+                            <Link to={buildPublicProfilePath({ id: activeReel.creatorId, name: creator?.name, username: (creator as { username?: string } | null | undefined)?.username })}>
                                 <div className="w-[56px] h-[56px] rounded-full border-[3px] border-white p-0.5 overflow-hidden shadow-lg transition-transform group-hover/avatar:scale-110">
                                     <img src={creator?.avatar} className="w-full h-full rounded-full object-cover"/>
                                 </div>

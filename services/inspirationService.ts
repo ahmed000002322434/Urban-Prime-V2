@@ -5,8 +5,25 @@ import { db } from '../firebase';
 import { collection, getDocs } from "firebase/firestore";
 import supabaseMirror from './supabaseMirror';
 
+const AI_UNAVAILABLE_MESSAGE = 'AI unavailable: configure VITE_GEMINI_API_KEY.';
+
+const getApiKey = () => {
+    const viteKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+    if (viteKey) return viteKey;
+    if (typeof process !== 'undefined') {
+        return (process.env as any)?.API_KEY as string | undefined;
+    }
+    return undefined;
+};
+
 // Re-creating the instance is required for the Veo API key selection flow.
-const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const getAiClient = () => {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        throw new Error(AI_UNAVAILABLE_MESSAGE);
+    }
+    return new GoogleGenAI({ apiKey });
+};
 
 const POLLING_INTERVAL = 10000; // 10 seconds
 
@@ -68,6 +85,10 @@ export const inspirationService = {
     initialImage?: { base64: string; mimeType: string }
   ): Promise<string> => {
     const ai = getAiClient();
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        throw new Error(AI_UNAVAILABLE_MESSAGE);
+    }
     
     const fullPrompt = `
       A video of ${prompt}.
@@ -113,7 +134,7 @@ export const inspirationService = {
     }
     
     onPoll({ message: "Finalizing video...", progress: 95 });
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    const response = await fetch(`${downloadLink}&key=${apiKey}`);
     if (!response.ok) {
         throw new Error(`Failed to download the generated video. Status: ${response.status}`);
     }

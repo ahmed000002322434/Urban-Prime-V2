@@ -7,6 +7,8 @@ import useLowEndMode from '../hooks/useLowEndMode';
 import type { ChatMessage, ChatThread, PersonaType } from '../types';
 import { cx } from './dashboard/clay/classNames';
 import { prefetchRoute } from '../utils/routePrefetch';
+import { enforceAvatarIdentity } from '../utils/avatarEnforcement';
+import { buildPublicProfilePath } from '../utils/profileIdentity';
 
 type ItemServiceModule = typeof import('../services/itemService');
 
@@ -42,6 +44,14 @@ interface ThreadMeta {
   avatar?: string;
   itemTitle?: string;
 }
+
+const resolveAvatar = (profile?: { name?: string; email?: string; gender?: string; avatar?: string } | null) =>
+  enforceAvatarIdentity({
+    name: profile?.name,
+    email: profile?.email,
+    gender: profile?.gender,
+    avatar: profile?.avatar
+  }).avatar;
 
 const HomeGlyph: React.FC<{ active: boolean }> = ({ active }) => (
   <img
@@ -218,7 +228,7 @@ const MobileAppChrome: React.FC = () => {
 
   const profileLinks = useMemo<MobileQuickLink[]>(() => {
     const common: MobileQuickLink[] = [
-      { id: 'profile', label: 'Profile', to: user ? `/user/${user.id}` : '/auth' },
+      { id: 'profile', label: 'Profile', to: user ? buildPublicProfilePath(user) : '/auth' },
       { id: 'messages', label: 'Messages', to: '/profile/messages' }
     ];
 
@@ -335,7 +345,7 @@ const MobileAppChrome: React.FC = () => {
             {
               name: displayName,
               role: roleLabel,
-              avatar: otherUser?.avatar,
+              avatar: resolveAvatar(otherUser),
               itemTitle: item?.title
             } as ThreadMeta
           ] as const;
@@ -577,7 +587,7 @@ const MobileAppChrome: React.FC = () => {
             )}
           >
             <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white text-[#4b5563]">
-              {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <UserGlyph />}
+              <img src={resolveAvatar(user)} className="h-full w-full object-cover" />
             </div>
           </div>
         </button>
@@ -726,7 +736,7 @@ const MobileAppChrome: React.FC = () => {
                     <div className={`mb-6 flex items-center gap-4 rounded-3xl border p-4 shadow-[0_14px_26px_rgba(15,23,42,0.14)] ${prefersNoirTuning ? '' : 'backdrop-blur-xl'} ${softCardClass}`}>
                       <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#3f4c5b] to-[#6b7785] p-0.5">
                         <div className="h-full w-full overflow-hidden rounded-full border-2 border-white bg-white">
-                          {user?.avatar ? <img src={user.avatar} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[#475569]"><UserGlyph /></div>}
+                          <img src={resolveAvatar(user)} className="h-full w-full object-cover" />
                         </div>
                       </div>
                       <div>

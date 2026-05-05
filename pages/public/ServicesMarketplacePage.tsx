@@ -593,7 +593,7 @@ const ServicesMarketplacePage: React.FC = () => {
                 Browse the live public catalog, compare real storefronts, and move into booking or quotes from one cleaner surface.
               </p>
 
-              <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <label className="flex items-center gap-3 rounded-[24px] border border-white/15 bg-white/10 px-4 py-3 text-white/70 focus-within:border-white/30 focus-within:bg-white/14">
                   <SearchIcon />
                   <input
@@ -604,11 +604,17 @@ const ServicesMarketplacePage: React.FC = () => {
                   />
                 </label>
                 <Link
-                  to="/profile/messages"
+                  to="/services/concierge"
                   className="inline-flex items-center justify-center gap-2 rounded-[24px] bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110"
                 >
-                  Hiring inbox
+                  Start with AI concierge
                   <ArrowRightIcon />
+                </Link>
+                <Link
+                  to="/profile/messages"
+                  className="inline-flex items-center justify-center rounded-[24px] border border-white/15 bg-white/8 px-5 py-3 text-sm font-semibold text-white/88 transition hover:bg-white/12"
+                >
+                  Hiring inbox
                 </Link>
               </div>
 
